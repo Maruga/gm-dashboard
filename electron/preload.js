@@ -14,7 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
   getFileUrl: (filePath) => ipcRenderer.invoke('get-file-url', filePath),
   searchFiles: (folderPath, query) => ipcRenderer.invoke('search-files', folderPath, query),
-  selectProjectFile: (projectPath) => ipcRenderer.invoke('select-project-file', projectPath),
+  selectProjectFile: (projectPath, filters) => ipcRenderer.invoke('select-project-file', projectPath, filters),
 
   // Window controls
   windowMinimize: () => ipcRenderer.invoke('window-minimize'),

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 
-export default function DocToc({ containerRef, pinned: externalPinned, onPinnedChange }) {
+export default function DocToc({ containerRef, pinned: externalPinned, onPinnedChange, contentKey }) {
   const [headings, setHeadings] = useState([]);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [open, setOpen] = useState(false);
@@ -51,7 +51,7 @@ export default function DocToc({ containerRef, pinned: externalPinned, onPinnedC
     const observer = new MutationObserver(extract);
     observer.observe(container, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [containerRef]);
+  }, [containerRef, contentKey]);
 
   // Track active heading via scroll position
   useEffect(() => {

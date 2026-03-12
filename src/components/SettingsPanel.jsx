@@ -85,7 +85,8 @@ export default function SettingsPanel({
   onResetGameDate,
   highlightKeywords, onHighlightChange,
   onOpenInfo,
-  onExportAdventure, onOpenAdventures
+  onExportAdventure, onOpenAdventures,
+  onResetAllRelations
 }) {
   const [showToken, setShowToken] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -104,6 +105,8 @@ export default function SettingsPanel({
   const [bulkWords, setBulkWords] = useState('');
   const [confirmClearWords, setConfirmClearWords] = useState(false);
   const confirmWordsTimer = useRef(null);
+  const [confirmResetRelations, setConfirmResetRelations] = useState(false);
+  const confirmRelationsTimer = useRef(null);
   const [section, setSection] = useState('aspetto');
 
   // Load GitHub token on mount
@@ -631,6 +634,66 @@ export default function SettingsPanel({
             <select disabled style={{ ...inputStyle, width: '200px', cursor: 'not-allowed', opacity: 0.5 }}>
               <option>Gregoriano</option>
             </select>
+          </div>
+
+          {/* Relations file */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={labelStyle}>File relazioni PNG ↔ PG</label>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {settings.relationsFile ? (
+                <>
+                  <span style={{ ...inputStyle, flex: 1, padding: '7px 10px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {settings.relationsFile}
+                  </span>
+                  <span className="close-btn" onClick={() => updateSetting('relationsFile', '')} style={{ fontSize: '12px' }} title="Rimuovi">✕</span>
+                </>
+              ) : (
+                <button
+                  onClick={async () => {
+                    const rel = await window.electronAPI.selectProjectFile(projectPath, [
+                      { name: 'Relazioni', extensions: ['md', 'txt'] }
+                    ]);
+                    if (rel) updateSetting('relationsFile', rel);
+                  }}
+                  style={{
+                    background: 'none', border: '1px solid var(--accent)', borderRadius: '4px',
+                    padding: '6px 14px', color: 'var(--accent)', fontSize: '12px', cursor: 'pointer',
+                    fontWeight: '600', transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-a10)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                >
+                  Sfoglia...
+                </button>
+              )}
+            </div>
+            {settings.relationsFile && onResetAllRelations && (
+              <button
+                onClick={() => {
+                  if (confirmResetRelations) {
+                    onResetAllRelations();
+                    setConfirmResetRelations(false);
+                    if (confirmRelationsTimer.current) clearTimeout(confirmRelationsTimer.current);
+                  } else {
+                    setConfirmResetRelations(true);
+                    confirmRelationsTimer.current = setTimeout(() => setConfirmResetRelations(false), 3000);
+                  }
+                }}
+                style={{
+                  background: 'none',
+                  border: `1px solid ${confirmResetRelations ? 'var(--color-warning)' : 'var(--border-default)'}`,
+                  borderRadius: '4px',
+                  padding: '4px 12px',
+                  color: confirmResetRelations ? 'var(--color-warning)' : 'var(--text-secondary)',
+                  fontSize: '11px', cursor: 'pointer',
+                  marginTop: '6px', transition: 'all 0.2s'
+                }}
+                onMouseEnter={e => { if (!confirmResetRelations) { e.currentTarget.style.borderColor = 'var(--color-warning)'; e.currentTarget.style.color = 'var(--color-warning)'; } }}
+                onMouseLeave={e => { if (!confirmResetRelations) { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-secondary)'; } }}
+              >
+                {confirmResetRelations ? 'Sicuro?' : 'Reset tutte le relazioni'}
+              </button>
+            )}
           </div>
 
           {/* Adventure metadata fields */}

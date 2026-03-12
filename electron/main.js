@@ -261,12 +261,13 @@ ipcMain.handle('search-files', async (event, folderPath, query) => {
 });
 
 // File picker (project-scoped)
-ipcMain.handle('select-project-file', async (event, projectPath) => {
+ipcMain.handle('select-project-file', async (event, projectPath, customFilters) => {
+  const filters = customFilters || [
+    { name: 'Documenti', extensions: ['md', 'html', 'htm', 'pdf'] }
+  ];
   const result = await dialog.showOpenDialog(mainWindow, {
     defaultPath: projectPath,
-    filters: [
-      { name: 'Documenti', extensions: ['md', 'html', 'htm', 'pdf'] }
-    ],
+    filters,
     properties: ['openFile']
   });
   if (result.canceled || result.filePaths.length === 0) return null;

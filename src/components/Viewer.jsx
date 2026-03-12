@@ -85,7 +85,7 @@ const Viewer = forwardRef(function Viewer({
   const fadeTimerRef = useRef(null);
   const { saveScroll, getScroll } = useScrollMemory(scrollMapRef, onScrollChanged);
 
-  useImperativeHandle(ref, () => containerRef.current, []);
+  useImperativeHandle(ref, () => containerRef.current);
 
   const makeKey = useCallback((filePath) => {
     return scrollKeyPrefix ? `${scrollKeyPrefix}:${filePath}` : filePath;

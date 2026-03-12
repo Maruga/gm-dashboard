@@ -17,6 +17,8 @@ import NotesPanel from './components/NotesPanel';
 import ChecklistPanel from './components/ChecklistPanel';
 import InfoPanel from './components/InfoPanel';
 import AdventuresPanel from './components/AdventuresPanel';
+import RelationsPanel from './components/RelationsPanel';
+import RelationsView from './components/RelationsView';
 import ResizeHandle from './components/ResizeHandle';
 import { getFileType, FILE_TYPES } from './utils/fileTypes';
 import { initTheme } from './themes/themeEngine';
@@ -144,6 +146,10 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
   const [externalSearchQuery, setExternalSearchQuery] = useState(null);
   const externalSearchCounter = useRef(0);
   const [highlightKeywords, setHighlightKeywords] = useState({ enabled: true, defaultColor: 'rgba(201,169,110,0.55)', words: [] });
+  const [relationsOpen, setRelationsOpen] = useState(false);
+  const [relationsBase, setRelationsBase] = useState({});
+  const [relationsSession, setRelationsSession] = useState({});
+  const [vistaContent, setVistaContent] = useState(null);
   const [stateLoaded, setStateLoaded] = useState(false);
 
   const mainViewerRef = useRef(null);
@@ -209,6 +215,9 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
         setReferenceSelectedId(saved.referenceSelectedId ?? null);
         scrollMapRef.current = saved.scrollPositions ?? {};
         setHighlightKeywords(saved.highlightKeywords ?? { enabled: true, defaultColor: 'rgba(201,169,110,0.55)', words: [] });
+        setRelationsBase(saved.relationsBase ?? {});
+        setRelationsSession(saved.relationsSession ?? {});
+        setVistaContent(saved.vistaContent ?? null);
         setMediaFilter(saved.mediaFilter ?? 'all');
         // Restore media items (audio paused, re-resolve URLs)
         const savedMedia = saved.savedMediaItems || saved.savedAudioTracks;
@@ -270,6 +279,9 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       referenceSelectedId: referenceSelectedId,
       scrollPositions: scrollMapRef.current,
       highlightKeywords: highlightKeywords,
+      relationsBase: relationsBase,
+      relationsSession: relationsSession,
+      vistaContent: vistaContent,
       mediaFilter: mediaFilter,
       savedMediaItems: mediaItems.map(item => ({
         id: item.id, type: item.type, path: item.path, name: item.name,
@@ -284,7 +296,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
     saveTimer.current = setTimeout(() => {
       window.electronAPI.saveProjectState(projectPath, latestState.current);
     }, 400);
-  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, scrollVersion]);
+  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, scrollVersion]);
 
   // Save immediately on unmount (project switch)
   useEffect(() => {
@@ -414,6 +426,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
     const tab = viewerTabs[activeViewerTab];
     if (!tab || tab.type === 'document') return currentFile;
     if (tab.type === 'pg' || tab.type === 'note' || tab.type === 'checklist') return tab.file || null;
+    if (tab.type === 'relations') return null;
     return null;
   }, [viewerTabs, activeViewerTab, currentFile]);
 
@@ -500,6 +513,38 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       if (prev > index) return prev - 1;
       return prev;
     });
+  }, []);
+
+  const handleClearViewerTabs = useCallback(() => {
+    setViewerTabs([{ type: 'document' }]);
+    setActiveViewerTab(0);
+    setCurrentFile(null);
+  }, []);
+
+  const handleClearStage = useCallback(() => {
+    setSlotSelectedIndices({ A: -1, B: -1, C: -1 });
+    setCalFile(null);
+    setVistaContent(null);
+  }, []);
+
+  // Open relations in Viewer (new tab each time)
+  const handleOpenRelationsViewer = useCallback((pngName) => {
+    const newTab = {
+      type: 'relations',
+      pngName,
+      label: `Relazioni: ${pngName}`
+    };
+    setViewerTabs(prev => {
+      const next = [...prev, newTab];
+      setActiveViewerTab(next.length - 1);
+      return next;
+    });
+  }, []);
+
+  // Open relations in Stage Vista tab
+  const handleOpenRelationsStage = useCallback((pngName) => {
+    setVistaContent({ pngName });
+    setActiveStageSlot('Vista');
   }, []);
 
   // Calendar document handler
@@ -887,6 +932,11 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
         highlightEnabled={highlightKeywords.enabled}
         onToggleHighlight={() => setHighlightKeywords(prev => ({ ...prev, enabled: !prev.enabled }))}
         onOpenAdventures={() => setAdventuresOpen(true)}
+        onOpenRelationsOverlay={() => setRelationsOpen(true)}
+        relationsHasFile={!!projectSettings.relationsFile && Object.keys(relationsBase).length > 0}
+        relationsBase={relationsBase}
+        onOpenRelationsViewer={handleOpenRelationsViewer}
+        onOpenRelationsStage={handleOpenRelationsStage}
       />
 
       {/* === MAIN CONTENT below menu === */}
@@ -931,7 +981,9 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           {/* VIEWER */}
           <div data-source-name={viewerActiveFile?.name || ''} data-source-path={viewerActiveFile?.path || ''} style={{ width: `${viewerStageRatio * 100}%`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <div style={{
-              padding: '6px 12px',
+              padding: '0 12px',
+              height: '26px',
+              boxSizing: 'border-box',
               fontSize: '11px',
               fontWeight: '600',
               textTransform: 'uppercase',
@@ -945,7 +997,12 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
               justifyContent: 'space-between'
             }}>
               <span>Viewer</span>
-              <DocToc containerRef={mainViewerRef} pinned={docTocPinned.viewer} onPinnedChange={v => setDocTocPinned(p => ({ ...p, viewer: v }))} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {(currentFile || viewerTabs.length > 1) && (
+                  <span className="close-btn" onClick={handleClearViewerTabs} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', lineHeight: 1 }} title="Svuota viewer">✕</span>
+                )}
+                <DocToc containerRef={mainViewerRef} pinned={docTocPinned.viewer} onPinnedChange={v => setDocTocPinned(p => ({ ...p, viewer: v }))} contentKey={currentFile?.path || ''} />
+              </div>
             </div>
             {/* Viewer tab bar — hidden if only Document tab */}
             {viewerTabs.length > 1 && (
@@ -958,7 +1015,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
                   const label = tab.type === 'document' ? 'Documento' : tab.label;
                   return (
                     <div
-                      key={tab.type === 'pg' ? tab.playerId : tab.type === 'note' ? `note-${tab.noteId}` : 'doc'}
+                      key={tab.type === 'pg' ? tab.playerId : tab.type === 'note' ? `note-${tab.noteId}` : tab.type === 'relations' ? `rel-${idx}` : 'doc'}
                       onClick={() => setActiveViewerTab(idx)}
                       style={{
                         padding: '4px 12px',
@@ -974,7 +1031,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
                       onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = isActive ? 'var(--accent)' : 'var(--text-secondary)'; }}
                     >
                       {label}
-                      {(tab.type === 'pg' || tab.type === 'note' || tab.type === 'checklist') && (
+                      {(tab.type === 'pg' || tab.type === 'note' || tab.type === 'checklist' || tab.type === 'relations') && (
                         <span
                           className="close-btn"
                           onClick={(e) => { e.stopPropagation(); handleCloseViewerTab(idx); }}
@@ -987,7 +1044,13 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
               </div>
             )}
             <div style={{ flex: 1, overflow: 'hidden' }}>
-              {viewerActiveFile ? (
+              {viewerTabs[activeViewerTab]?.type === 'relations' ? (
+                <RelationsView
+                  pngName={viewerTabs[activeViewerTab].pngName}
+                  relationsBase={relationsBase}
+                  relationsSession={relationsSession}
+                />
+              ) : viewerActiveFile ? (
                 <Viewer
                   ref={mainViewerRef}
                   currentFile={viewerActiveFile}
@@ -1024,12 +1087,16 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
               onImageClick={handleImageClick}
               onVideoClick={handleVideoClick}
               calFile={calFile}
+              vistaContent={vistaContent}
+              relationsBase={relationsBase}
+              relationsSession={relationsSession}
               scrollMapRef={scrollMapRef}
               onScrollChanged={onScrollChanged}
               tocPinned={docTocPinned.stage}
               onTocPinnedChange={v => setDocTocPinned(p => ({ ...p, stage: v }))}
               onOpenSnippetSource={handleOpenSnippetSource}
               highlightKeywords={highlightKeywords}
+              onClearAll={handleClearStage}
             />
           </div>
         </div>
@@ -1082,6 +1149,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           onResetGameDate={handleResetGameDate}
           highlightKeywords={highlightKeywords}
           onHighlightChange={setHighlightKeywords}
+          onResetAllRelations={() => setRelationsSession({})}
           onOpenInfo={() => { setSettingsOpen(false); setInfoOpen(true); }}
           onExportAdventure={async () => {
             const metadata = {
@@ -1171,6 +1239,19 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           onProjectOpen={(path, name) => { setAdventuresOpen(false); /* already in project */ }}
           projectPath={projectPath}
           projectSettings={projectSettings}
+        />
+      )}
+
+      {relationsOpen && (
+        <RelationsPanel
+          onClose={() => setRelationsOpen(false)}
+          projectPath={projectPath}
+          projectSettings={projectSettings}
+          onUpdateSettings={setProjectSettings}
+          relationsBase={relationsBase}
+          relationsSession={relationsSession}
+          onSetRelationsBase={setRelationsBase}
+          onSetRelationsSession={setRelationsSession}
         />
       )}
 

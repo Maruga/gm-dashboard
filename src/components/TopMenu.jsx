@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   ChevronLeft, ChevronRight, Bell, Calendar,
   Timer, Play, Pause, RotateCcw,
-  Users, StickyNote, CheckSquare, Highlighter, MessageCircle,
-  BookOpen,
+  Users, StickyNote, CheckSquare, Highlighter, Network, MessageCircle,
+  BookOpen, Monitor, Eye, Search,
   Info, Settings, Globe, FolderOpen,
   Minus, Square, X
 } from 'lucide-react';
@@ -401,11 +401,140 @@ function WindowButton({ Icon, onClick, isClose }) {
   );
 }
 
+// ─── Relations dropdown ───
+
+function RelationsDropdown({ relationsBase, onClose, onOpenOverlay, onOpenViewer, onOpenStage }) {
+  const [search, setSearch] = useState('');
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  const pngList = useMemo(() => {
+    return Object.keys(relationsBase).sort((a, b) => a.localeCompare(b, 'it'));
+  }, [relationsBase]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return pngList;
+    const q = search.toLowerCase();
+    return pngList.filter(n => n.toLowerCase().includes(q));
+  }, [pngList, search]);
+
+  return (
+    <div ref={ref} style={{
+      position: 'absolute', top: '100%', left: 0, marginTop: '4px',
+      width: '320px', background: 'var(--bg-elevated)',
+      border: '1px solid var(--border-default)', borderRadius: '6px',
+      zIndex: 1100, boxShadow: '0 8px 24px var(--shadow-dropdown)',
+      display: 'flex', flexDirection: 'column', maxHeight: '420px'
+    }}>
+      {/* Gestione relazioni link */}
+      <div
+        onClick={() => { onClose(); onOpenOverlay(); }}
+        style={{
+          padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px',
+          cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
+          color: 'var(--accent)', fontSize: '12px', fontWeight: '600', flexShrink: 0
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--border-subtle)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+      >
+        <Settings size={14} />
+        Gestione relazioni
+      </div>
+
+      {/* Search */}
+      <div style={{
+        padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)',
+        display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0
+      }}>
+        <Search size={13} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+        <input
+          type="text"
+          placeholder="Cerca PNG..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          autoFocus
+          style={{
+            flex: 1, background: 'none', border: 'none',
+            fontSize: '12px', color: 'var(--text-primary)',
+            outline: 'none', fontFamily: 'inherit'
+          }}
+        />
+      </div>
+
+      {/* PNG list */}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {filtered.length === 0 ? (
+          <div style={{
+            padding: '16px', textAlign: 'center', fontSize: '12px',
+            color: 'var(--text-disabled)', fontStyle: 'italic'
+          }}>
+            Nessun risultato
+          </div>
+        ) : (
+          filtered.map(name => (
+            <div
+              key={name}
+              style={{
+                padding: '7px 14px', display: 'flex', alignItems: 'center',
+                borderBottom: '1px solid var(--border-subtle)', gap: '8px'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--border-subtle)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <span style={{
+                flex: 1, fontSize: '12px', color: 'var(--text-primary)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+              }}>
+                {name}
+              </span>
+              <span
+                onClick={() => { onClose(); onOpenViewer(name); }}
+                style={{ cursor: 'pointer', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: '3px', padding: '2px 4px', borderRadius: '3px', fontSize: '10px' }}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+                title="Apri nel Viewer"
+              >
+                <BookOpen size={12} />
+                Viewer
+              </span>
+              <span
+                onClick={() => { onClose(); onOpenStage(name); }}
+                style={{ cursor: 'pointer', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: '3px', padding: '2px 4px', borderRadius: '3px', fontSize: '10px' }}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+                title="Apri nello Stage"
+              >
+                <Monitor size={12} />
+                Stage
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───
 
 export default function TopMenu({
   onChangeProject, onOpenInfo, onOpenSettings, onOpenCalendar, onOpenNotes, onOpenChecklist,
-  onOpenAdventures,
+  onOpenAdventures, onOpenRelationsOverlay,
+  relationsHasFile, relationsBase,
+  onOpenRelationsViewer, onOpenRelationsStage,
   gameDate, onPrevDay, onNextDay, onSetGameDate, hasEvents,
   players, onOpenCharacterSheet, calendarEvents, botRunning,
   chatMessages, chatOpen, chatFlash, onToggleChat,
@@ -424,7 +553,9 @@ export default function TopMenu({
 
   const [pgOpen, setPgOpen] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [relDropdownOpen, setRelDropdownOpen] = useState(false);
   const pgRef = useRef(null);
+  const relRef = useRef(null);
 
   useEffect(() => {
     if (!pgOpen) return;
@@ -619,6 +750,28 @@ export default function TopMenu({
 
           {/* Highlight keywords toggle */}
           <IconBtn Icon={Highlighter} tooltip={highlightEnabled ? 'Evidenziazione parole (ON)' : 'Evidenziazione parole (OFF)'} onClick={onToggleHighlight} active={highlightEnabled} />
+
+          {/* Relations */}
+          <div ref={relRef} style={{ position: 'relative' }}>
+            <IconBtn
+              Icon={Network}
+              tooltip="Relazioni PNG"
+              onClick={() => {
+                if (relationsHasFile) setRelDropdownOpen(v => !v);
+                else onOpenRelationsOverlay();
+              }}
+              active={relDropdownOpen}
+            />
+            {relDropdownOpen && (
+              <RelationsDropdown
+                relationsBase={relationsBase}
+                onClose={() => setRelDropdownOpen(false)}
+                onOpenOverlay={onOpenRelationsOverlay}
+                onOpenViewer={onOpenRelationsViewer}
+                onOpenStage={onOpenRelationsStage}
+              />
+            )}
+          </div>
 
           {/* Chat with unread badge + bot status dot */}
           <span data-chat-toggle style={{ position: 'relative', display: 'inline-flex' }}>

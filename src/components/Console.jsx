@@ -45,11 +45,12 @@ function DicePanel() {
         padding: '6px 8px', fontSize: '10px', fontWeight: '600',
         textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--accent)',
         borderBottom: '1px solid var(--border-subtle)', flexShrink: 0,
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        height: '26px', boxSizing: 'border-box'
       }}>
         <span>Dadi</span>
         {rolls.length > 0 && (
-          <span className="close-btn" onClick={clearRolls} style={{ fontSize: '12px' }} title="Svuota">🗑️</span>
+          <span className="close-btn" onClick={clearRolls} style={{ fontSize: '12px' }} title="Svuota">✕</span>
         )}
       </div>
 
