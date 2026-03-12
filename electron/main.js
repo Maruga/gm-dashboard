@@ -3,6 +3,9 @@ const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 const { GmDashBot, verifyToken, htmlToImage } = require('./telegramBot');
+const github = require('./githubApi');
+const AdmZip = require('adm-zip');
+const os = require('os');
 const Store = require('electron-store').default;
 
 const isDev = !app.isPackaged;
@@ -282,6 +285,9 @@ ipcMain.handle('window-maximize', () => {
 });
 ipcMain.handle('window-close', () => mainWindow.close());
 
+// === App info ===
+ipcMain.handle('get-app-version', () => app.getVersion());
+
 // === Auto-Update IPC ===
 ipcMain.handle('install-update', () => {
   autoUpdater.quitAndInstall();
@@ -357,4 +363,276 @@ ipcMain.handle('telegram-send-reply', async (event, chatId, text) => {
 ipcMain.handle('telegram-get-bot-info', () => {
   if (!gmBot.running || !gmBot.botInfo) return null;
   return { username: gmBot.botInfo.username, firstName: gmBot.botInfo.first_name };
+});
+
+// === GitHub ===
+ipcMain.handle('github-verify-token', async (event, token) => {
+  return await github.verifyToken(token);
+});
+
+ipcMain.handle('github-save-token', (event, token) => {
+  github.saveToken(token);
+});
+
+ipcMain.handle('github-get-token', () => {
+  return github.getToken();
+});
+
+ipcMain.handle('github-clear-token', () => {
+  github.clearToken();
+});
+
+// === Adventures ===
+
+ipcMain.handle('adventure-export', async (event, projectPath, metadata, forPublish) => {
+  try {
+    // Write _adventure.json
+    const adventureJson = {
+      id: metadata.name.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-'),
+      ...metadata,
+      exportedAt: new Date().toISOString().split('T')[0]
+    };
+    const adventureJsonPath = path.join(projectPath, '_adventure.json');
+    fs.writeFileSync(adventureJsonPath, JSON.stringify(adventureJson, null, 2), 'utf-8');
+
+    // Create zip
+    const zip = new AdmZip();
+    const SKIP = new Set(['.git', 'node_modules', '.DS_Store', 'Thumbs.db']);
+
+    function addDir(dirPath, zipPath) {
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (SKIP.has(entry.name) || entry.name.startsWith('.')) continue;
+        const fullPath = path.join(dirPath, entry.name);
+        const entryZipPath = zipPath ? `${zipPath}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          addDir(fullPath, entryZipPath);
+        } else {
+          zip.addLocalFile(fullPath, zipPath || '');
+        }
+      }
+    }
+
+    addDir(projectPath, '');
+
+    const zipName = adventureJson.id + '.zip';
+    let zipPath;
+
+    if (forPublish) {
+      // Save to temp for upload
+      zipPath = path.join(os.tmpdir(), zipName);
+    } else {
+      // Ask user where to save
+      const saveResult = await dialog.showSaveDialog(mainWindow, {
+        title: 'Esporta avventura',
+        defaultPath: path.join(os.homedir(), 'Documents', zipName),
+        filters: [{ name: 'Archivio ZIP', extensions: ['zip'] }]
+      });
+      if (saveResult.canceled || !saveResult.filePath) return { canceled: true };
+      zipPath = saveResult.filePath;
+    }
+
+    zip.writeZip(zipPath);
+
+    const stats = fs.statSync(zipPath);
+    const sizeMB = (stats.size / (1024 * 1024)).toFixed(1);
+
+    return { zipPath, zipName, size: stats.size, sizeMB, metadata: adventureJson };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('adventure-import-from-file', async () => {
+  try {
+    // Pick zip file
+    const zipResult = await dialog.showOpenDialog(mainWindow, {
+      filters: [{ name: 'Pacchetto avventura', extensions: ['zip'] }],
+      properties: ['openFile']
+    });
+    if (zipResult.canceled || zipResult.filePaths.length === 0) return null;
+
+    // Pick destination folder
+    const destResult = await dialog.showOpenDialog(mainWindow, {
+      title: 'Scegli dove estrarre l\'avventura',
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (destResult.canceled || destResult.filePaths.length === 0) return null;
+
+    const zipFile = zipResult.filePaths[0];
+    const destFolder = destResult.filePaths[0];
+    const zipBaseName = path.basename(zipFile, '.zip');
+    const extractPath = path.join(destFolder, zipBaseName);
+
+    // Create extract dir
+    if (!fs.existsSync(extractPath)) fs.mkdirSync(extractPath, { recursive: true });
+
+    const zip = new AdmZip(zipFile);
+    zip.extractAllTo(extractPath, true);
+
+    // Read _adventure.json if present
+    let metadata = null;
+    const metaPath = path.join(extractPath, '_adventure.json');
+    if (fs.existsSync(metaPath)) {
+      try { metadata = JSON.parse(fs.readFileSync(metaPath, 'utf-8')); } catch {}
+    }
+
+    const projectPath = extractPath.replace(/\\/g, '/');
+    const projectName = metadata?.name || zipBaseName;
+
+    return { path: projectPath, name: projectName, metadata };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('adventure-fetch-catalog', async () => {
+  return await github.fetchCatalog();
+});
+
+ipcMain.handle('adventure-download', async (event, url, adventureName) => {
+  try {
+    // Pick destination folder
+    const destResult = await dialog.showOpenDialog(mainWindow, {
+      title: 'Scegli dove scaricare l\'avventura',
+      defaultPath: path.join(os.homedir(), 'Documents'),
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (destResult.canceled || destResult.filePaths.length === 0) return { canceled: true };
+
+    const destFolder = destResult.filePaths[0];
+
+    // Download with progress
+    const buffer = await github.downloadFile(url, (downloaded, total) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('adventure-progress', {
+          phase: 'download',
+          downloaded,
+          total,
+          percent: total > 0 ? Math.round((downloaded / total) * 100) : 0
+        });
+      }
+    });
+
+    // Extract
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('adventure-progress', { phase: 'extracting' });
+    }
+
+    const safeName = adventureName.replace(/[^a-zA-Z0-9\s_-]/g, '').replace(/\s+/g, '_') || 'adventure';
+    const extractPath = path.join(destFolder, safeName);
+    if (!fs.existsSync(extractPath)) fs.mkdirSync(extractPath, { recursive: true });
+
+    const zip = new AdmZip(buffer);
+    zip.extractAllTo(extractPath, true);
+
+    // Read _adventure.json if present
+    let metadata = null;
+    const metaPath = path.join(extractPath, '_adventure.json');
+    if (fs.existsSync(metaPath)) {
+      try { metadata = JSON.parse(fs.readFileSync(metaPath, 'utf-8')); } catch {}
+    }
+
+    const projectPath = extractPath.replace(/\\/g, '/');
+    const projectName = metadata?.name || safeName;
+
+    return { path: projectPath, name: projectName, metadata };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+// === Adventure publish operations ===
+
+ipcMain.handle('adventure-publish', async (event, zipPath, metadata) => {
+  try {
+    const token = github.getToken();
+    if (!token) return { error: 'Token GitHub non configurato' };
+
+    const adventureId = metadata.id;
+    const version = metadata.version || '1.0';
+    const tag = `adventure-${adventureId}-v${version}`;
+    const releaseName = `${metadata.name} v${version}`;
+
+    // Step 1: Create release
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('adventure-progress', { phase: 'creating-release' });
+    }
+    const release = await github.createRelease(tag, releaseName, metadata.description || '', token);
+
+    // Step 2: Upload zip asset
+    const zipBuffer = fs.readFileSync(zipPath);
+    const fileName = `${adventureId}.zip`;
+
+    const asset = await github.uploadReleaseAsset(release.id, fileName, zipBuffer, token, (sent, total) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('adventure-progress', {
+          phase: 'uploading',
+          downloaded: sent,
+          total,
+          percent: total > 0 ? Math.round((sent / total) * 100) : 0
+        });
+      }
+    });
+
+    // Step 3: Update catalog
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('adventure-progress', { phase: 'updating-catalog' });
+    }
+
+    const { catalog, sha, error: catError } = await github.getCatalogWithSha(token);
+    if (catError) return { error: catError };
+
+    const sizeMB = (zipBuffer.length / (1024 * 1024)).toFixed(1) + ' MB';
+    const catalogEntry = {
+      id: adventureId,
+      name: metadata.name,
+      system: metadata.system || '',
+      author: metadata.author || '',
+      authorGithub: (await github.verifyToken(token)).username || '',
+      version,
+      description: metadata.description || '',
+      players: metadata.players || '',
+      duration: metadata.duration || '',
+      language: metadata.language || 'it',
+      size: sizeMB,
+      downloadUrl: asset.browser_download_url,
+      releaseTag: tag,
+      tags: metadata.tags || [],
+      publishedAt: new Date().toISOString().split('T')[0]
+    };
+
+    // Replace existing or add new
+    const idx = catalog.adventures.findIndex(a => a.id === adventureId);
+    if (idx >= 0) {
+      catalog.adventures[idx] = catalogEntry;
+    } else {
+      catalog.adventures.push(catalogEntry);
+    }
+
+    const updateResult = await github.updateCatalog(catalog, sha, token, `Add adventure: ${metadata.name}`);
+    if (updateResult.error) return { error: updateResult.error };
+
+    return { success: true, downloadUrl: asset.browser_download_url };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('adventure-unpublish', async (event, adventureId) => {
+  try {
+    const token = github.getToken();
+    if (!token) return { error: 'Token GitHub non configurato' };
+
+    const { catalog, sha, error: catError } = await github.getCatalogWithSha(token);
+    if (catError) return { error: catError };
+
+    catalog.adventures = catalog.adventures.filter(a => a.id !== adventureId);
+    const updateResult = await github.updateCatalog(catalog, sha, token, `Remove adventure: ${adventureId}`);
+    if (updateResult.error) return { error: updateResult.error };
+
+    return { success: true };
+  } catch (err) {
+    return { error: err.message };
+  }
 });

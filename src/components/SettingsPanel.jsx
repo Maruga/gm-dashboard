@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { THEMES, THEME_LIST } from '../themes/themeDefinitions';
 import { applyTheme, saveThemeId, getStoredThemeId, applyFontScale, saveFontScale, getStoredFontScale } from '../themes/themeEngine';
 
@@ -83,18 +83,63 @@ export default function SettingsPanel({
   referenceManuals, onReferenceChange,
   onClose,
   onResetGameDate,
-  highlightKeywords, onHighlightChange
+  highlightKeywords, onHighlightChange,
+  onOpenInfo,
+  onExportAdventure, onOpenAdventures
 }) {
   const [showToken, setShowToken] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState(null);
   const [wizardToken, setWizardToken] = useState('');
+  // GitHub token state
+  const [ghToken, setGhToken] = useState('');
+  const [ghShowToken, setGhShowToken] = useState(false);
+  const [ghVerifying, setGhVerifying] = useState(false);
+  const [ghVerified, setGhVerified] = useState(null); // { username } or null
+  const [ghError, setGhError] = useState(null);
+  const ghLoaded = useRef(false);
   const [currentTheme, setCurrentTheme] = useState(getStoredThemeId);
   const [fontScale, setFontScale] = useState(getStoredFontScale);
   const [newWord, setNewWord] = useState('');
   const [bulkWords, setBulkWords] = useState('');
   const [confirmClearWords, setConfirmClearWords] = useState(false);
   const confirmWordsTimer = useRef(null);
+
+  // Load GitHub token on mount
+  useEffect(() => {
+    if (ghLoaded.current) return;
+    ghLoaded.current = true;
+    window.electronAPI?.githubGetToken?.().then(token => {
+      if (token) {
+        setGhToken(token);
+        window.electronAPI.githubVerifyToken(token).then(res => {
+          if (res.valid) setGhVerified({ username: res.username });
+        });
+      }
+    });
+  }, []);
+
+  const handleGhVerify = async () => {
+    if (!ghToken.trim()) return;
+    setGhVerifying(true);
+    setGhError(null);
+    setGhVerified(null);
+    const res = await window.electronAPI.githubVerifyToken(ghToken.trim());
+    setGhVerifying(false);
+    if (res.valid) {
+      setGhVerified({ username: res.username });
+      await window.electronAPI.githubSaveToken(ghToken.trim());
+    } else {
+      setGhError(res.error || 'Token non valido');
+    }
+  };
+
+  const handleGhRemove = async () => {
+    setGhToken('');
+    setGhVerified(null);
+    setGhError(null);
+    await window.electronAPI?.githubClearToken?.();
+  };
 
   const updateSetting = (key, value) => {
     onSettingsChange(prev => ({ ...prev, [key]: value }));
@@ -513,11 +558,151 @@ export default function SettingsPanel({
             </div>
           </div>
 
-          <div style={{ marginBottom: '32px' }}>
+          <div style={{ marginBottom: '16px' }}>
             <label style={labelStyle}>Tipo calendario</label>
             <select disabled style={{ ...inputStyle, width: '200px', cursor: 'not-allowed', opacity: 0.5 }}>
               <option>Gregoriano</option>
             </select>
+          </div>
+
+          {/* Adventure metadata fields */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={labelStyle}>Autore</label>
+            <input
+              type="text"
+              value={settings.author || ''}
+              placeholder="es. Claudio Bartolini"
+              onChange={e => updateSetting('author', e.target.value)}
+              style={inputStyle}
+              onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+              onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+            />
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={labelStyle}>Sistema</label>
+            <input
+              type="text"
+              value={settings.system || ''}
+              placeholder="es. GENKAI 限界 v1.2"
+              onChange={e => updateSetting('system', e.target.value)}
+              style={inputStyle}
+              onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+              onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+            />
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={labelStyle}>Descrizione avventura</label>
+            <textarea
+              value={settings.description || ''}
+              placeholder="Breve descrizione dell'avventura..."
+              onChange={e => updateSetting('description', e.target.value)}
+              rows={3}
+              style={{ ...inputStyle, resize: 'vertical', minHeight: '60px' }}
+              onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+              onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Versione avventura</label>
+              <input
+                type="text"
+                value={settings.adventureVersion || ''}
+                placeholder="es. 1.0"
+                onChange={e => updateSetting('adventureVersion', e.target.value)}
+                style={inputStyle}
+                onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Giocatori</label>
+              <input
+                type="text"
+                value={settings.players || ''}
+                placeholder="es. 3-5"
+                onChange={e => updateSetting('players', e.target.value)}
+                style={inputStyle}
+                onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Durata</label>
+              <input
+                type="text"
+                value={settings.duration || ''}
+                placeholder="es. 60-90 min"
+                onChange={e => updateSetting('duration', e.target.value)}
+                style={inputStyle}
+                onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '32px' }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Lingua</label>
+              <select
+                value={settings.language || 'it'}
+                onChange={e => updateSetting('language', e.target.value)}
+                style={{ ...inputStyle, cursor: 'pointer', appearance: 'auto' }}
+              >
+                <option value="it">Italiano</option>
+                <option value="en">English</option>
+                <option value="es">Español</option>
+                <option value="fr">Français</option>
+                <option value="de">Deutsch</option>
+              </select>
+            </div>
+            <div style={{ flex: 2 }}>
+              <label style={labelStyle}>Tag (separati da virgola)</label>
+              <input
+                type="text"
+                value={settings.tags || ''}
+                placeholder="es. investigativo, giappone, horror"
+                onChange={e => updateSetting('tags', e.target.value)}
+                style={inputStyle}
+                onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+              />
+            </div>
+          </div>
+
+          {/* Adventure action buttons */}
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '32px' }}>
+            {onExportAdventure && (
+              <button
+                onClick={() => { onClose(); onExportAdventure(); }}
+                style={{
+                  background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                  padding: '6px 14px', color: 'var(--text-secondary)', fontSize: '12px',
+                  cursor: 'pointer', transition: 'all 0.2s'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+              >
+                📦 Esporta avventura
+              </button>
+            )}
+            {onOpenAdventures && (
+              <button
+                onClick={() => { onClose(); onOpenAdventures(); }}
+                style={{
+                  background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                  padding: '6px 14px', color: 'var(--text-secondary)', fontSize: '12px',
+                  cursor: 'pointer', transition: 'all 0.2s'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+              >
+                📤 Pubblica su catalogo online
+              </button>
+            )}
           </div>
 
           {/* === PERSONAGGI GIOCANTI === */}
@@ -982,6 +1167,102 @@ export default function SettingsPanel({
               </button>
             </div>
           ))}
+
+          {/* === GITHUB === */}
+          <div style={{ ...sectionStyle, marginTop: '16px' }}>🔑 GitHub</div>
+
+          <div style={{
+            padding: '12px 16px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
+            borderRadius: '6px', fontSize: '11px', color: 'var(--text-tertiary)', lineHeight: '1.6', marginBottom: '16px'
+          }}>
+            Per pubblicare avventure serve un Personal Access Token GitHub.<br />
+            <span style={{ color: 'var(--text-secondary)' }}>
+              github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new → scope: <strong>repo</strong>
+            </span>
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={labelStyle}>Token</label>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div style={{ flex: 1, position: 'relative' }}>
+                <input
+                  type={ghShowToken ? 'text' : 'password'}
+                  value={ghToken}
+                  placeholder="ghp_..."
+                  onChange={e => { setGhToken(e.target.value); setGhVerified(null); setGhError(null); }}
+                  style={inputStyle}
+                  onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                  onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+                />
+                <span
+                  onClick={() => setGhShowToken(v => !v)}
+                  style={{
+                    position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
+                    cursor: 'pointer', fontSize: '14px', opacity: 0.6
+                  }}
+                  title={ghShowToken ? 'Nascondi' : 'Mostra'}
+                >
+                  {ghShowToken ? '🙈' : '👁'}
+                </span>
+              </div>
+              <button
+                onClick={handleGhVerify}
+                disabled={!ghToken.trim() || ghVerifying}
+                style={{
+                  background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                  padding: '6px 14px', fontSize: '12px', cursor: !ghToken.trim() || ghVerifying ? 'not-allowed' : 'pointer',
+                  color: !ghToken.trim() || ghVerifying ? 'var(--text-disabled)' : 'var(--accent)',
+                  transition: 'all 0.2s', whiteSpace: 'nowrap'
+                }}
+                onMouseEnter={e => { if (ghToken.trim() && !ghVerifying) e.currentTarget.style.borderColor = 'var(--accent)'; }}
+                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+              >
+                {ghVerifying ? '⏳ Verifica...' : 'Verifica'}
+              </button>
+            </div>
+          </div>
+
+          {ghVerified && (
+            <div style={{ fontSize: '12px', color: 'var(--color-success)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>✅ Verificato — account: <strong>{ghVerified.username}</strong></span>
+            </div>
+          )}
+          {ghError && (
+            <div style={{ fontSize: '12px', color: 'var(--color-danger)', marginBottom: '12px' }}>
+              ❌ {ghError}
+            </div>
+          )}
+
+          {ghToken && (
+            <button
+              onClick={handleGhRemove}
+              style={{
+                background: 'none', border: 'none', padding: '4px 0',
+                color: 'var(--text-disabled)', fontSize: '11px', cursor: 'pointer', marginBottom: '8px'
+              }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--color-danger)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-disabled)'}
+            >
+              🗑️ Rimuovi token
+            </button>
+          )}
+
+          {/* Info link */}
+          {onOpenInfo && (
+            <div
+              onClick={() => { onClose(); onOpenInfo(); }}
+              style={{
+                marginTop: '16px', textAlign: 'center',
+                fontSize: '12px', color: 'var(--text-tertiary)',
+                cursor: 'pointer', transition: 'color 0.2s',
+                paddingBottom: '4px'
+              }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+            >
+              ℹ️ Informazioni su GM Dashboard
+            </div>
+          )}
 
           <div style={{ height: '24px' }} />
         </div>

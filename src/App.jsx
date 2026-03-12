@@ -15,6 +15,8 @@ import TelegramChat from './components/TelegramChat';
 import QuickReference from './components/QuickReference';
 import NotesPanel from './components/NotesPanel';
 import ChecklistPanel from './components/ChecklistPanel';
+import InfoPanel from './components/InfoPanel';
+import AdventuresPanel from './components/AdventuresPanel';
 import ResizeHandle from './components/ResizeHandle';
 import { getFileType, FILE_TYPES } from './utils/fileTypes';
 import { initTheme } from './themes/themeEngine';
@@ -34,6 +36,7 @@ const DEFAULT_PROJECT_STATE = {
 export default function App() {
   const [activeProject, setActiveProject] = useState(null); // { path, name }
   const [ready, setReady] = useState(false);
+  const [adventuresOpen, setAdventuresOpen] = useState(false);
 
   // Apply saved theme on mount, then show UI
   useEffect(() => {
@@ -61,7 +64,13 @@ export default function App() {
   if (!activeProject) {
     return (
       <>
-        <ProjectSelector onProjectOpen={handleProjectOpen} />
+        <ProjectSelector onProjectOpen={handleProjectOpen} onOpenAdventures={() => setAdventuresOpen(true)} />
+        {adventuresOpen && (
+          <AdventuresPanel
+            onClose={() => setAdventuresOpen(false)}
+            onProjectOpen={(path, name) => { setAdventuresOpen(false); handleProjectOpen(path, name); }}
+          />
+        )}
         <UpdateToast />
         <GlobalStyles />
       </>
@@ -112,6 +121,9 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
   const [notes, setNotes] = useState([]);
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [checklist, setChecklist] = useState([]);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [adventuresOpen, setAdventuresOpen] = useState(false);
+  const [exportStatus, setExportStatus] = useState(null);
   const [referenceOpen, setReferenceOpen] = useState(false);
   const [referenceManuals, setReferenceManuals] = useState([]);
   const [referenceScrollPositions, setReferenceScrollPositions] = useState({});
@@ -852,6 +864,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       {/* === TOP MENU — fixed bar === */}
       <TopMenu
         onChangeProject={onChangeProject}
+        onOpenInfo={() => setInfoOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenCalendar={() => setCalendarOpen(true)}
         onOpenNotes={() => setNotesOpen(v => !v)}
@@ -1068,6 +1081,29 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           onResetGameDate={handleResetGameDate}
           highlightKeywords={highlightKeywords}
           onHighlightChange={setHighlightKeywords}
+          onOpenInfo={() => { setSettingsOpen(false); setInfoOpen(true); }}
+          onExportAdventure={async () => {
+            const metadata = {
+              name: projectSettings.projectName || projectName,
+              system: projectSettings.system || '',
+              author: projectSettings.author || '',
+              version: projectSettings.adventureVersion || '1.0',
+              description: projectSettings.description || '',
+              players: projectSettings.players || '',
+              duration: projectSettings.duration || '',
+              language: projectSettings.language || 'it',
+              tags: (projectSettings.tags || '').split(',').map(t => t.trim()).filter(Boolean)
+            };
+            const result = await window.electronAPI.adventureExport(projectPath, metadata);
+            if (result.canceled) return;
+            if (result.error) {
+              setExportStatus('❌ ' + result.error);
+            } else {
+              setExportStatus('✅ Pacchetto esportato: ' + result.sizeMB + ' MB');
+            }
+            setTimeout(() => setExportStatus(null), 4000);
+          }}
+          onOpenAdventures={() => { setSettingsOpen(false); setAdventuresOpen(true); }}
         />
       )}
 
@@ -1104,6 +1140,36 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           onItemsChange={setChecklist}
           onOpenSource={handleOpenChecklistSource}
           onClose={() => setChecklistOpen(false)}
+        />
+      )}
+
+      {/* === EXPORT STATUS === */}
+      {exportStatus && (
+        <div style={{
+          position: 'fixed', bottom: '48px', left: '50%', transform: 'translateX(-50%)',
+          background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+          borderRadius: '6px', padding: '8px 20px', zIndex: 4000,
+          fontSize: '12px', color: 'var(--text-primary)', boxShadow: '0 4px 12px var(--shadow-dropdown)'
+        }}>
+          {exportStatus}
+        </div>
+      )}
+
+      {/* === INFO PANEL === */}
+      {infoOpen && (
+        <InfoPanel
+          onClose={() => setInfoOpen(false)}
+          onOpenSettings={() => { setInfoOpen(false); setSettingsOpen(true); }}
+        />
+      )}
+
+      {/* === ADVENTURES PANEL === */}
+      {adventuresOpen && (
+        <AdventuresPanel
+          onClose={() => setAdventuresOpen(false)}
+          onProjectOpen={(path, name) => { setAdventuresOpen(false); /* already in project */ }}
+          projectPath={projectPath}
+          projectSettings={projectSettings}
         />
       )}
 

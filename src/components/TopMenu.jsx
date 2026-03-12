@@ -352,7 +352,7 @@ const Separator = () => (
 );
 
 export default function TopMenu({
-  onChangeProject, onOpenSettings, onOpenCalendar, onOpenNotes, onOpenChecklist,
+  onChangeProject, onOpenInfo, onOpenSettings, onOpenCalendar, onOpenNotes, onOpenChecklist,
   gameDate, onPrevDay, onNextDay, onSetGameDate, hasEvents,
   players, onOpenCharacterSheet, calendarEvents, botRunning,
   chatMessages, chatOpen, chatFlash, onToggleChat,
@@ -602,6 +602,9 @@ export default function TopMenu({
             }} />
           )}
         </span>
+
+        {/* Info */}
+        <BarButton icon="ℹ️" tooltip="Informazioni" onClick={onOpenInfo} />
 
         {/* Change project (icon only) */}
         <BarButton icon="📂" tooltip="Cambia progetto" onClick={onChangeProject} />

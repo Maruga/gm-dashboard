@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
-export default function ProjectSelector({ onProjectOpen }) {
+export default function ProjectSelector({ onProjectOpen, onOpenAdventures }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -16,6 +16,13 @@ export default function ProjectSelector({ onProjectOpen }) {
     if (folderPath) {
       const name = folderPath.split('/').pop();
       onProjectOpen(folderPath, name);
+    }
+  }, [onProjectOpen]);
+
+  const handleImportZip = useCallback(async () => {
+    const result = await window.electronAPI.adventureImportFromFile();
+    if (result && !result.error && result.path) {
+      onProjectOpen(result.path, result.name);
     }
   }, [onProjectOpen]);
 
@@ -84,38 +91,12 @@ export default function ProjectSelector({ onProjectOpen }) {
           </div>
         </div>
 
-        {/* Open folder button */}
-        <button
-          onClick={handleOpenFolder}
-          style={{
-            width: '100%',
-            padding: '14px 20px',
-            background: 'transparent',
-            border: '1px solid var(--accent)',
-            borderRadius: '8px',
-            color: 'var(--accent)',
-            fontSize: '14px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '10px',
-            letterSpacing: '1px',
-            transition: 'all 0.2s',
-            marginBottom: '32px'
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.background = 'var(--accent-a10)';
-            e.currentTarget.style.borderColor = 'var(--accent-hover)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.borderColor = 'var(--accent)';
-          }}
-        >
-          <span style={{ fontSize: '18px' }}>📂</span>
-          Apri cartella...
-        </button>
+        {/* Action buttons row */}
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '32px' }}>
+          <SelectorBtn icon="📂" label="Apri cartella..." onClick={handleOpenFolder} primary />
+          <SelectorBtn icon="📦" label="Importa da file" onClick={handleImportZip} />
+          <SelectorBtn icon="🌐" label="Avventure online" onClick={onOpenAdventures} />
+        </div>
 
         {/* Recent projects */}
         {projects.length > 0 && (
@@ -210,6 +191,42 @@ export default function ProjectSelector({ onProjectOpen }) {
         )}
       </div>
     </div>
+  );
+}
+
+function SelectorBtn({ icon, label, onClick, primary }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: primary ? 2 : 1,
+        padding: '12px 14px',
+        background: 'transparent',
+        border: `1px solid ${primary ? 'var(--accent)' : 'var(--border-default)'}`,
+        borderRadius: '8px',
+        color: primary ? 'var(--accent)' : 'var(--text-secondary)',
+        fontSize: '13px',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '8px',
+        transition: 'all 0.2s'
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.background = primary ? 'var(--accent-a10)' : 'var(--bg-elevated)';
+        e.currentTarget.style.borderColor = 'var(--accent)';
+        e.currentTarget.style.color = 'var(--accent)';
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.background = 'transparent';
+        e.currentTarget.style.borderColor = primary ? 'var(--accent)' : 'var(--border-default)';
+        e.currentTarget.style.color = primary ? 'var(--accent)' : 'var(--text-secondary)';
+      }}
+    >
+      <span style={{ fontSize: '16px' }}>{icon}</span>
+      {label}
+    </button>
   );
 }
 

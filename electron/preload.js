@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowMaximize: () => ipcRenderer.invoke('window-maximize'),
   windowClose: () => ipcRenderer.invoke('window-close'),
 
+  // App info
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+
   // Auto-update
   onUpdateAvailable: (callback) => ipcRenderer.on('update-available', (_, data) => callback(data)),
   onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', (_, data) => callback(data)),
@@ -45,5 +48,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('telegram-player-joined');
     ipcRenderer.removeAllListeners('telegram-player-left');
     ipcRenderer.removeAllListeners('telegram-message-received');
+  },
+
+  // GitHub
+  githubVerifyToken: (token) => ipcRenderer.invoke('github-verify-token', token),
+  githubSaveToken: (token) => ipcRenderer.invoke('github-save-token', token),
+  githubGetToken: () => ipcRenderer.invoke('github-get-token'),
+  githubClearToken: () => ipcRenderer.invoke('github-clear-token'),
+
+  // Adventures
+  adventureExport: (projectPath, metadata, forPublish) => ipcRenderer.invoke('adventure-export', projectPath, metadata, forPublish),
+  adventureImportFromFile: () => ipcRenderer.invoke('adventure-import-from-file'),
+  adventureFetchCatalog: () => ipcRenderer.invoke('adventure-fetch-catalog'),
+  adventureDownload: (url, name) => ipcRenderer.invoke('adventure-download', url, name),
+  adventurePublish: (zipPath, metadata) => ipcRenderer.invoke('adventure-publish', zipPath, metadata),
+  adventureUnpublish: (adventureId) => ipcRenderer.invoke('adventure-unpublish', adventureId),
+  onAdventureProgress: (callback) => ipcRenderer.on('adventure-progress', (_, data) => callback(data)),
+  removeAdventureListeners: () => {
+    ipcRenderer.removeAllListeners('adventure-progress');
   }
 });
