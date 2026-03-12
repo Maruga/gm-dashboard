@@ -1,4 +1,14 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import {
+  ChevronLeft, ChevronRight, Bell, Calendar,
+  Timer, Play, Pause, RotateCcw,
+  Users, StickyNote, CheckSquare, Highlighter, MessageCircle,
+  BookOpen,
+  Info, Settings, Globe, FolderOpen,
+  Minus, Square, X
+} from 'lucide-react';
+
+const ICON_SIZE = 16;
 
 const MONTHS_IT = [
   'gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
@@ -153,7 +163,7 @@ function DatePickerDropdown({ gameDate, onSetGameDate, calendarEvents, onClose }
 }
 
 // ─── Timer ───
-const DEFAULT_TIME = 180; // 3 minutes
+const DEFAULT_TIME = 180;
 const SET_TIMES = [60, 120, 180, 240, 300, 600, 900, 1800];
 const ADD_TIMES = [60, 120, 180, 300, 600];
 
@@ -188,7 +198,6 @@ function TimerWidget() {
   const intervalRef = useRef(null);
   const dropdownRef = useRef(null);
 
-  // Countdown
   useEffect(() => {
     if (!running) {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -209,7 +218,6 @@ function TimerWidget() {
     return () => clearInterval(intervalRef.current);
   }, [running]);
 
-  // Close dropdown on click outside
   useEffect(() => {
     if (!dropdownOpen) return;
     const handler = (e) => {
@@ -246,46 +254,27 @@ function TimerWidget() {
 
   const timerColor = expired ? 'var(--color-danger-bright)' : running && seconds <= 30 ? 'var(--color-warning)' : running ? 'var(--text-bright)' : 'var(--text-secondary)';
 
-  const ctrlBtn = (label, active, onClick, title) => (
-    <button
-      onClick={onClick}
-      title={title}
-      style={{
-        background: 'none', border: 'none', cursor: 'pointer',
-        color: active ? 'var(--accent)' : 'var(--text-tertiary)', fontSize: '12px',
-        padding: '2px 4px', borderRadius: '3px', lineHeight: '1',
-        transition: 'color 0.15s', flexShrink: 0
-      }}
-      onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
-      onMouseLeave={e => { if (!active) e.currentTarget.style.color = 'var(--text-tertiary)'; }}
-    >{label}</button>
-  );
-
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '2px', position: 'relative' }} ref={dropdownRef}>
-      {/* Timer display */}
+    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }} ref={dropdownRef}>
       <span
         onClick={() => setDropdownOpen(v => !v)}
         className={expired ? 'timer-expired' : ''}
         style={{
           fontSize: '12px', fontWeight: '700', fontFamily: 'monospace',
-          color: timerColor, cursor: 'pointer', padding: '3px 6px',
-          borderRadius: '3px', transition: 'color 0.3s', userSelect: 'none',
-          border: '1px solid transparent'
+          color: timerColor, cursor: 'pointer', padding: '4px 6px',
+          borderRadius: '4px', transition: 'color 0.3s', userSelect: 'none'
         }}
-        onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
-        onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover-subtle)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
         title="Aggiungi tempo"
       >
-        ⏱ {formatTime(seconds)}
+        {formatTime(seconds)}
       </span>
 
-      {/* Control buttons */}
-      {ctrlBtn('▶', running, handleStart, 'Via')}
-      {ctrlBtn('⏸', !running && seconds < DEFAULT_TIME && seconds > 0, handlePause, 'Pausa')}
-      {ctrlBtn('↺', false, handleReset, 'Reset')}
+      <IconBtn Icon={Play} tooltip="Via" onClick={handleStart} active={running} size={14} />
+      <IconBtn Icon={Pause} tooltip="Pausa" onClick={handlePause} size={14} />
+      <IconBtn Icon={RotateCcw} tooltip="Reset" onClick={handleReset} size={14} />
 
-      {/* Dropdown */}
       {dropdownOpen && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, marginTop: '4px',
@@ -293,7 +282,6 @@ function TimerWidget() {
           padding: '8px', zIndex: 1100, boxShadow: '0 8px 24px var(--shadow-dropdown)',
           width: '220px'
         }}>
-          {/* SET section */}
           <div style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px', fontWeight: '600' }}>
             Imposta
           </div>
@@ -320,7 +308,6 @@ function TimerWidget() {
             ))}
           </div>
 
-          {/* ADD section */}
           <div style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px', fontWeight: '600' }}>
             Aggiungi
           </div>
@@ -347,12 +334,78 @@ function TimerWidget() {
   );
 }
 
+// ─── Shared components ───
+
 const Separator = () => (
-  <div style={{ width: '1px', background: 'var(--border-default)', height: '18px', flexShrink: 0, margin: '0 4px' }} />
+  <div style={{ width: '1px', background: 'var(--border-default)', height: '18px', flexShrink: 0, margin: '0 8px' }} />
 );
+
+function IconBtn({ Icon, tooltip, onClick, active, disabled, size, children }) {
+  return (
+    <button
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      title={tooltip}
+      style={{
+        background: 'none',
+        border: 'none',
+        borderRadius: '4px',
+        padding: '4px 6px',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        color: disabled ? 'var(--text-disabled)' : active ? 'var(--accent)' : 'var(--text-primary)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: disabled ? 0.5 : 1,
+        transition: 'all 0.15s',
+        flexShrink: 0,
+        position: 'relative'
+      }}
+      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = 'var(--bg-hover-subtle)'; }}
+      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+    >
+      <Icon size={size || ICON_SIZE} />
+      {children}
+    </button>
+  );
+}
+
+function WindowButton({ Icon, onClick, isClose }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: 'none',
+        border: 'none',
+        width: '32px',
+        height: '28px',
+        cursor: 'pointer',
+        color: 'var(--text-secondary)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: '3px',
+        transition: 'all 0.2s'
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.background = isClose ? 'var(--color-danger-bg)' : 'var(--border-default)';
+        e.currentTarget.style.color = isClose ? 'var(--color-danger-bright)' : 'var(--text-primary)';
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.background = 'none';
+        e.currentTarget.style.color = 'var(--text-secondary)';
+      }}
+    >
+      <Icon size={14} />
+    </button>
+  );
+}
+
+// ─── Main component ───
 
 export default function TopMenu({
   onChangeProject, onOpenInfo, onOpenSettings, onOpenCalendar, onOpenNotes, onOpenChecklist,
+  onOpenAdventures,
   gameDate, onPrevDay, onNextDay, onSetGameDate, hasEvents,
   players, onOpenCharacterSheet, calendarEvents, botRunning,
   chatMessages, chatOpen, chatFlash, onToggleChat,
@@ -361,7 +414,6 @@ export default function TopMenu({
 }) {
   const connectedPlayers = (players || []).filter(p => p.telegramChatId).length;
 
-  // Compute total unread
   const totalUnread = useMemo(() => {
     let count = 0;
     for (const msgs of Object.values(chatMessages || {})) {
@@ -369,6 +421,7 @@ export default function TopMenu({
     }
     return count;
   }, [chatMessages]);
+
   const [pgOpen, setPgOpen] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const pgRef = useRef(null);
@@ -396,7 +449,7 @@ export default function TopMenu({
         gap: '0'
       }}
     >
-      {/* Title */}
+      {/* ── Gruppo 1: TITOLO ── */}
       <span style={{
         fontSize: '15px',
         fontWeight: '600',
@@ -410,303 +463,221 @@ export default function TopMenu({
       </span>
 
       <div style={{ display: 'flex', alignItems: 'center', flex: 1, WebkitAppRegion: 'no-drag', gap: '0' }}>
+
+        {/* ── Gruppo 2: TEMPO ── */}
         <Separator />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {gameDate && (
+            <IconBtn Icon={ChevronLeft} tooltip="Giorno precedente" onClick={onPrevDay} size={14} />
+          )}
 
-        {/* Date nav: ◀ */}
-        {gameDate && <DateNavButton label="◀" onClick={onPrevDay} />}
-
-        {/* Date text + picker dropdown */}
-        {gameDate && (
-          <div style={{ position: 'relative', flexShrink: 0 }}>
-            <span
-              onClick={() => setDatePickerOpen(v => !v)}
-              style={{
-                fontSize: '12px', color: datePickerOpen ? 'var(--accent)' : 'var(--text-primary)',
-                letterSpacing: '0.5px', minWidth: '130px', textAlign: 'center',
-                fontFamily: "'Georgia', serif",
-                cursor: 'pointer',
-                borderRadius: '3px',
-                padding: '2px 4px',
-                transition: 'color 0.2s',
-                display: 'inline-block'
-              }}
-              onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
-              onMouseLeave={e => { if (!datePickerOpen) e.currentTarget.style.color = 'var(--text-primary)'; }}
-            >
-              {formatDateIT(gameDate)}
-            </span>
-            {datePickerOpen && (
-              <DatePickerDropdown
-                gameDate={gameDate}
-                onSetGameDate={onSetGameDate}
-                calendarEvents={calendarEvents}
-                onClose={() => setDatePickerOpen(false)}
-              />
-            )}
-          </div>
-        )}
-
-        {/* Date nav: ▶ */}
-        {gameDate && <DateNavButton label="▶" onClick={onNextDay} />}
-
-        {/* Bell for events */}
-        {gameDate && hasEvents && (
-          <span key={gameDate} style={{ fontSize: '13px', pointerEvents: 'none', flexShrink: 0 }} className="bell-pulse">🔔</span>
-        )}
-
-        {/* Calendar button */}
-        <BarButton icon="📅" tooltip="Calendario" onClick={onOpenCalendar} />
-
-        {/* Timer */}
-        <TimerWidget />
-
-        <Separator />
-
-        {/* PG Menu */}
-        <div ref={pgRef} style={{ position: 'relative' }}>
-          <BarButton icon="👥" label="PG" onClick={() => setPgOpen(v => !v)} active={pgOpen} hasDropdown />
-
-          {pgOpen && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              marginTop: '4px',
-              width: '300px',
-              background: 'var(--bg-elevated)',
-              border: '1px solid var(--border-default)',
-              borderRadius: '6px',
-              zIndex: 1100,
-              boxShadow: '0 8px 24px var(--shadow-dropdown)',
-              maxHeight: '400px',
-              overflowY: 'auto'
-            }}>
-              {(!players || players.length === 0) ? (
-                <div style={{ padding: '16px', color: 'var(--text-tertiary)', fontSize: '12px', textAlign: 'center' }}>
-                  Nessun PG — vai in ⚙️ Impostazioni
-                </div>
-              ) : (
-                players.map(pg => (
-                  <div
-                    key={pg.id}
-                    style={{
-                      padding: '10px 14px',
-                      borderBottom: '1px solid var(--border-subtle)',
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '10px'
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--border-subtle)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{
-                        fontSize: '14px', fontWeight: '600', color: 'var(--accent)',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        display: 'flex', alignItems: 'center', gap: '6px'
-                      }}>
-                        {botRunning && <span style={{ fontSize: '6px' }}>{pg.telegramChatId ? '🟢' : '⚪'}</span>}
-                        {pg.characterName || 'Senza nome'}
-                      </div>
-                      {pg.playerName && (
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                          giocato da {pg.playerName}
-                        </div>
-                      )}
-                      {pg.note && (
-                        <div style={{ fontSize: '11px', color: 'var(--text-disabled)', marginTop: '2px' }}>
-                          {pg.note}
-                        </div>
-                      )}
-                    </div>
-                    {pg.characterSheet && (
-                      <span
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onOpenCharacterSheet) onOpenCharacterSheet(pg);
-                          setPgOpen(false);
-                        }}
-                        title="Apri scheda"
-                        style={{
-                          cursor: 'pointer',
-                          fontSize: '16px',
-                          flexShrink: 0,
-                          marginTop: '2px',
-                          opacity: 0.7,
-                          transition: 'opacity 0.2s'
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.opacity = '1'}
-                        onMouseLeave={e => e.currentTarget.style.opacity = '0.7'}
-                      >
-                        📄
-                      </span>
-                    )}
-                  </div>
-                ))
+          {gameDate && (
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <span
+                onClick={() => setDatePickerOpen(v => !v)}
+                style={{
+                  fontSize: '12px', color: datePickerOpen ? 'var(--accent)' : 'var(--text-primary)',
+                  letterSpacing: '0.5px', minWidth: '130px', textAlign: 'center',
+                  fontFamily: "'Georgia', serif",
+                  cursor: 'pointer',
+                  borderRadius: '4px',
+                  padding: '4px 6px',
+                  transition: 'all 0.15s',
+                  display: 'inline-block'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-hover-subtle)'; }}
+                onMouseLeave={e => { if (!datePickerOpen) { e.currentTarget.style.color = 'var(--text-primary)'; } e.currentTarget.style.background = 'transparent'; }}
+              >
+                {formatDateIT(gameDate)}
+              </span>
+              {datePickerOpen && (
+                <DatePickerDropdown
+                  gameDate={gameDate}
+                  onSetGameDate={onSetGameDate}
+                  calendarEvents={calendarEvents}
+                  onClose={() => setDatePickerOpen(false)}
+                />
               )}
             </div>
           )}
-        </div>
 
-        {/* Notes */}
-        <span data-notes-toggle>
-          <BarButton icon="📝" label="Note" onClick={onOpenNotes} />
-        </span>
+          {gameDate && (
+            <IconBtn Icon={ChevronRight} tooltip="Giorno successivo" onClick={onNextDay} size={14} />
+          )}
 
-        {/* Checklist */}
-        <span data-checklist-toggle>
-          <BarButton icon="☐" label="Checklist" onClick={onOpenChecklist} />
-        </span>
-
-        {/* Highlight keywords toggle */}
-        <BarButton icon="🔆" tooltip={highlightEnabled ? 'Evidenziazione parole (ON)' : 'Evidenziazione parole (OFF)'} onClick={onToggleHighlight} active={highlightEnabled} />
-
-        {/* Reference manuals */}
-        <BarButton icon="📖" tooltip="Manuali di riferimento" onClick={onOpenReference} active={referenceOpen} />
-
-        <Separator />
-
-        {/* Settings (icon only) */}
-        <BarButton icon="⚙️" tooltip="Impostazioni" onClick={onOpenSettings} />
-        {botRunning && (
-          <span title={connectedPlayers > 0 ? `${connectedPlayers} giocatori connessi` : 'Bot attivo, nessun giocatore'} style={{ fontSize: '8px', marginLeft: '-4px', marginRight: '2px' }}>
-            {connectedPlayers > 0 ? '🟢' : '🟡'}
-          </span>
-        )}
-
-        {/* Chat button */}
-        <span data-chat-toggle style={{ position: 'relative', display: 'inline-flex' }}>
-          <BarButton
-            icon="💬"
-            tooltip="Chat Telegram"
-            onClick={onToggleChat}
-            active={chatOpen}
-          />
-          {totalUnread > 0 && (
-            <span style={{
-              position: 'absolute', top: '0', right: '0',
-              background: 'var(--color-danger)', color: '#fff', fontSize: '9px', fontWeight: '700',
-              borderRadius: '8px', padding: '0 4px', lineHeight: '14px', minWidth: '14px',
-              textAlign: 'center', pointerEvents: 'none',
-              animation: chatFlash ? 'chatFlash 1s ease' : 'none'
-            }}>
-              {totalUnread}
+          {gameDate && hasEvents && (
+            <span key={gameDate} style={{ display: 'flex', alignItems: 'center', pointerEvents: 'none', flexShrink: 0, color: 'var(--accent)' }} className="bell-pulse">
+              <Bell size={14} />
             </span>
           )}
-          {chatFlash && totalUnread === 0 && (
-            <span style={{
-              position: 'absolute', inset: 0,
-              borderRadius: '4px',
-              animation: 'chatFlash 1s ease',
-              pointerEvents: 'none'
-            }} />
-          )}
-        </span>
 
-        {/* Info */}
-        <BarButton icon="ℹ️" tooltip="Informazioni" onClick={onOpenInfo} />
+          <IconBtn Icon={Calendar} tooltip="Calendario" onClick={onOpenCalendar} />
+        </div>
 
-        {/* Change project (icon only) */}
-        <BarButton icon="📂" tooltip="Cambia progetto" onClick={onChangeProject} />
+        {/* ── Gruppo 3: TIMER ── */}
+        <Separator />
+        <TimerWidget />
+
+        {/* ── Gruppo 4: SESSIONE ── */}
+        <Separator />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {/* PG Menu */}
+          <div ref={pgRef} style={{ position: 'relative' }}>
+            <IconBtn Icon={Users} tooltip="Personaggi giocanti" onClick={() => setPgOpen(v => !v)} active={pgOpen} />
+
+            {pgOpen && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                marginTop: '4px',
+                width: '300px',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-default)',
+                borderRadius: '6px',
+                zIndex: 1100,
+                boxShadow: '0 8px 24px var(--shadow-dropdown)',
+                maxHeight: '400px',
+                overflowY: 'auto'
+              }}>
+                {(!players || players.length === 0) ? (
+                  <div style={{ padding: '16px', color: 'var(--text-tertiary)', fontSize: '12px', textAlign: 'center' }}>
+                    Nessun PG — vai in Impostazioni
+                  </div>
+                ) : (
+                  players.map(pg => (
+                    <div
+                      key={pg.id}
+                      style={{
+                        padding: '10px 14px',
+                        borderBottom: '1px solid var(--border-subtle)',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '10px'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--border-subtle)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontSize: '14px', fontWeight: '600', color: 'var(--accent)',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          display: 'flex', alignItems: 'center', gap: '6px'
+                        }}>
+                          {botRunning && <span style={{ fontSize: '6px' }}>{pg.telegramChatId ? '🟢' : '⚪'}</span>}
+                          {pg.characterName || 'Senza nome'}
+                        </div>
+                        {pg.playerName && (
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                            giocato da {pg.playerName}
+                          </div>
+                        )}
+                        {pg.note && (
+                          <div style={{ fontSize: '11px', color: 'var(--text-disabled)', marginTop: '2px' }}>
+                            {pg.note}
+                          </div>
+                        )}
+                      </div>
+                      {pg.characterSheet && (
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onOpenCharacterSheet) onOpenCharacterSheet(pg);
+                            setPgOpen(false);
+                          }}
+                          title="Apri scheda"
+                          style={{
+                            cursor: 'pointer',
+                            fontSize: '16px',
+                            flexShrink: 0,
+                            marginTop: '2px',
+                            opacity: 0.7,
+                            transition: 'opacity 0.2s'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                          onMouseLeave={e => e.currentTarget.style.opacity = '0.7'}
+                        >
+                          📄
+                        </span>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Notes */}
+          <span data-notes-toggle>
+            <IconBtn Icon={StickyNote} tooltip="Note" onClick={onOpenNotes} />
+          </span>
+
+          {/* Checklist */}
+          <span data-checklist-toggle>
+            <IconBtn Icon={CheckSquare} tooltip="Checklist" onClick={onOpenChecklist} />
+          </span>
+
+          {/* Highlight keywords toggle */}
+          <IconBtn Icon={Highlighter} tooltip={highlightEnabled ? 'Evidenziazione parole (ON)' : 'Evidenziazione parole (OFF)'} onClick={onToggleHighlight} active={highlightEnabled} />
+
+          {/* Chat with unread badge + bot status dot */}
+          <span data-chat-toggle style={{ position: 'relative', display: 'inline-flex' }}>
+            <IconBtn Icon={MessageCircle} tooltip="Chat Telegram" onClick={onToggleChat} active={chatOpen} />
+            {/* Unread badge */}
+            {totalUnread > 0 && (
+              <span style={{
+                position: 'absolute', top: '0', right: '0',
+                background: 'var(--color-danger)', color: '#fff', fontSize: '8px', fontWeight: '700',
+                borderRadius: '7px', padding: '0 3px', lineHeight: '14px', minWidth: '14px', height: '14px',
+                textAlign: 'center', pointerEvents: 'none',
+                animation: chatFlash ? 'chatFlash 1s ease' : 'none'
+              }}>
+                {totalUnread}
+              </span>
+            )}
+            {/* Bot status dot */}
+            {botRunning && totalUnread === 0 && (
+              <span style={{
+                position: 'absolute', bottom: '2px', right: '2px',
+                width: '6px', height: '6px', borderRadius: '50%',
+                background: connectedPlayers > 0 ? 'var(--color-success)' : 'var(--color-warning)',
+                pointerEvents: 'none'
+              }}
+                title={connectedPlayers > 0 ? `${connectedPlayers} giocatori connessi` : 'Bot attivo, nessun giocatore'}
+              />
+            )}
+            {chatFlash && totalUnread === 0 && (
+              <span style={{
+                position: 'absolute', inset: 0,
+                borderRadius: '4px',
+                animation: 'chatFlash 1s ease',
+                pointerEvents: 'none'
+              }} />
+            )}
+          </span>
+        </div>
+
+        {/* ── Gruppo 5: RIFERIMENTO ── */}
+        <Separator />
+        <IconBtn Icon={BookOpen} tooltip="Manuali di riferimento" onClick={onOpenReference} active={referenceOpen} />
+
+        {/* ── Gruppo 6: SISTEMA ── */}
+        <Separator />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <IconBtn Icon={Info} tooltip="Informazioni" onClick={onOpenInfo} />
+          <IconBtn Icon={Settings} tooltip="Impostazioni" onClick={onOpenSettings} />
+          <IconBtn Icon={Globe} tooltip="Avventure online" onClick={onOpenAdventures} />
+          <IconBtn Icon={FolderOpen} tooltip="Cambia progetto" onClick={onChangeProject} />
+        </div>
       </div>
 
-      {/* Window controls */}
+      {/* ── Gruppo 7: FINESTRA ── */}
       <div style={{ display: 'flex', WebkitAppRegion: 'no-drag', marginLeft: '8px' }}>
         <Separator />
-        <WindowButton icon="─" onClick={() => window.electronAPI?.windowMinimize()} />
-        <WindowButton icon="□" onClick={() => window.electronAPI?.windowMaximize()} />
-        <WindowButton icon="✕" onClick={() => window.electronAPI?.windowClose()} isClose />
+        <WindowButton Icon={Minus} onClick={() => window.electronAPI?.windowMinimize()} />
+        <WindowButton Icon={Square} onClick={() => window.electronAPI?.windowMaximize()} />
+        <WindowButton Icon={X} onClick={() => window.electronAPI?.windowClose()} isClose />
       </div>
     </div>
-  );
-}
-
-function DateNavButton({ label, onClick }) {
-  return (
-    <button
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-      style={{
-        background: 'none',
-        border: 'none',
-        cursor: 'pointer',
-        color: 'var(--text-secondary)',
-        fontSize: '11px',
-        padding: '4px 6px',
-        borderRadius: '3px',
-        userSelect: 'none',
-        transition: 'color 0.2s',
-        position: 'relative',
-        zIndex: 2,
-        lineHeight: '1',
-        flexShrink: 0
-      }}
-      onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
-      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}
-    >
-      {label}
-    </button>
-  );
-}
-
-function BarButton({ icon, label, onClick, disabled, tooltip, active, hasDropdown }) {
-  return (
-    <button
-      onClick={disabled ? undefined : onClick}
-      disabled={disabled}
-      title={tooltip || undefined}
-      style={{
-        background: 'none',
-        border: '1px solid transparent',
-        borderRadius: '4px',
-        padding: '4px 8px',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        color: disabled ? 'var(--text-disabled)' : active ? 'var(--accent)' : 'var(--text-primary)',
-        fontSize: '13px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '3px',
-        opacity: disabled ? 0.5 : 1,
-        transition: 'all 0.2s',
-        flexShrink: 0
-      }}
-      onMouseEnter={e => { if (!disabled) e.currentTarget.style.borderColor = 'var(--border-default)'; }}
-      onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}
-    >
-      <span style={{ fontSize: '13px', lineHeight: '1' }}>{icon}</span>
-      {label && <span style={{ fontSize: '11px' }}>{label}</span>}
-      {hasDropdown && <span style={{ fontSize: '8px', color: 'var(--text-tertiary)' }}>▼</span>}
-    </button>
-  );
-}
-
-function WindowButton({ icon, onClick, isClose }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        background: 'none',
-        border: 'none',
-        width: '32px',
-        height: '28px',
-        cursor: 'pointer',
-        color: 'var(--text-secondary)',
-        fontSize: '13px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: '3px',
-        transition: 'all 0.2s'
-      }}
-      onMouseEnter={e => {
-        e.currentTarget.style.background = isClose ? 'var(--color-danger-bg)' : 'var(--border-default)';
-        e.currentTarget.style.color = isClose ? 'var(--color-danger-bright)' : 'var(--text-primary)';
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.background = 'none';
-        e.currentTarget.style.color = 'var(--text-secondary)';
-      }}
-    >
-      {icon}
-    </button>
   );
 }

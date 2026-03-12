@@ -104,6 +104,7 @@ export default function SettingsPanel({
   const [bulkWords, setBulkWords] = useState('');
   const [confirmClearWords, setConfirmClearWords] = useState(false);
   const confirmWordsTimer = useRef(null);
+  const [section, setSection] = useState('aspetto');
 
   // Load GitHub token on mount
   useEffect(() => {
@@ -215,11 +216,72 @@ export default function SettingsPanel({
           <span className="close-btn" onClick={onClose} style={{ fontSize: '16px' }}>✕</span>
         </div>
 
-        {/* Scrollable content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+        {/* Two-column layout */}
+        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
+          {/* Left nav */}
+          <div style={{
+            width: '180px', flexShrink: 0, borderRight: '1px solid var(--border-default)',
+            background: 'var(--bg-main)', overflowY: 'auto', padding: '8px 0'
+          }}>
+            {[
+              { id: 'aspetto', icon: '🎨', label: 'Aspetto' },
+              { id: 'progetto', icon: '📋', label: 'Progetto' },
+              { id: 'pg', icon: '👥', label: 'Personaggi' },
+              { id: 'telegram', icon: '📱', label: 'Telegram' },
+              { id: 'github', icon: '🔑', label: 'GitHub' },
+              { id: 'parole', icon: '🔆', label: 'Parole evidenziate' },
+              { id: 'manuali', icon: '📖', label: 'Manuali' },
+            ].map(item => (
+              <div
+                key={item.id}
+                onClick={() => setSection(item.id)}
+                style={{
+                  padding: '8px 16px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  color: section === item.id ? 'var(--accent)' : 'var(--text-secondary)',
+                  background: section === item.id ? 'var(--accent-a10)' : 'transparent',
+                  borderRight: section === item.id ? '2px solid var(--accent)' : '2px solid transparent',
+                  fontWeight: section === item.id ? '600' : '400',
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  transition: 'all 0.15s'
+                }}
+                onMouseEnter={e => { if (section !== item.id) e.currentTarget.style.background = 'var(--bg-elevated)'; }}
+                onMouseLeave={e => { if (section !== item.id) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <span style={{ fontSize: '13px' }}>{item.icon}</span>
+                {item.label}
+              </div>
+            ))}
+
+            {/* Info link at bottom */}
+            {onOpenInfo && (
+              <div
+                onClick={() => { onClose(); onOpenInfo(); }}
+                style={{
+                  padding: '8px 16px', marginTop: '8px',
+                  borderTop: '1px solid var(--border-subtle)',
+                  paddingTop: '12px',
+                  cursor: 'pointer', fontSize: '12px',
+                  color: 'var(--text-tertiary)',
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  transition: 'color 0.15s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+              >
+                <span style={{ fontSize: '13px' }}>ℹ️</span>
+                Informazioni
+              </div>
+            )}
+          </div>
+
+          {/* Right content */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+
+          {section === 'aspetto' && (<>
           {/* === ASPETTO === */}
-          <div style={sectionStyle}>Aspetto</div>
 
           <div style={{ marginBottom: '16px' }}>
             <label style={labelStyle}>Tema</label>
@@ -298,6 +360,9 @@ export default function SettingsPanel({
             </div>
           </div>
 
+          </>)}
+
+          {section === 'parole' && (<>
           {/* === PAROLE EVIDENZIATE === */}
           <div style={{ ...sectionStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span>Parole evidenziate</span>
@@ -492,6 +557,9 @@ export default function SettingsPanel({
             </div>
           </div>
 
+          </>)}
+
+          {section === 'progetto' && (<>
           {/* === PROGETTO === */}
           <div style={sectionStyle}>Progetto</div>
 
@@ -705,6 +773,9 @@ export default function SettingsPanel({
             )}
           </div>
 
+          </>)}
+
+          {section === 'pg' && (<>
           {/* === PERSONAGGI GIOCANTI === */}
           <div style={sectionStyle}>Personaggi Giocanti (PG)</div>
 
@@ -853,8 +924,11 @@ export default function SettingsPanel({
             </div>
           ))}
 
+          </>)}
+
+          {section === 'telegram' && (<>
           {/* === TELEGRAM === */}
-          <div style={{ ...sectionStyle, marginTop: '16px' }}>Telegram</div>
+          <div style={sectionStyle}>Telegram</div>
 
           {!telegram.botToken ? (
             /* === WIZARD === */
@@ -1061,8 +1135,11 @@ export default function SettingsPanel({
             </>
           )}
 
+          </>)}
+
+          {section === 'manuali' && (<>
           {/* === MANUALI DI RIFERIMENTO === */}
-          <div style={{ ...sectionStyle, marginTop: '16px' }}>Manuali di Riferimento</div>
+          <div style={sectionStyle}>Manuali di Riferimento</div>
 
           <button
             onClick={async () => {
@@ -1168,8 +1245,11 @@ export default function SettingsPanel({
             </div>
           ))}
 
+          </>)}
+
+          {section === 'github' && (<>
           {/* === GITHUB === */}
-          <div style={{ ...sectionStyle, marginTop: '16px' }}>🔑 GitHub</div>
+          <div style={sectionStyle}>GitHub</div>
 
           <div style={{
             padding: '12px 16px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
@@ -1247,25 +1327,10 @@ export default function SettingsPanel({
             </button>
           )}
 
-          {/* Info link */}
-          {onOpenInfo && (
-            <div
-              onClick={() => { onClose(); onOpenInfo(); }}
-              style={{
-                marginTop: '16px', textAlign: 'center',
-                fontSize: '12px', color: 'var(--text-tertiary)',
-                cursor: 'pointer', transition: 'color 0.2s',
-                paddingBottom: '4px'
-              }}
-              onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
-              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
-            >
-              ℹ️ Informazioni su GM Dashboard
-            </div>
-          )}
+          </>)}
 
-          <div style={{ height: '24px' }} />
-        </div>
+          </div>{/* end right content */}
+        </div>{/* end two-column */}
       </div>
     </div>
   );

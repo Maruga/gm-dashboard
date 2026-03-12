@@ -886,6 +886,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
         referenceOpen={referenceOpen}
         highlightEnabled={highlightKeywords.enabled}
         onToggleHighlight={() => setHighlightKeywords(prev => ({ ...prev, enabled: !prev.enabled }))}
+        onOpenAdventures={() => setAdventuresOpen(true)}
       />
 
       {/* === MAIN CONTENT below menu === */}
