@@ -1,0 +1,43 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Project management
+  selectFolder: () => ipcRenderer.invoke('select-folder'),
+  getRecentProjects: () => ipcRenderer.invoke('get-recent-projects'),
+  addRecentProject: (project) => ipcRenderer.invoke('add-recent-project', project),
+  removeRecentProject: (path) => ipcRenderer.invoke('remove-recent-project', path),
+  getProjectState: (path) => ipcRenderer.invoke('get-project-state', path),
+  saveProjectState: (path, state) => ipcRenderer.invoke('save-project-state', path, state),
+
+  // File system
+  readDirectory: (dirPath) => ipcRenderer.invoke('read-directory', dirPath),
+  readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+  getFileUrl: (filePath) => ipcRenderer.invoke('get-file-url', filePath),
+  searchFiles: (folderPath, query) => ipcRenderer.invoke('search-files', folderPath, query),
+  selectProjectFile: (projectPath) => ipcRenderer.invoke('select-project-file', projectPath),
+
+  // Window controls
+  windowMinimize: () => ipcRenderer.invoke('window-minimize'),
+  windowMaximize: () => ipcRenderer.invoke('window-maximize'),
+  windowClose: () => ipcRenderer.invoke('window-close'),
+
+  // Telegram
+  telegramVerifyToken: (token) => ipcRenderer.invoke('telegram-verify-token', token),
+  telegramStartBot: (token, sessionCode, players) => ipcRenderer.invoke('telegram-start-bot', token, sessionCode, players),
+  telegramStopBot: () => ipcRenderer.invoke('telegram-stop-bot'),
+  telegramUpdateSession: (sessionCode, players) => ipcRenderer.invoke('telegram-update-session', sessionCode, players),
+  telegramSendMessage: (chatId, text) => ipcRenderer.invoke('telegram-send-message', chatId, text),
+  telegramSendPhoto: (chatId, filePath, caption) => ipcRenderer.invoke('telegram-send-photo', chatId, filePath, caption),
+  telegramSendDocument: (chatId, filePath, caption) => ipcRenderer.invoke('telegram-send-document', chatId, filePath, caption),
+  telegramSendHtmlAsPhoto: (chatId, htmlFilePath, caption) => ipcRenderer.invoke('telegram-send-html-as-photo', chatId, htmlFilePath, caption),
+  telegramGetBotInfo: () => ipcRenderer.invoke('telegram-get-bot-info'),
+  telegramSendReply: (chatId, text) => ipcRenderer.invoke('telegram-send-reply', chatId, text),
+  onTelegramPlayerJoined: (callback) => ipcRenderer.on('telegram-player-joined', (_, data) => callback(data)),
+  onTelegramPlayerLeft: (callback) => ipcRenderer.on('telegram-player-left', (_, data) => callback(data)),
+  onTelegramMessageReceived: (callback) => ipcRenderer.on('telegram-message-received', (_, data) => callback(data)),
+  removeTelegramListeners: () => {
+    ipcRenderer.removeAllListeners('telegram-player-joined');
+    ipcRenderer.removeAllListeners('telegram-player-left');
+    ipcRenderer.removeAllListeners('telegram-message-received');
+  }
+});
