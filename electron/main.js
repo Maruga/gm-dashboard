@@ -1,8 +1,11 @@
 const { app, BrowserWindow, ipcMain, dialog, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { autoUpdater } = require('electron-updater');
 const { GmDashBot, verifyToken, htmlToImage } = require('./telegramBot');
 const Store = require('electron-store').default;
+
+const isDev = !app.isPackaged;
 
 const gmBot = new GmDashBot();
 
@@ -48,7 +51,37 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+
+  // === Auto-Updater ===
+  if (isDev) {
+    console.log('Auto-update disabilitato in dev mode');
+  } else {
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+
+    autoUpdater.on('update-available', (info) => {
+      console.log('Update available:', info.version);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update-available', { version: info.version });
+      }
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+      console.log('Update downloaded:', info.version);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update-downloaded', { version: info.version });
+      }
+    });
+
+    autoUpdater.on('error', (err) => {
+      console.error('Auto-updater error:', err.message);
+    });
+
+    setTimeout(() => autoUpdater.checkForUpdatesAndNotify(), 5000);
+  }
+});
 
 app.on('window-all-closed', () => {
   app.quit();
@@ -248,6 +281,17 @@ ipcMain.handle('window-maximize', () => {
   }
 });
 ipcMain.handle('window-close', () => mainWindow.close());
+
+// === Auto-Update IPC ===
+ipcMain.handle('install-update', () => {
+  autoUpdater.quitAndInstall();
+});
+
+ipcMain.handle('check-for-updates', () => {
+  if (!isDev) {
+    autoUpdater.checkForUpdatesAndNotify();
+  }
+});
 
 // === Telegram ===
 ipcMain.handle('telegram-verify-token', async (event, token) => {

@@ -21,6 +21,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowMaximize: () => ipcRenderer.invoke('window-maximize'),
   windowClose: () => ipcRenderer.invoke('window-close'),
 
+  // Auto-update
+  onUpdateAvailable: (callback) => ipcRenderer.on('update-available', (_, data) => callback(data)),
+  onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', (_, data) => callback(data)),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+
   // Telegram
   telegramVerifyToken: (token) => ipcRenderer.invoke('telegram-verify-token', token),
   telegramStartBot: (token, sessionCode, players) => ipcRenderer.invoke('telegram-start-bot', token, sessionCode, players),

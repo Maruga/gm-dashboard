@@ -62,6 +62,7 @@ export default function App() {
     return (
       <>
         <ProjectSelector onProjectOpen={handleProjectOpen} />
+        <UpdateToast />
         <GlobalStyles />
       </>
     );
@@ -75,6 +76,7 @@ export default function App() {
         projectName={activeProject.name}
         onChangeProject={handleBackToSelector}
       />
+      <UpdateToast />
       <GlobalStyles />
     </>
   );
@@ -1273,6 +1275,78 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           onClose={() => setChatOpen(false)}
         />
       )}
+    </div>
+  );
+}
+
+function UpdateToast() {
+  const [updateReady, setUpdateReady] = useState(null);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onUpdateDownloaded) return;
+    window.electronAPI.onUpdateDownloaded((data) => {
+      setUpdateReady(data.version);
+      setDismissed(false);
+    });
+  }, []);
+
+  if (!updateReady || dismissed) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      bottom: '0',
+      left: '0',
+      right: '0',
+      height: '36px',
+      background: 'var(--bg-elevated)',
+      borderTop: '1px solid var(--accent)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '12px',
+      zIndex: 9999,
+      fontSize: '12px',
+      color: 'var(--text-primary)'
+    }}>
+      <span style={{ color: 'var(--accent)' }}>
+        Aggiornamento v{updateReady} pronto.
+      </span>
+      <button
+        onClick={() => window.electronAPI.installUpdate()}
+        style={{
+          background: 'none',
+          border: '1px solid var(--accent)',
+          borderRadius: '4px',
+          padding: '3px 10px',
+          color: 'var(--accent)',
+          fontSize: '11px',
+          cursor: 'pointer',
+          transition: 'all 0.15s'
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent-a15)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+      >
+        Riavvia e aggiorna
+      </button>
+      <button
+        onClick={() => setDismissed(true)}
+        style={{
+          background: 'none',
+          border: '1px solid var(--border-default)',
+          borderRadius: '4px',
+          padding: '3px 10px',
+          color: 'var(--text-secondary)',
+          fontSize: '11px',
+          cursor: 'pointer',
+          transition: 'all 0.15s'
+        }}
+        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--text-secondary)'; }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; }}
+      >
+        Dopo
+      </button>
     </div>
   );
 }

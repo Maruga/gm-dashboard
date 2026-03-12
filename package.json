@@ -55,6 +55,11 @@
       "perMachine": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Maruga",
+      "repo": "gm-dashboard"
     }
   }
 }

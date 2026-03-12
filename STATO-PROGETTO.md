@@ -260,8 +260,8 @@ GmDash/
 ## 4. Cose da Fare
 
 ### Build e Distribuzione
-- [ ] **Build installer** con `electron-builder` (NSIS per Windows, DMG per macOS)
-- [ ] **Aggiornamenti automatici** con `electron-updater` (auto-update da release GitHub)
+- [x] **Build installer** con `electron-builder` — NSIS x64 per Windows, output in `release/`, lingua italiana
+- [x] **Aggiornamenti automatici** con `electron-updater` — check al boot (5s delay), toast "Riavvia e aggiorna" / "Dopo", publish su GitHub (Maruga/gm-dashboard), disabilitato in dev mode
 
 ### Funzionalità Nuove
 - [ ] **Pacchetti avventura** — Import/export zip di un intero progetto (documenti, calendario, impostazioni, note) per condividere avventure preconfezionate
