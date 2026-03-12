@@ -17,6 +17,7 @@ import NotesPanel from './components/NotesPanel';
 import ChecklistPanel from './components/ChecklistPanel';
 import ResizeHandle from './components/ResizeHandle';
 import { getFileType, FILE_TYPES } from './utils/fileTypes';
+import { initTheme } from './themes/themeEngine';
 
 const DEFAULT_PROJECT_STATE = {
   leftWidth: 280,
@@ -34,8 +35,11 @@ export default function App() {
   const [activeProject, setActiveProject] = useState(null); // { path, name }
   const [ready, setReady] = useState(false);
 
-  // Check if there's no recent project to auto-open; just show selector
-  useEffect(() => { setReady(true); }, []);
+  // Apply saved theme on mount, then show UI
+  useEffect(() => {
+    initTheme();
+    setReady(true);
+  }, []);
 
   const handleProjectOpen = useCallback(async (folderPath, name) => {
     // Add/update in recent projects
@@ -125,6 +129,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
   const [searchHighlight, setSearchHighlight] = useState(null);
   const [externalSearchQuery, setExternalSearchQuery] = useState(null);
   const externalSearchCounter = useRef(0);
+  const [highlightKeywords, setHighlightKeywords] = useState({ enabled: true, defaultColor: 'rgba(201,169,110,0.55)', words: [] });
   const [stateLoaded, setStateLoaded] = useState(false);
 
   const mainViewerRef = useRef(null);
@@ -189,6 +194,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
         setReferenceScrollPositions(saved.referenceScrollPositions ?? {});
         setReferenceSelectedId(saved.referenceSelectedId ?? null);
         scrollMapRef.current = saved.scrollPositions ?? {};
+        setHighlightKeywords(saved.highlightKeywords ?? { enabled: true, defaultColor: 'rgba(201,169,110,0.55)', words: [] });
         setMediaFilter(saved.mediaFilter ?? 'all');
         // Restore media items (audio paused, re-resolve URLs)
         const savedMedia = saved.savedMediaItems || saved.savedAudioTracks;
@@ -249,6 +255,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       referenceScrollPositions: referenceScrollPositions,
       referenceSelectedId: referenceSelectedId,
       scrollPositions: scrollMapRef.current,
+      highlightKeywords: highlightKeywords,
       mediaFilter: mediaFilter,
       savedMediaItems: mediaItems.map(item => ({
         id: item.id, type: item.type, path: item.path, name: item.name,
@@ -263,7 +270,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
     saveTimer.current = setTimeout(() => {
       window.electronAPI.saveProjectState(projectPath, latestState.current);
     }, 400);
-  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, scrollVersion]);
+  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, scrollVersion]);
 
   // Save immediately on unmount (project switch)
   useEffect(() => {
@@ -342,22 +349,22 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
     setSlotSelectedIndices(prev => ({ ...prev, [slot]: 0 }));
   }, []);
 
-  const handleSlotRemoveFile = useCallback((slot, filePath) => {
+  const handleSlotRemoveFile = useCallback((slot, itemKey) => {
     setSlotFiles(prev => {
-      const filtered = prev[slot].filter(f => f.path !== filePath);
+      const filtered = prev[slot].filter(f => (f.type === 'snippet' ? f.id : f.path) !== itemKey);
       return { ...prev, [slot]: filtered };
     });
     setSlotSelectedIndices(prev => {
-      const files = slotFiles[slot].filter(f => f.path !== filePath);
+      const remaining = slotFiles[slot].filter(f => (f.type === 'snippet' ? f.id : f.path) !== itemKey);
       const idx = prev[slot];
-      return { ...prev, [slot]: Math.min(idx, Math.max(0, files.length - 1)) };
+      return { ...prev, [slot]: Math.min(idx, Math.max(0, remaining.length - 1)) };
     });
   }, [slotFiles]);
 
-  const handleSlotRemoveFiles = useCallback((slot, filePaths) => {
-    const pathSet = new Set(filePaths);
+  const handleSlotRemoveFiles = useCallback((slot, itemKeys) => {
+    const keySet = new Set(itemKeys);
     setSlotFiles(prev => {
-      const filtered = prev[slot].filter(f => !pathSet.has(f.path));
+      const filtered = prev[slot].filter(f => !keySet.has(f.type === 'snippet' ? f.id : f.path));
       return { ...prev, [slot]: filtered };
     });
     setSlotSelectedIndices(prev => ({ ...prev, [slot]: 0 }));
@@ -511,11 +518,11 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
 
   const gameDateHasEvents = (calendarData.events[calendarData.currentDate] || []).length > 0;
 
-  const stageActiveFile = useMemo(() => {
+  const stageActiveItem = useMemo(() => {
     if (activeStageSlot === 'Cal') return calFile || null;
-    const files = slotFiles[activeStageSlot] || [];
+    const items = slotFiles[activeStageSlot] || [];
     const idx = slotSelectedIndices[activeStageSlot] || 0;
-    return files[idx] || null;
+    return items[idx] || null;
   }, [activeStageSlot, slotFiles, slotSelectedIndices, calFile]);
 
   // Telegram bot lifecycle
@@ -724,6 +731,24 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
     setTextContextMenu(null);
   }, []);
 
+  const handleAddSnippetToSlot = useCallback((slot, text, source, sourcePath, sourceScrollTop) => {
+    const title = text.length > 50 ? text.substring(0, 50).trimEnd() + '...' : text;
+    const snippet = {
+      type: 'snippet',
+      id: crypto.randomUUID(),
+      text,
+      title,
+      source: source || null,
+      sourcePath: sourcePath || null,
+      sourceScrollTop: sourceScrollTop || 0
+    };
+    setSlotFiles(prev => ({
+      ...prev,
+      [slot]: [...prev[slot], snippet]
+    }));
+    setTextContextMenu(null);
+  }, []);
+
   const handleOpenChecklistSource = useCallback((item) => {
     if (!item.sourcePath) return;
     const existingIdx = viewerTabs.findIndex(t => t.type === 'checklist' && t.file?.path === item.sourcePath);
@@ -762,6 +787,19 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       return next;
     });
   }, [viewerTabs, activeViewerTab]);
+
+  const handleOpenSnippetSource = useCallback((snippet) => {
+    if (!snippet.sourcePath) return;
+    const ext = '.' + snippet.sourcePath.split('.').pop().toLowerCase();
+    const name = snippet.sourcePath.split('/').pop().split('\\').pop();
+    const file = { name, path: snippet.sourcePath, extension: ext };
+    // Set scroll position so it opens at the right spot
+    if (snippet.sourceScrollTop != null) {
+      scrollMapRef.current[`viewer:${snippet.sourcePath}`] = snippet.sourceScrollTop;
+    }
+    setCurrentFile(file);
+    setActiveViewerTab(0);
+  }, []);
 
   // Resize handlers
   const handleLeftResize = useCallback((delta) => {
@@ -806,7 +844,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       height: '100vh',
       display: 'flex',
       flexDirection: 'column',
-      background: '#1a1714',
+      background: 'var(--bg-main)',
       overflow: 'hidden'
     }}>
       {/* === TOP MENU — fixed bar === */}
@@ -831,13 +869,15 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
         onToggleChat={() => setChatOpen(v => !v)}
         onOpenReference={() => setReferenceOpen(v => !v)}
         referenceOpen={referenceOpen}
+        highlightEnabled={highlightKeywords.enabled}
+        onToggleHighlight={() => setHighlightKeywords(prev => ({ ...prev, enabled: !prev.enabled }))}
       />
 
       {/* === MAIN CONTENT below menu === */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
       {/* === LEFT COLUMN === */}
-      <div ref={leftColRef} style={{ width: `${leftWidth}px`, display: 'flex', flexDirection: 'column', flexShrink: 0, borderRight: '1px solid #2a2520' }}>
+      <div ref={leftColRef} style={{ width: `${leftWidth}px`, display: 'flex', flexDirection: 'column', flexShrink: 0, borderRight: '1px solid var(--border-subtle)' }}>
         <div style={{ height: `${explorerRatio * 100}%`, overflow: 'hidden' }}>
           <Explorer
             projectFolder={projectPath}
@@ -871,7 +911,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       {/* === CENTER COLUMN === */}
       <div ref={centerRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         {/* Top row: VIEWER + STAGE side by side */}
-        <div style={{ flex: 1, display: 'flex', overflow: 'hidden', borderBottom: '1px solid #2a2520' }}>
+        <div style={{ flex: 1, display: 'flex', overflow: 'hidden', borderBottom: '1px solid var(--border-subtle)' }}>
           {/* VIEWER */}
           <div data-source-name={viewerActiveFile?.name || ''} data-source-path={viewerActiveFile?.path || ''} style={{ width: `${viewerStageRatio * 100}%`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <div style={{
@@ -880,10 +920,10 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
               fontWeight: '600',
               textTransform: 'uppercase',
               letterSpacing: '1.5px',
-              color: '#c9a96e',
-              borderBottom: '1px solid #2a2520',
+              color: 'var(--accent)',
+              borderBottom: '1px solid var(--border-subtle)',
               flexShrink: 0,
-              background: '#1e1b16',
+              background: 'var(--bg-panel)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between'
@@ -894,8 +934,8 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
             {/* Viewer tab bar — hidden if only Document tab */}
             {viewerTabs.length > 1 && (
               <div style={{
-                display: 'flex', borderBottom: '1px solid #2a2520', flexShrink: 0,
-                background: '#1e1b16', overflowX: 'auto'
+                display: 'flex', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0,
+                background: 'var(--bg-panel)', overflowX: 'auto'
               }}>
                 {viewerTabs.map((tab, idx) => {
                   const isActive = activeViewerTab === idx;
@@ -908,14 +948,14 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
                         padding: '4px 12px',
                         fontSize: '11px',
                         cursor: 'pointer',
-                        color: isActive ? '#c9a96e' : '#8a7a60',
-                        borderBottom: isActive ? '2px solid #c9a96e' : '2px solid transparent',
-                        background: isActive ? '#252018' : 'transparent',
+                        color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                        borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+                        background: isActive ? 'var(--bg-elevated)' : 'transparent',
                         display: 'flex', alignItems: 'center', gap: '6px',
                         flexShrink: 0, transition: 'all 0.2s'
                       }}
-                      onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#b89a5e'; }}
-                      onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = isActive ? '#c9a96e' : '#8a7a60'; }}
+                      onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = 'var(--accent-dim)'; }}
+                      onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = isActive ? 'var(--accent)' : 'var(--text-secondary)'; }}
                     >
                       {label}
                       {(tab.type === 'pg' || tab.type === 'note' || tab.type === 'checklist') && (
@@ -937,6 +977,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
                   currentFile={viewerActiveFile}
                   scrollKeyPrefix={viewerScrollPrefix}
                   searchHighlight={searchHighlight}
+                  highlightKeywords={highlightKeywords}
                   onImageClick={handleImageClick}
                   onVideoClick={handleVideoClick}
                   scrollMapRef={scrollMapRef}
@@ -945,7 +986,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
               ) : (
                 <div style={{
                   height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#4a4035', fontSize: '13px', fontStyle: 'italic'
+                  color: 'var(--text-disabled)', fontSize: '13px', fontStyle: 'italic'
                 }}>
                   {viewerTabs[activeViewerTab]?.type === 'pg'
                     ? 'Nessuna scheda configurata per questo personaggio'
@@ -958,7 +999,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           <ResizeHandle direction="vertical" onResize={handleViewerStageResize} />
 
           {/* STAGE */}
-          <div data-source-name={stageActiveFile?.name || ''} data-source-path={stageActiveFile?.path || ''} style={{ flex: 1, overflow: 'hidden', borderLeft: '1px solid #2a2520' }}>
+          <div data-source-name={stageActiveItem?.name || ''} data-source-path={stageActiveItem?.path || ''} style={{ flex: 1, overflow: 'hidden', borderLeft: '1px solid var(--border-subtle)' }}>
             <Stage
               slotFiles={slotFiles}
               activeTab={activeStageSlot}
@@ -971,6 +1012,8 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
               onScrollChanged={onScrollChanged}
               tocPinned={docTocPinned.stage}
               onTocPinnedChange={v => setDocTocPinned(p => ({ ...p, stage: v }))}
+              onOpenSnippetSource={handleOpenSnippetSource}
+              highlightKeywords={highlightKeywords}
             />
           </div>
         </div>
@@ -986,7 +1029,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       <ResizeHandle direction="vertical" onResize={handleRightResize} />
 
       {/* === RIGHT COLUMN === */}
-      <div style={{ width: `${rightWidth}px`, display: 'flex', flexDirection: 'column', flexShrink: 0, borderLeft: '1px solid #2a2520' }}>
+      <div style={{ width: `${rightWidth}px`, display: 'flex', flexDirection: 'column', flexShrink: 0, borderLeft: '1px solid var(--border-subtle)' }}>
         <div style={{ height: `${(slotRatios[0] || 0.333) * 100}%`, overflow: 'hidden' }}>
           <SlotPanel label="A" files={slotFiles.A} isActive={activeStageSlot === 'A'} activeFileIndex={slotSelectedIndices.A} onClear={() => handleSlotClear('A')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} />
         </div>
@@ -1021,6 +1064,8 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           onReferenceChange={setReferenceManuals}
           onClose={() => setSettingsOpen(false)}
           onResetGameDate={handleResetGameDate}
+          highlightKeywords={highlightKeywords}
+          onHighlightChange={setHighlightKeywords}
         />
       )}
 
@@ -1065,7 +1110,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
         <div
           onClick={() => setOverlayImage(null)}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
+            position: 'fixed', inset: 0, background: 'var(--overlay-dark)',
             zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
           }}
         >
@@ -1078,7 +1123,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
         <div
           onClick={(e) => { if (e.target === e.currentTarget) setOverlayVideo(null); }}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.95)',
+            position: 'fixed', inset: 0, background: 'var(--overlay-dark)',
             zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
           }}
         >
@@ -1094,13 +1139,13 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       {textContextMenu && (
         <div style={{
           position: 'fixed', left: textContextMenu.x, top: textContextMenu.y,
-          background: '#252018', border: '1px solid #3a3530', borderRadius: '6px',
+          background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: '6px',
           padding: '4px 0', zIndex: 1200, minWidth: '220px',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.5)'
+          boxShadow: 'var(--shadow-dropdown)'
         }}>
           <div
-            style={{ padding: '6px 16px', cursor: 'pointer', fontSize: '13px', color: '#d4c5a9' }}
-            onMouseEnter={e => e.currentTarget.style.background = '#3a3530'}
+            style={{ padding: '6px 16px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-primary)' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--border-default)'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             onClick={() => {
               handleSaveAsNote(textContextMenu.text, textContextMenu.source, textContextMenu.sourcePath, textContextMenu.sourceScrollTop);
@@ -1109,8 +1154,8 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
             📝 Salva come nota
           </div>
           <div
-            style={{ padding: '6px 16px', cursor: 'pointer', fontSize: '13px', color: '#d4c5a9' }}
-            onMouseEnter={e => e.currentTarget.style.background = '#3a3530'}
+            style={{ padding: '6px 16px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-primary)' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--border-default)'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             onClick={() => {
               handleSaveAsChecklist(textContextMenu.text, textContextMenu.source, textContextMenu.sourcePath, textContextMenu.sourceScrollTop);
@@ -1118,9 +1163,42 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           >
             ☐ Aggiungi a Checklist
           </div>
+          <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '2px 0' }} />
+          {['A', 'B', 'C'].map(slot => (
+            <div
+              key={slot}
+              style={{ padding: '6px 16px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-primary)' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--border-default)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              onClick={() => {
+                handleAddSnippetToSlot(slot, textContextMenu.text, textContextMenu.source, textContextMenu.sourcePath, textContextMenu.sourceScrollTop);
+              }}
+            >
+              📌 Aggiungi a Slot {slot}
+            </div>
+          ))}
+          <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '2px 0' }} />
           <div
-            style={{ padding: '6px 16px', cursor: 'pointer', fontSize: '13px', color: '#d4c5a9' }}
-            onMouseEnter={e => e.currentTarget.style.background = '#3a3530'}
+            style={{ padding: '6px 16px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-primary)' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--border-default)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            onClick={() => {
+              const word = textContextMenu.text.trim();
+              if (word) {
+                setHighlightKeywords(prev => {
+                  if (prev.words.some(w => w.text.toLowerCase() === word.toLowerCase())) return prev;
+                  return { ...prev, words: [...prev.words, { text: word, color: prev.defaultColor }] };
+                });
+              }
+              setTextContextMenu(null);
+            }}
+          >
+            🔆 Evidenzia parola
+          </div>
+          <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '2px 0' }} />
+          <div
+            style={{ padding: '6px 16px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-primary)' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--border-default)'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             onClick={() => {
               externalSearchCounter.current++;
@@ -1130,10 +1208,10 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           >
             🔍 Cerca nei documenti
           </div>
-          <div style={{ height: '1px', background: '#2a2520', margin: '2px 0' }} />
+          <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '2px 0' }} />
           <div
-            style={{ padding: '6px 16px', cursor: 'pointer', fontSize: '13px', color: '#d4c5a9' }}
-            onMouseEnter={e => e.currentTarget.style.background = '#3a3530'}
+            style={{ padding: '6px 16px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-primary)' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--border-default)'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             onClick={() => {
               setTelegramTextData(textContextMenu.text);
@@ -1177,6 +1255,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           selectedManualId={referenceSelectedId}
           onSelectedChange={setReferenceSelectedId}
           onClose={() => setReferenceOpen(false)}
+          highlightKeywords={highlightKeywords}
         />
       )}
       {chatOpen && (
@@ -1186,6 +1265,11 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           onSendReply={handleChatSendReply}
           onMarkRead={handleChatMarkRead}
           onSelectedChange={handleChatSelectedChange}
+          onClearChat={(chatId) => setChatMessages(prev => {
+            const next = { ...prev };
+            delete next[chatId];
+            return next;
+          })}
           onClose={() => setChatOpen(false)}
         />
       )}
@@ -1197,39 +1281,39 @@ function GlobalStyles() {
   return (
     <style>{`
       ::-webkit-scrollbar { width: 6px; height: 6px; }
-      ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: #3a3530; border-radius: 3px; }
-      ::-webkit-scrollbar-thumb:hover { background: #5a4a3a; }
+      ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+      ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
       .viewer-content h1, .viewer-content h2, .viewer-content h3,
       .viewer-content h4, .viewer-content h5, .viewer-content h6 {
-        color: #c9a96e; margin: 1.2em 0 0.5em; font-family: 'Georgia', serif;
+        color: var(--accent); margin: 1.2em 0 0.5em; font-family: 'Georgia', serif;
       }
-      .viewer-content h1 { font-size: 1.8em; border-bottom: 1px solid #3a3530; padding-bottom: 0.3em; }
+      .viewer-content h1 { font-size: 1.8em; border-bottom: 1px solid var(--border-default); padding-bottom: 0.3em; }
       .viewer-content h2 { font-size: 1.5em; }
       .viewer-content h3 { font-size: 1.25em; }
       .viewer-content p { margin: 0.6em 0; }
-      .viewer-content strong { color: #e0d0b0; }
-      .viewer-content em { color: #b89a5e; }
-      .viewer-content a { color: #c9a96e; text-decoration: underline; }
+      .viewer-content strong { color: var(--text-code); }
+      .viewer-content em { color: var(--accent-dim); }
+      .viewer-content a { color: var(--accent); text-decoration: underline; }
       .viewer-content code {
-        background: #252018; padding: 2px 6px; border-radius: 3px;
-        font-family: 'Courier New', monospace; font-size: 0.9em; color: #e0d0b0;
+        background: var(--bg-elevated); padding: 2px 6px; border-radius: 3px;
+        font-family: 'Courier New', monospace; font-size: 0.9em; color: var(--text-code);
       }
       .viewer-content pre {
-        background: #141210; padding: 12px 16px; border-radius: 6px;
-        border: 1px solid #2a2520; overflow-x: auto;
+        background: var(--bg-input); padding: 12px 16px; border-radius: 6px;
+        border: 1px solid var(--border-subtle); overflow-x: auto;
       }
       .viewer-content pre code { background: none; padding: 0; }
       .viewer-content ul, .viewer-content ol { padding-left: 1.5em; margin: 0.5em 0; }
       .viewer-content li { margin: 0.2em 0; }
-      .viewer-content hr { border: none; border-top: 1px solid #3a3530; margin: 1.5em 0; }
+      .viewer-content hr { border: none; border-top: 1px solid var(--border-default); margin: 1.5em 0; }
       .viewer-content blockquote {
-        border-left: 3px solid #c9a96e; padding-left: 16px;
-        margin: 1em 0; color: #b89a5e; font-style: italic;
+        border-left: 3px solid var(--accent); padding-left: 16px;
+        margin: 1em 0; color: var(--accent-dim); font-style: italic;
       }
       .viewer-content table { border-collapse: collapse; width: 100%; margin: 1em 0; }
-      .viewer-content th, .viewer-content td { border: 1px solid #3a3530; padding: 6px 10px; text-align: left; }
-      .viewer-content th { background: #252018; color: #c9a96e; }
+      .viewer-content th, .viewer-content td { border: 1px solid var(--border-default); padding: 6px 10px; text-align: left; }
+      .viewer-content th { background: var(--bg-elevated); color: var(--accent); }
       .viewer-content img { max-width: 100%; border-radius: 4px; }
       @keyframes bellPulse {
         0%, 100% { transform: scale(1); opacity: 1; }
@@ -1239,9 +1323,9 @@ function GlobalStyles() {
         animation: bellPulse 1s ease-in-out 3;
       }
       @keyframes chatFlash {
-        0% { box-shadow: 0 0 0 0 rgba(201,169,110,0.7); }
-        50% { box-shadow: 0 0 8px 3px rgba(201,169,110,0.5); }
-        100% { box-shadow: 0 0 0 0 rgba(201,169,110,0); }
+        0% { box-shadow: 0 0 0 0 var(--accent-a55); }
+        50% { box-shadow: 0 0 8px 3px var(--accent-a35); }
+        100% { box-shadow: 0 0 0 0 var(--accent-a04); }
       }
       @keyframes timerExpired {
         0%, 100% { opacity: 1; }
@@ -1249,11 +1333,11 @@ function GlobalStyles() {
       }
       .timer-expired {
         animation: timerExpired 0.5s ease-in-out 10;
-        color: #ff6b6b !important;
+        color: var(--color-danger-bright) !important;
       }
       .close-btn {
         cursor: pointer;
-        color: #6a5a40;
+        color: var(--text-tertiary);
         font-size: 13px;
         padding: 2px 4px;
         border-radius: 3px;
@@ -1262,8 +1346,8 @@ function GlobalStyles() {
         line-height: 1;
       }
       .close-btn:hover {
-        color: #c96e6e;
-        background: rgba(201, 110, 110, 0.1);
+        color: var(--color-danger);
+        background: color-mix(in srgb, var(--color-danger) 10%, transparent);
       }
     `}</style>
   );

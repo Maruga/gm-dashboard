@@ -27,7 +27,7 @@ function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, togg
   };
 
   const icon = getFileIcon(entry);
-  const activeBg = 'rgba(201,169,110,0.15)';
+  const activeBg = 'var(--accent-a15)';
 
   return (
     <div>
@@ -41,18 +41,18 @@ function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, togg
           paddingLeft: `${12 + depth * 16}px`,
           cursor: 'pointer',
           fontSize: '13px',
-          color: isActive ? '#c9a96e' : '#d4c5a9',
+          color: isActive ? 'var(--accent)' : 'var(--text-primary)',
           background: isActive ? activeBg : 'transparent',
           borderRadius: '3px',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis'
         }}
-        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = '#2a2520'; }}
+        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--bg-hover-strong)'; }}
         onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = isActive ? activeBg : 'transparent'; }}
       >
         {entry.isDirectory && (
-          <span style={{ marginRight: '4px', fontSize: '10px', color: '#8a7a60', width: '10px', flexShrink: 0, textAlign: 'center' }}>
+          <span style={{ marginRight: '4px', fontSize: '10px', color: 'var(--text-secondary)', width: '10px', flexShrink: 0, textAlign: 'center' }}>
             {isExpanded ? '▼' : '▶'}
           </span>
         )}
@@ -130,12 +130,12 @@ export default function Explorer({
     padding: '6px 16px',
     cursor: 'pointer',
     fontSize: '13px',
-    color: '#d4c5a9'
+    color: 'var(--text-primary)'
   };
 
   const MenuItem = ({ label, onClick }) => (
     <div style={menuItemStyle}
-      onMouseEnter={e => e.currentTarget.style.background = '#3a3530'}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--border-default)'}
       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
       onClick={() => { onClick(); closeContextMenu(); }}>
       {label}
@@ -154,8 +154,8 @@ export default function Explorer({
         fontWeight: '600',
         textTransform: 'uppercase',
         letterSpacing: '1.5px',
-        color: '#c9a96e',
-        borderBottom: '1px solid #2a2520',
+        color: 'var(--accent)',
+        borderBottom: '1px solid var(--border-subtle)',
         flexShrink: 0
       }}>
         Explorer
@@ -174,7 +174,7 @@ export default function Explorer({
           />
         ))}
         {entries.length === 0 && (
-          <div style={{ padding: '20px', textAlign: 'center', color: '#6a5a40', fontSize: '13px' }}>
+          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '13px' }}>
             Nessun progetto aperto
           </div>
         )}
@@ -185,13 +185,13 @@ export default function Explorer({
           position: 'fixed',
           left: contextMenu.x,
           top: contextMenu.y,
-          background: '#252018',
-          border: '1px solid #3a3530',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-default)',
           borderRadius: '6px',
           padding: '4px 0',
           zIndex: 1000,
           minWidth: '200px',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.5)'
+          boxShadow: 'var(--shadow-dropdown)'
         }}>
           {!isDir && !isMedia && (
             <MenuItem label="Apri in Viewer" onClick={() => onFileOpen(contextMenu.entry)} />
@@ -200,7 +200,7 @@ export default function Explorer({
             <MenuItem label="Aggiungi a Media" onClick={() => onMediaAdd(contextMenu.entry)} />
           )}
           {!isDir && (
-            <div style={{ height: '1px', background: '#2a2520', margin: '4px 0' }} />
+            <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '4px 0' }} />
           )}
           <MenuItem
             label={isDir ? 'Apri contenuto in Slot A' : 'Apri in Slot A'}
@@ -216,7 +216,7 @@ export default function Explorer({
           />
           {!isDir && onTelegramFile && (
             <>
-              <div style={{ height: '1px', background: '#2a2520', margin: '4px 0' }} />
+              <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '4px 0' }} />
               <MenuItem label="✉️ Invia via Telegram" onClick={() => onTelegramFile(contextMenu.entry)} />
             </>
           )}

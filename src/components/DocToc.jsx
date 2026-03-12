@@ -137,14 +137,14 @@ export default function DocToc({ containerRef, pinned: externalPinned, onPinnedC
         style={{
           cursor: hasHeadings ? 'pointer' : 'default',
           fontSize: '11px',
-          color: pinned ? '#c9a96e' : hasHeadings ? '#8a7a60' : '#4a4035',
+          color: pinned ? 'var(--accent)' : hasHeadings ? 'var(--text-secondary)' : 'var(--text-disabled)',
           padding: '2px 6px',
           borderRadius: '3px',
           transition: 'color 0.2s',
           userSelect: 'none'
         }}
-        onMouseEnter={e => { if (hasHeadings && !pinned) e.currentTarget.style.color = '#c9a96e'; }}
-        onMouseLeave={e => { if (!pinned) e.currentTarget.style.color = hasHeadings ? '#8a7a60' : '#4a4035'; }}
+        onMouseEnter={e => { if (hasHeadings && !pinned) e.currentTarget.style.color = 'var(--accent)'; }}
+        onMouseLeave={e => { if (!pinned) e.currentTarget.style.color = hasHeadings ? 'var(--text-secondary)' : 'var(--text-disabled)'; }}
       >
         ☰ Indice
       </span>
@@ -160,11 +160,11 @@ export default function DocToc({ containerRef, pinned: externalPinned, onPinnedC
             width: '250px',
             maxHeight: '60vh',
             overflowY: 'auto',
-            background: 'rgba(30, 27, 22, 0.95)',
-            border: '1px solid #3a3530',
+            background: 'var(--bg-frosted)',
+            border: '1px solid var(--border-default)',
             borderRadius: '6px',
             zIndex: 900,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            boxShadow: 'var(--shadow-dropdown)',
             backdropFilter: 'blur(8px)'
           }}
         >
@@ -178,14 +178,14 @@ export default function DocToc({ containerRef, pinned: externalPinned, onPinnedC
                   paddingLeft: h.level === 2 ? '24px' : '12px',
                   fontSize: h.level === 1 ? '12px' : '11px',
                   fontWeight: h.level === 1 ? '600' : '400',
-                  color: i === activeIndex ? '#c9a96e' : '#d4c5a9',
+                  color: i === activeIndex ? 'var(--accent)' : 'var(--text-primary)',
                   cursor: 'pointer',
                   lineHeight: '1.6',
-                  borderLeft: i === activeIndex ? '2px solid #c9a96e' : '2px solid transparent',
+                  borderLeft: i === activeIndex ? '2px solid var(--accent)' : '2px solid transparent',
                   transition: 'all 0.15s'
                 }}
-                onMouseEnter={e => { if (i !== activeIndex) e.currentTarget.style.color = '#c9a96e'; }}
-                onMouseLeave={e => { if (i !== activeIndex) e.currentTarget.style.color = '#d4c5a9'; }}
+                onMouseEnter={e => { if (i !== activeIndex) e.currentTarget.style.color = 'var(--accent)'; }}
+                onMouseLeave={e => { if (i !== activeIndex) e.currentTarget.style.color = 'var(--text-primary)'; }}
               >
                 {h.text}
               </div>

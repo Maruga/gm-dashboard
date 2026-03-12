@@ -40,7 +40,7 @@ export default function ProjectSelector({ onProjectOpen }) {
     <div style={{
       width: '100vw',
       height: '100vh',
-      background: '#1a1714',
+      background: 'var(--bg-main)',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
@@ -67,7 +67,7 @@ export default function ProjectSelector({ onProjectOpen }) {
           <div style={{
             fontSize: '36px',
             fontWeight: '600',
-            color: '#c9a96e',
+            color: 'var(--accent)',
             letterSpacing: '6px',
             fontFamily: "'Georgia', serif",
             marginBottom: '8px'
@@ -76,7 +76,7 @@ export default function ProjectSelector({ onProjectOpen }) {
           </div>
           <div style={{
             fontSize: '14px',
-            color: '#8a7a60',
+            color: 'var(--text-secondary)',
             letterSpacing: '4px',
             textTransform: 'uppercase'
           }}>
@@ -91,9 +91,9 @@ export default function ProjectSelector({ onProjectOpen }) {
             width: '100%',
             padding: '14px 20px',
             background: 'transparent',
-            border: '1px solid #c9a96e',
+            border: '1px solid var(--accent)',
             borderRadius: '8px',
-            color: '#c9a96e',
+            color: 'var(--accent)',
             fontSize: '14px',
             cursor: 'pointer',
             display: 'flex',
@@ -105,12 +105,12 @@ export default function ProjectSelector({ onProjectOpen }) {
             marginBottom: '32px'
           }}
           onMouseEnter={e => {
-            e.currentTarget.style.background = '#c9a96e15';
-            e.currentTarget.style.borderColor = '#ddb978';
+            e.currentTarget.style.background = 'var(--accent-a10)';
+            e.currentTarget.style.borderColor = 'var(--accent-hover)';
           }}
           onMouseLeave={e => {
             e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.borderColor = '#c9a96e';
+            e.currentTarget.style.borderColor = 'var(--accent)';
           }}
         >
           <span style={{ fontSize: '18px' }}>📂</span>
@@ -125,7 +125,7 @@ export default function ProjectSelector({ onProjectOpen }) {
               fontWeight: '600',
               textTransform: 'uppercase',
               letterSpacing: '2px',
-              color: '#6a5a40',
+              color: 'var(--text-tertiary)',
               marginBottom: '12px'
             }}>
               Progetti recenti
@@ -135,7 +135,7 @@ export default function ProjectSelector({ onProjectOpen }) {
               maxHeight: '340px',
               overflowY: 'auto',
               borderRadius: '8px',
-              border: '1px solid #2a2520'
+              border: '1px solid var(--border-subtle)'
             }}>
               {projects.map((project, i) => (
                 <div
@@ -147,16 +147,16 @@ export default function ProjectSelector({ onProjectOpen }) {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    borderBottom: i < projects.length - 1 ? '1px solid #2a2520' : 'none',
+                    borderBottom: i < projects.length - 1 ? '1px solid var(--border-subtle)' : 'none',
                     transition: 'background 0.15s'
                   }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#252018'}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-elevated)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{
                       fontSize: '14px',
-                      color: '#d4c5a9',
+                      color: 'var(--text-primary)',
                       fontWeight: '500',
                       marginBottom: '4px',
                       overflow: 'hidden',
@@ -167,7 +167,7 @@ export default function ProjectSelector({ onProjectOpen }) {
                     </div>
                     <div style={{
                       fontSize: '11px',
-                      color: '#6a5a40',
+                      color: 'var(--text-tertiary)',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
@@ -177,7 +177,7 @@ export default function ProjectSelector({ onProjectOpen }) {
                       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {project.path}
                       </span>
-                      <span style={{ flexShrink: 0, color: '#4a4035' }}>
+                      <span style={{ flexShrink: 0, color: 'var(--text-disabled)' }}>
                         {formatDate(project.lastOpened)}
                       </span>
                     </div>
@@ -200,7 +200,7 @@ export default function ProjectSelector({ onProjectOpen }) {
         {!loading && projects.length === 0 && (
           <div style={{
             textAlign: 'center',
-            color: '#4a4035',
+            color: 'var(--text-disabled)',
             fontSize: '13px',
             fontStyle: 'italic',
             padding: '20px'
@@ -223,7 +223,7 @@ function WinBtn({ icon, onClick, isClose }) {
         width: '32px',
         height: '28px',
         cursor: 'pointer',
-        color: '#6a5a40',
+        color: 'var(--text-tertiary)',
         fontSize: '13px',
         display: 'flex',
         alignItems: 'center',
@@ -232,12 +232,12 @@ function WinBtn({ icon, onClick, isClose }) {
         transition: 'all 0.2s'
       }}
       onMouseEnter={e => {
-        e.currentTarget.style.background = isClose ? '#5a2020' : '#3a3530';
-        e.currentTarget.style.color = isClose ? '#ff6b6b' : '#d4c5a9';
+        e.currentTarget.style.background = isClose ? 'var(--color-danger-bg)' : 'var(--border-default)';
+        e.currentTarget.style.color = isClose ? 'var(--color-danger-bright)' : 'var(--text-primary)';
       }}
       onMouseLeave={e => {
         e.currentTarget.style.background = 'none';
-        e.currentTarget.style.color = '#6a5a40';
+        e.currentTarget.style.color = 'var(--text-tertiary)';
       }}
     >
       {icon}

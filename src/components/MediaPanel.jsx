@@ -157,25 +157,25 @@ function AudioTrack({ item, onRemove, onUpdate, globalMute, stopTrigger, onConte
   const Btn = ({ label, onClick, title, active, highlight }) => (
     <button onClick={onClick} title={title} style={{
       background: 'none', border: 'none', cursor: 'pointer',
-      color: highlight ? '#c9a96e' : active ? '#e8dcc0' : '#6a5a40',
+      color: highlight ? 'var(--accent)' : active ? 'var(--text-bright)' : 'var(--text-tertiary)',
       fontSize: '11px', padding: '1px 4px', borderRadius: '2px',
       transition: 'color 0.15s', lineHeight: '1', flexShrink: 0
     }}
-    onMouseEnter={e => e.currentTarget.style.color = '#c9a96e'}
-    onMouseLeave={e => e.currentTarget.style.color = highlight ? '#c9a96e' : active ? '#e8dcc0' : '#6a5a40'}
+    onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+    onMouseLeave={e => e.currentTarget.style.color = highlight ? 'var(--accent)' : active ? 'var(--text-bright)' : 'var(--text-tertiary)'}
     >{label}</button>
   );
 
   return (
     <div onContextMenu={onContextMenu} style={{
-      padding: '6px 10px', borderBottom: '1px solid #1e1b16',
-      background: playing ? 'rgba(201,169,110,0.04)' : 'transparent'
+      padding: '6px 10px', borderBottom: '1px solid var(--bg-panel)',
+      background: playing ? 'var(--accent-a04)' : 'transparent'
     }}>
       {/* Row 1: name + remove */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
         <span style={{ fontSize: '11px', flexShrink: 0 }}>🎵</span>
         <span style={{
-          flex: 1, fontSize: '11px', color: '#d4c5a9', fontWeight: '600',
+          flex: 1, fontSize: '11px', color: 'var(--text-primary)', fontWeight: '600',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
         }}>{item.name}</span>
         <span className="close-btn" onClick={onRemove} title="Rimuovi" style={{ fontSize: '12px' }}>✕</span>
@@ -191,23 +191,23 @@ function AudioTrack({ item, onRemove, onUpdate, globalMute, stopTrigger, onConte
         <div style={{ flex: 1 }} />
         <input type="range" min="0" max="1" step="0.01" value={volume}
           onChange={handleVolumeChange}
-          style={{ width: '50px', accentColor: '#c9a96e', cursor: 'pointer' }}
+          style={{ width: '50px', accentColor: 'var(--accent)', cursor: 'pointer' }}
         />
       </div>
 
       {/* Row 3: progress bar + time */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
         <div onClick={handleSeekClick} style={{
-          flex: 1, height: '4px', background: '#2a2520', borderRadius: '2px',
+          flex: 1, height: '4px', background: 'var(--border-subtle)', borderRadius: '2px',
           cursor: 'pointer', position: 'relative'
         }}>
           <div style={{
             width: `${progress}%`, height: '100%',
-            background: playing ? '#c9a96e' : '#6a5a40', borderRadius: '2px',
+            background: playing ? 'var(--accent)' : 'var(--text-tertiary)', borderRadius: '2px',
             transition: 'width 0.4s linear'
           }} />
         </div>
-        <span style={{ fontSize: '9px', color: '#6a5a40', flexShrink: 0, fontFamily: 'monospace' }}>
+        <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', flexShrink: 0, fontFamily: 'monospace' }}>
           {formatTime(currentSeek)} / {formatTime(duration)}
         </span>
       </div>
@@ -220,7 +220,7 @@ function ImageItem({ item, onRemove, onImageClick, onContextMenu }) {
   return (
     <div onContextMenu={onContextMenu} style={{
       display: 'flex', alignItems: 'center', gap: '8px',
-      padding: '6px 10px', borderBottom: '1px solid #1e1b16'
+      padding: '6px 10px', borderBottom: '1px solid var(--bg-panel)'
     }}>
       <span style={{ fontSize: '11px', flexShrink: 0 }}>🖼️</span>
       <img
@@ -229,13 +229,13 @@ function ImageItem({ item, onRemove, onImageClick, onContextMenu }) {
         style={{
           maxHeight: '60px', maxWidth: '80px', objectFit: 'contain',
           borderRadius: '3px', cursor: 'pointer', flexShrink: 0,
-          border: '1px solid #2a2520'
+          border: '1px solid var(--border-subtle)'
         }}
       />
       <span
         onClick={() => onImageClick(item.url)}
         style={{
-          flex: 1, fontSize: '11px', color: '#d4c5a9',
+          flex: 1, fontSize: '11px', color: 'var(--text-primary)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           cursor: 'pointer'
         }}
@@ -250,20 +250,20 @@ function VideoItem({ item, onRemove, onVideoClick, onContextMenu }) {
   return (
     <div onContextMenu={onContextMenu} style={{
       display: 'flex', alignItems: 'center', gap: '8px',
-      padding: '6px 10px', borderBottom: '1px solid #1e1b16'
+      padding: '6px 10px', borderBottom: '1px solid var(--bg-panel)'
     }}>
       <span style={{ fontSize: '11px', flexShrink: 0 }}>🎬</span>
       <span style={{
-        flex: 1, fontSize: '11px', color: '#d4c5a9',
+        flex: 1, fontSize: '11px', color: 'var(--text-primary)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
       }}>{item.name}</span>
       <button onClick={() => onVideoClick(item.url)} title="Riproduci" style={{
-        background: 'none', border: '1px solid #3a3530', borderRadius: '3px',
-        padding: '2px 8px', color: '#c9a96e', fontSize: '10px', cursor: 'pointer',
+        background: 'none', border: '1px solid var(--border-default)', borderRadius: '3px',
+        padding: '2px 8px', color: 'var(--accent)', fontSize: '10px', cursor: 'pointer',
         transition: 'all 0.15s', flexShrink: 0
       }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9a96e'; e.currentTarget.style.background = '#2a2520'; }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = '#3a3530'; e.currentTarget.style.background = 'none'; }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-hover-strong)'; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.background = 'none'; }}
       >▶ Play</button>
       <span className="close-btn" onClick={onRemove} title="Rimuovi" style={{ fontSize: '12px' }}>✕</span>
     </div>
@@ -317,13 +317,13 @@ export default function MediaPanel({
     const active = filter === type;
     return (
       <button key={type} onClick={() => onFilterChange(type)} style={{
-        background: active ? 'rgba(201,169,110,0.15)' : 'none',
+        background: active ? 'var(--accent-a15)' : 'none',
         border: 'none', borderRadius: '3px', padding: '2px 6px',
-        color: active ? '#c9a96e' : '#6a5a40', fontSize: '10px',
+        color: active ? 'var(--accent)' : 'var(--text-tertiary)', fontSize: '10px',
         cursor: 'pointer', transition: 'all 0.15s', fontWeight: active ? '600' : '400'
       }}
-      onMouseEnter={e => { if (!active) e.currentTarget.style.color = '#8a7a60'; }}
-      onMouseLeave={e => { if (!active) e.currentTarget.style.color = active ? '#c9a96e' : '#6a5a40'; }}
+      onMouseEnter={e => { if (!active) e.currentTarget.style.color = 'var(--text-secondary)'; }}
+      onMouseLeave={e => { if (!active) e.currentTarget.style.color = active ? 'var(--accent)' : 'var(--text-tertiary)'; }}
       >
         {label}{count > 0 ? ` (${count})` : ''}
       </button>
@@ -333,11 +333,11 @@ export default function MediaPanel({
   const headerBtn = (label, onClick, title, highlight) => (
     <button onClick={onClick} title={title} style={{
       background: 'none', border: 'none', cursor: 'pointer',
-      color: highlight ? '#c9a96e' : '#6a5a40', fontSize: '11px', padding: '1px 4px',
+      color: highlight ? 'var(--accent)' : 'var(--text-tertiary)', fontSize: '11px', padding: '1px 4px',
       transition: 'color 0.15s'
     }}
-    onMouseEnter={e => e.currentTarget.style.color = '#c9a96e'}
-    onMouseLeave={e => e.currentTarget.style.color = highlight ? '#c9a96e' : '#6a5a40'}
+    onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+    onMouseLeave={e => e.currentTarget.style.color = highlight ? 'var(--accent)' : 'var(--text-tertiary)'}
     >{label}</button>
   );
 
@@ -346,11 +346,11 @@ export default function MediaPanel({
       {/* Header Row 1: Title + global controls */}
       <div style={{
         padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        borderBottom: '1px solid #2a2520', flexShrink: 0
+        borderBottom: '1px solid var(--border-subtle)', flexShrink: 0
       }}>
         <span style={{
           fontSize: '11px', fontWeight: '600', textTransform: 'uppercase',
-          letterSpacing: '1.5px', color: '#c9a96e'
+          letterSpacing: '1.5px', color: 'var(--accent)'
         }}>Media</span>
         {items.length > 0 && (
           <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
@@ -365,7 +365,7 @@ export default function MediaPanel({
       {items.length > 0 && (
         <div style={{
           padding: '3px 10px', display: 'flex', gap: '2px', alignItems: 'center',
-          borderBottom: '1px solid #2a2520', flexShrink: 0
+          borderBottom: '1px solid var(--border-subtle)', flexShrink: 0
         }}>
           {filterBtn('all', 'Tutti', items.length)}
           {filterBtn('audio', '🎵', audioCnt)}
@@ -377,7 +377,7 @@ export default function MediaPanel({
       {/* Items */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {filtered.length === 0 && (
-          <div style={{ padding: '20px', textAlign: 'center', color: '#4a4035', fontSize: '11px' }}>
+          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-disabled)', fontSize: '11px' }}>
             {items.length === 0
               ? 'Clicca un file media nell\'Explorer per aggiungerlo qui'
               : 'Nessun elemento per questo filtro'}
@@ -415,8 +415,8 @@ export default function MediaPanel({
       {contextMenu && onTelegramFile && (
         <div style={{
           position: 'fixed', left: contextMenu.x, top: contextMenu.y,
-          background: '#252018', border: '1px solid #3a3530', borderRadius: '6px',
-          zIndex: 2000, boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+          background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: '6px',
+          zIndex: 2000, boxShadow: 'var(--shadow-dropdown)',
           padding: '4px 0', minWidth: '180px'
         }}>
           <div
@@ -426,10 +426,10 @@ export default function MediaPanel({
               setContextMenu(null);
             }}
             style={{
-              padding: '6px 14px', fontSize: '12px', color: '#d4c5a9',
+              padding: '6px 14px', fontSize: '12px', color: 'var(--text-primary)',
               cursor: 'pointer', transition: 'background 0.1s'
             }}
-            onMouseEnter={e => e.currentTarget.style.background = '#3a3530'}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--border-default)'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
           >
             ✉️ Invia via Telegram

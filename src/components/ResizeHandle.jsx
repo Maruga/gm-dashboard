@@ -52,7 +52,7 @@ export default function ResizeHandle({ direction = 'vertical', onResize, style =
     [isVertical ? 'bottom' : 'right']: '0',
     [isVertical ? 'left' : 'top']: '2px',
     [isVertical ? 'width' : 'height']: '1px',
-    background: '#3a3530',
+    background: 'var(--border-default)',
     transition: 'background 0.2s'
   };
 
@@ -62,11 +62,11 @@ export default function ResizeHandle({ direction = 'vertical', onResize, style =
       onMouseDown={handleMouseDown}
       onMouseEnter={e => {
         const line = e.currentTarget.querySelector('.resize-line');
-        if (line) line.style.background = '#c9a96e';
+        if (line) line.style.background = 'var(--accent)';
       }}
       onMouseLeave={e => {
         const line = e.currentTarget.querySelector('.resize-line');
-        if (line) line.style.background = '#3a3530';
+        if (line) line.style.background = 'var(--border-default)';
       }}
     >
       <div className="resize-line" style={lineStyle} />

@@ -76,10 +76,10 @@ export default function NotesPanel({ notes, onNotesChange, onOpenSource, onClose
       transform: panelLeft !== null ? 'none' : 'translateX(-50%)',
       width: '400px',
       maxHeight: '70vh',
-      background: '#1e1b16',
-      border: '1px solid #3a3530',
+      background: 'var(--bg-panel)',
+      border: '1px solid var(--border-default)',
       borderRadius: '0 0 8px 8px',
-      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+      boxShadow: 'var(--shadow-dropdown)',
       zIndex: 1100,
       display: 'flex',
       flexDirection: 'column',
@@ -88,14 +88,14 @@ export default function NotesPanel({ notes, onNotesChange, onOpenSource, onClose
       {/* Header */}
       <div style={{
         padding: '8px 14px',
-        borderBottom: '1px solid #3a3530',
+        borderBottom: '1px solid var(--border-default)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         flexShrink: 0,
-        background: '#252018'
+        background: 'var(--bg-elevated)'
       }}>
-        <span style={{ fontSize: '12px', fontWeight: '600', color: '#c9a96e' }}>
+        <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--accent)' }}>
           📝 Note
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -103,11 +103,11 @@ export default function NotesPanel({ notes, onNotesChange, onOpenSource, onClose
             <span
               onClick={clearAll}
               style={{
-                fontSize: '11px', color: '#6a5a40', cursor: 'pointer',
+                fontSize: '11px', color: 'var(--text-tertiary)', cursor: 'pointer',
                 transition: 'color 0.2s'
               }}
-              onMouseEnter={e => e.currentTarget.style.color = '#c96e6e'}
-              onMouseLeave={e => e.currentTarget.style.color = '#6a5a40'}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--color-danger)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
             >
               Svuota tutto
             </span>
@@ -117,7 +117,7 @@ export default function NotesPanel({ notes, onNotesChange, onOpenSource, onClose
       </div>
 
       {/* Input */}
-      <div style={{ padding: '10px 14px', borderBottom: '1px solid #2a2520', flexShrink: 0 }}>
+      <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
         <div style={{ display: 'flex', gap: '8px' }}>
           <textarea
             ref={inputRef}
@@ -129,35 +129,35 @@ export default function NotesPanel({ notes, onNotesChange, onOpenSource, onClose
             style={{
               flex: 1,
               padding: '6px 10px',
-              background: '#252018',
-              border: '1px solid #3a3530',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-default)',
               borderRadius: '4px',
-              color: '#d4c5a9',
+              color: 'var(--text-primary)',
               fontSize: '12px',
               outline: 'none',
               fontFamily: 'inherit',
               boxSizing: 'border-box',
               resize: 'none'
             }}
-            onFocus={e => e.currentTarget.style.borderColor = '#c9a96e'}
-            onBlur={e => e.currentTarget.style.borderColor = '#3a3530'}
+            onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+            onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
           />
           <button
             onClick={addNote}
             style={{
               background: 'none',
-              border: '1px solid #3a3530',
+              border: '1px solid var(--border-default)',
               borderRadius: '4px',
               padding: '4px 12px',
-              color: '#c9a96e',
+              color: 'var(--accent)',
               fontSize: '11px',
               cursor: 'pointer',
               alignSelf: 'flex-end',
               transition: 'all 0.2s',
               flexShrink: 0
             }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9a96e'; e.currentTarget.style.background = '#252018'; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = '#3a3530'; e.currentTarget.style.background = 'none'; }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-elevated)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.background = 'none'; }}
           >
             Aggiungi
           </button>
@@ -167,7 +167,7 @@ export default function NotesPanel({ notes, onNotesChange, onOpenSource, onClose
       {/* Notes list */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {notes.length === 0 ? (
-          <div style={{ padding: '20px', textAlign: 'center', color: '#4a4035', fontSize: '12px', fontStyle: 'italic' }}>
+          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-disabled)', fontSize: '12px', fontStyle: 'italic' }}>
             Nessuna nota
           </div>
         ) : (
@@ -176,13 +176,13 @@ export default function NotesPanel({ notes, onNotesChange, onOpenSource, onClose
               key={note.id}
               style={{
                 padding: '10px 14px',
-                borderBottom: '1px solid #2a2520',
+                borderBottom: '1px solid var(--border-subtle)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '10px',
                 transition: 'background 0.1s'
               }}
-              onMouseEnter={e => e.currentTarget.style.background = '#222018'}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover-subtle)'}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >
               {/* Left: open source link */}
@@ -192,12 +192,12 @@ export default function NotesPanel({ notes, onNotesChange, onOpenSource, onClose
                   title={`Apri ${note.source}`}
                   style={{
                     cursor: 'pointer', flexShrink: 0,
-                    color: '#c9a96e', transition: 'all 0.2s',
+                    color: 'var(--accent)', transition: 'all 0.2s',
                     padding: '3px', borderRadius: '3px',
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.color = '#e8c97a'; e.currentTarget.style.background = 'rgba(201, 169, 110, 0.12)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = '#c9a96e'; e.currentTarget.style.background = 'transparent'; }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-hover)'; e.currentTarget.style.background = 'var(--accent-a12)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.background = 'transparent'; }}
                 >
                   <SquareArrowOutUpRight size={14} />
                 </span>
@@ -208,18 +208,18 @@ export default function NotesPanel({ notes, onNotesChange, onOpenSource, onClose
               {/* Center: text + meta */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{
-                  fontSize: '12px', color: '#d4c5a9', lineHeight: '1.5',
+                  fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.5',
                   whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                   marginBottom: '3px'
                 }}>
                   {note.text}
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '10px', color: '#5a4a30' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted-alt)' }}>
                     {formatTimestamp(note.timestamp)}
                   </span>
                   {note.source && (
-                    <span style={{ fontSize: '10px', color: '#4a4035', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-disabled)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       da: {note.source}
                     </span>
                   )}

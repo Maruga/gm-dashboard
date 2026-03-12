@@ -3,10 +3,39 @@ import { renderMarkdown } from '../utils/markdownRenderer';
 import { getFileType, FILE_TYPES } from '../utils/fileTypes';
 import { useScrollMemory } from '../hooks/useScrollMemory';
 
+/**
+ * Apply keyword highlights to HTML string.
+ * Splits on HTML tags, only replaces in text parts. Case-insensitive.
+ */
+function applyKeywordHighlightsToHtml(html, words) {
+  if (!html || !words || words.length === 0) return html;
+
+  // Build sorted words (longest first to avoid partial overlap)
+  const sorted = [...words].sort((a, b) => b.text.length - a.text.length);
+  const pattern = new RegExp(
+    '(' + sorted.map(w => w.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')',
+    'gi'
+  );
+  const colorMap = {};
+  for (const w of words) colorMap[w.text.toLowerCase()] = w.color;
+
+  const parts = html.split(/(<[^>]+>)/);
+  const processed = parts.map(part => {
+    if (part.startsWith('<')) return part; // HTML tag — skip
+    return part.replace(pattern, (match) => {
+      const color = colorMap[match.toLowerCase()] || 'rgba(201,169,110,0.55)';
+      return `<mark data-kw-hl="true" style="background:${color};color:inherit;padding:1px 2px;border-radius:2px">${match}</mark>`;
+    });
+  });
+  return processed.join('');
+}
+
+/**
+ * Apply search highlights to HTML string (with target offset tracking).
+ */
 function highlightHtml(html, query, targetOffset) {
   if (!query || !html) return { html, targetIdx: -1 };
   const qLower = query.toLowerCase();
-  // Split HTML into tags and text parts
   const parts = html.split(/(<[^>]+>)/);
   let textOffset = 0;
   let matchIdx = 0;
@@ -14,7 +43,7 @@ function highlightHtml(html, query, targetOffset) {
   let bestDist = Infinity;
 
   const processed = parts.map(part => {
-    if (part.startsWith('<')) return part; // HTML tag — skip
+    if (part.startsWith('<')) return part;
     const lower = part.toLowerCase();
     let result = '';
     let lastPos = 0;
@@ -26,34 +55,28 @@ function highlightHtml(html, query, targetOffset) {
         bestDist = dist;
         bestIdx = matchIdx;
       }
-      result += escapeForMark(part.substring(lastPos, pos));
-      result += `<mark data-search-hl="true" data-search-idx="${matchIdx}" style="background:rgba(201,169,110,0.3);color:inherit;padding:0 1px;border-radius:2px">${escapeForMark(part.substring(pos, pos + query.length))}</mark>`;
+      result += part.substring(lastPos, pos);
+      result += `<mark data-search-hl="true" data-search-idx="${matchIdx}" style="background:var(--accent-a30);color:inherit;padding:0 1px;border-radius:2px">${part.substring(pos, pos + query.length)}</mark>`;
       matchIdx++;
       lastPos = pos + query.length;
     }
-    result += escapeForMark(part.substring(lastPos));
+    result += part.substring(lastPos);
     textOffset += part.length;
     return result;
   });
 
   let finalHtml = processed.join('');
-  // Make target match brighter
   if (bestIdx >= 0) {
     finalHtml = finalHtml.replace(
-      `data-search-idx="${bestIdx}" style="background:rgba(201,169,110,0.3)`,
-      `data-search-idx="${bestIdx}" style="background:rgba(201,169,110,0.55)`
+      `data-search-idx="${bestIdx}" style="background:var(--accent-a30)`,
+      `data-search-idx="${bestIdx}" style="background:var(--accent-a55)`
     );
   }
   return { html: finalHtml, targetIdx: bestIdx };
 }
 
-function escapeForMark(text) {
-  // Text parts from split are already HTML — don't double-escape
-  return text;
-}
-
 const Viewer = forwardRef(function Viewer({
-  currentFile, scrollKeyPrefix, searchHighlight, onImageClick, onVideoClick,
+  currentFile, scrollKeyPrefix, searchHighlight, highlightKeywords, onImageClick, onVideoClick,
   scrollMapRef, onScrollChanged
 }, ref) {
   const [renderedHtml, setRenderedHtml] = useState('');
@@ -107,7 +130,7 @@ const Viewer = forwardRef(function Viewer({
         } else if (currentFile.extension === '.html' || currentFile.extension === '.htm') {
           setRenderedHtml(text);
         } else {
-          setRenderedHtml(`<pre style="white-space: pre-wrap; font-family: 'Courier New', monospace; color: #d4c5a9;">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`);
+          setRenderedHtml(`<pre style="white-space: pre-wrap; font-family: 'Courier New', monospace; color: var(--text-primary);">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`);
         }
 
         const targetScroll = getScroll(scrollKey);
@@ -117,12 +140,9 @@ const Viewer = forwardRef(function Viewer({
           }
         };
 
-        // Double rAF to ensure React has committed the DOM update
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             applyScroll();
-
-            // Re-apply after images load (they shift layout)
             if (containerRef.current) {
               const imgs = containerRef.current.querySelectorAll('img');
               imgs.forEach(img => {
@@ -138,16 +158,26 @@ const Viewer = forwardRef(function Viewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileIdentity]);
 
-  // Build display HTML with search highlights baked in
-  const { displayHtml, targetIdx } = useMemo(() => {
-    if (!searchHighlight?.query || !renderedHtml) {
-      return { displayHtml: renderedHtml, targetIdx: -1 };
-    }
-    const result = highlightHtml(renderedHtml, searchHighlight.query, searchHighlight.offset);
-    return { displayHtml: result.html, targetIdx: result.targetIdx };
-  }, [renderedHtml, searchHighlight]);
+  // Stable keyword version string for memoization
+  const kwEnabled = highlightKeywords?.enabled && highlightKeywords?.words?.length > 0;
+  const kwWords = highlightKeywords?.words;
+  const kwVersion = kwEnabled ? kwWords.map(w => w.text + w.color).join('|') : '';
 
-  // Scroll to target highlight, then fade out after 1s hold + 3s transition
+  // Pipeline: renderedHtml → keyword highlights → search highlights → displayHtml
+  const kwHtml = useMemo(() => {
+    if (!kwEnabled || !renderedHtml) return renderedHtml;
+    return applyKeywordHighlightsToHtml(renderedHtml, kwWords);
+  }, [renderedHtml, kwEnabled, kwVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { displayHtml, targetIdx } = useMemo(() => {
+    if (!searchHighlight?.query || !kwHtml) {
+      return { displayHtml: kwHtml, targetIdx: -1 };
+    }
+    const result = highlightHtml(kwHtml, searchHighlight.query, searchHighlight.offset);
+    return { displayHtml: result.html, targetIdx: result.targetIdx };
+  }, [kwHtml, searchHighlight]);
+
+  // Scroll to target search highlight, then fade out
   useEffect(() => {
     if (targetIdx < 0 || !containerRef.current) return;
     const scrollTimer = setTimeout(() => {
@@ -157,7 +187,6 @@ const Viewer = forwardRef(function Viewer({
           if (mark) {
             mark.scrollIntoView({ block: 'center', behavior: 'smooth' });
           }
-          // After 1s hold, fade out all marks over 3s
           const fadeTimer = setTimeout(() => {
             const marks = containerRef.current?.querySelectorAll('mark[data-search-hl]');
             if (marks) {
@@ -192,7 +221,7 @@ const Viewer = forwardRef(function Viewer({
         fontFamily: "'Georgia', 'Times New Roman', serif",
         fontSize: '15px',
         lineHeight: '1.7',
-        color: '#d4c5a9'
+        color: 'var(--text-primary)'
       }}
       dangerouslySetInnerHTML={{ __html: displayHtml }}
     />

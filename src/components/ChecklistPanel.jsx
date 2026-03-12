@@ -116,10 +116,10 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
 
   const btnStyle = {
     background: 'none',
-    border: '1px solid #3a3530',
+    border: '1px solid var(--border-default)',
     borderRadius: '4px',
     padding: '4px 12px',
-    color: '#c9a96e',
+    color: 'var(--accent)',
     fontSize: '11px',
     cursor: 'pointer',
     transition: 'all 0.2s',
@@ -127,11 +127,11 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
   };
 
   const filterBtnStyle = (active) => ({
-    background: active ? 'rgba(201, 169, 110, 0.12)' : 'none',
-    border: `1px solid ${active ? '#c9a96e' : '#3a3530'}`,
+    background: active ? 'var(--accent-a12)' : 'none',
+    border: `1px solid ${active ? 'var(--accent)' : 'var(--border-default)'}`,
     borderRadius: '4px',
     padding: '2px 8px',
-    color: active ? '#c9a96e' : '#6a5a40',
+    color: active ? 'var(--accent)' : 'var(--text-tertiary)',
     fontSize: '10px',
     cursor: 'pointer',
     transition: 'all 0.2s',
@@ -146,10 +146,10 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
       transform: panelLeft !== null ? 'none' : 'translateX(-50%)',
       width: '450px',
       maxHeight: '70vh',
-      background: '#1e1b16',
-      border: '1px solid #3a3530',
+      background: 'var(--bg-panel)',
+      border: '1px solid var(--border-default)',
       borderRadius: '0 0 8px 8px',
-      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+      boxShadow: 'var(--shadow-dropdown)',
       zIndex: 1100,
       display: 'flex',
       flexDirection: 'column',
@@ -158,14 +158,14 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
       {/* Header */}
       <div style={{
         padding: '8px 14px',
-        borderBottom: '1px solid #3a3530',
+        borderBottom: '1px solid var(--border-default)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         flexShrink: 0,
-        background: '#252018'
+        background: 'var(--bg-elevated)'
       }}>
-        <span style={{ fontSize: '12px', fontWeight: '600', color: '#c9a96e' }}>
+        <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--accent)' }}>
           ☐ Checklist
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -173,11 +173,11 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
             <span
               onClick={clearAll}
               style={{
-                fontSize: '11px', color: '#6a5a40', cursor: 'pointer',
+                fontSize: '11px', color: 'var(--text-tertiary)', cursor: 'pointer',
                 transition: 'color 0.2s'
               }}
-              onMouseEnter={e => e.currentTarget.style.color = '#c96e6e'}
-              onMouseLeave={e => e.currentTarget.style.color = '#6a5a40'}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--color-danger)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
             >
               Svuota tutto
             </span>
@@ -189,7 +189,7 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
       {/* Filter bar */}
       <div style={{
         padding: '6px 14px',
-        borderBottom: '1px solid #2a2520',
+        borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         gap: '6px',
         flexShrink: 0
@@ -206,7 +206,7 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
       </div>
 
       {/* Input */}
-      <div style={{ padding: '10px 14px', borderBottom: '1px solid #2a2520', flexShrink: 0 }}>
+      <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
         <div style={{ display: 'flex', gap: '8px' }}>
           <input
             ref={inputRef}
@@ -217,31 +217,31 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
             style={{
               flex: 1,
               padding: '6px 10px',
-              background: '#252018',
-              border: '1px solid #3a3530',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-default)',
               borderRadius: '4px',
-              color: '#d4c5a9',
+              color: 'var(--text-primary)',
               fontSize: '12px',
               outline: 'none',
               fontFamily: 'inherit',
               boxSizing: 'border-box'
             }}
-            onFocus={e => e.currentTarget.style.borderColor = '#c9a96e'}
-            onBlur={e => e.currentTarget.style.borderColor = '#3a3530'}
+            onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+            onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
           />
           <button
             onClick={addItem}
             style={btnStyle}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9a96e'; e.currentTarget.style.background = '#252018'; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = '#3a3530'; e.currentTarget.style.background = 'none'; }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-elevated)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.background = 'none'; }}
           >
             Aggiungi
           </button>
           <button
             onClick={() => setBulkOpen(!bulkOpen)}
-            style={{ ...btnStyle, color: bulkOpen ? '#e8c97a' : '#c9a96e' }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9a96e'; e.currentTarget.style.background = '#252018'; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = '#3a3530'; e.currentTarget.style.background = 'none'; }}
+            style={{ ...btnStyle, color: bulkOpen ? 'var(--accent-hover)' : 'var(--accent)' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-elevated)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.background = 'none'; }}
             title="Incolla lista"
           >
             📋
@@ -259,25 +259,25 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
               style={{
                 width: '100%',
                 padding: '6px 10px',
-                background: '#252018',
-                border: '1px solid #3a3530',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-default)',
                 borderRadius: '4px',
-                color: '#d4c5a9',
+                color: 'var(--text-primary)',
                 fontSize: '12px',
                 outline: 'none',
                 fontFamily: 'inherit',
                 boxSizing: 'border-box',
                 resize: 'vertical'
               }}
-              onFocus={e => e.currentTarget.style.borderColor = '#c9a96e'}
-              onBlur={e => e.currentTarget.style.borderColor = '#3a3530'}
+              onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+              onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
               autoFocus
             />
             <button
               onClick={addBulk}
               style={{ ...btnStyle, marginTop: '6px', width: '100%' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9a96e'; e.currentTarget.style.background = '#252018'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = '#3a3530'; e.currentTarget.style.background = 'none'; }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-elevated)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.background = 'none'; }}
             >
               Aggiungi tutto
             </button>
@@ -288,7 +288,7 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
       {/* Items list */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {filtered.length === 0 ? (
-          <div style={{ padding: '20px', textAlign: 'center', color: '#4a4035', fontSize: '12px', fontStyle: 'italic' }}>
+          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-disabled)', fontSize: '12px', fontStyle: 'italic' }}>
             {filter === 'todo' ? 'Nessun elemento da fare' : filter === 'done' ? 'Nessun elemento completato' : 'Nessun elemento'}
           </div>
         ) : (
@@ -297,14 +297,14 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
               key={item.id}
               style={{
                 padding: '8px 14px',
-                borderBottom: '1px solid #2a2520',
+                borderBottom: '1px solid var(--border-subtle)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '10px',
                 transition: 'background 0.1s',
                 opacity: item.checked ? 0.5 : 1
               }}
-              onMouseEnter={e => e.currentTarget.style.background = '#222018'}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover-subtle)'}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >
               {/* Checkbox */}
@@ -312,13 +312,13 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
                 onClick={() => toggleCheck(item.id)}
                 style={{
                   width: '16px', height: '16px', flexShrink: 0,
-                  border: `1px solid ${item.checked ? '#c9a96e' : '#5a4a30'}`,
+                  border: `1px solid ${item.checked ? 'var(--accent)' : 'var(--text-muted-alt)'}`,
                   borderRadius: '3px',
                   cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: item.checked ? 'rgba(201, 169, 110, 0.15)' : 'transparent',
+                  background: item.checked ? 'var(--accent-a15)' : 'transparent',
                   transition: 'all 0.15s',
-                  fontSize: '11px', color: '#c9a96e', lineHeight: '1'
+                  fontSize: '11px', color: 'var(--accent)', lineHeight: '1'
                 }}
               >
                 {item.checked ? '✓' : ''}
@@ -331,12 +331,12 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
                   title={`Apri ${item.source}`}
                   style={{
                     cursor: 'pointer', flexShrink: 0,
-                    color: '#c9a96e', transition: 'all 0.2s',
+                    color: 'var(--accent)', transition: 'all 0.2s',
                     padding: '3px', borderRadius: '3px',
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.color = '#e8c97a'; e.currentTarget.style.background = 'rgba(201, 169, 110, 0.12)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = '#c9a96e'; e.currentTarget.style.background = 'transparent'; }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-hover)'; e.currentTarget.style.background = 'var(--accent-a12)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.background = 'transparent'; }}
                 >
                   <SquareArrowOutUpRight size={13} />
                 </span>
@@ -347,18 +347,18 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
               {/* Text + meta */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{
-                  fontSize: '12px', color: '#d4c5a9', lineHeight: '1.5',
+                  fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.5',
                   whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                   textDecoration: item.checked ? 'line-through' : 'none'
                 }}>
                   {item.text}
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '10px', color: '#5a4a30' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted-alt)' }}>
                     {formatTimestamp(item.timestamp)}
                   </span>
                   {item.source && (
-                    <span style={{ fontSize: '10px', color: '#4a4035', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-disabled)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       da: {item.source}
                     </span>
                   )}

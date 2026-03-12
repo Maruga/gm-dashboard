@@ -1,4 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import { THEMES, THEME_LIST } from '../themes/themeDefinitions';
+import { applyTheme, saveThemeId, getStoredThemeId, applyFontScale, saveFontScale, getStoredFontScale } from '../themes/themeEngine';
+
+const HIGHLIGHT_PALETTE = [
+  'rgba(201,169,110,0.55)',
+  'rgba(220,60,60,0.50)',
+  'rgba(70,130,230,0.50)',
+  'rgba(80,185,80,0.50)',
+  'rgba(160,90,230,0.50)',
+  'rgba(230,160,30,0.55)',
+  'rgba(50,190,190,0.50)',
+  'rgba(220,80,150,0.50)'
+];
+
+function rgbaToHex(rgba) {
+  const m = rgba.match(/\d+/g);
+  if (!m) return '#c9a96e';
+  return '#' + [m[0], m[1], m[2]].map(n => parseInt(n).toString(16).padStart(2, '0')).join('');
+}
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 const MONTHS_IT = [
   'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
@@ -8,10 +34,10 @@ const MONTHS_IT = [
 const inputStyle = {
   width: '100%',
   padding: '8px 12px',
-  background: '#252018',
-  border: '1px solid #3a3530',
+  background: 'var(--bg-elevated)',
+  border: '1px solid var(--border-default)',
   borderRadius: '4px',
-  color: '#d4c5a9',
+  color: 'var(--text-primary)',
   fontSize: '13px',
   outline: 'none',
   fontFamily: 'inherit',
@@ -20,7 +46,7 @@ const inputStyle = {
 
 const labelStyle = {
   fontSize: '12px',
-  color: '#8a7a60',
+  color: 'var(--text-secondary)',
   marginBottom: '4px',
   display: 'block'
 };
@@ -30,10 +56,10 @@ const sectionStyle = {
   fontWeight: '600',
   textTransform: 'uppercase',
   letterSpacing: '1.5px',
-  color: '#c9a96e',
+  color: 'var(--accent)',
   marginBottom: '16px',
   paddingBottom: '8px',
-  borderBottom: '1px solid #3a3530'
+  borderBottom: '1px solid var(--border-default)'
 };
 
 function parseDate(dateStr) {
@@ -56,12 +82,19 @@ export default function SettingsPanel({
   botStatus, onStartBot, onStopBot, onDisconnectAllPlayers,
   referenceManuals, onReferenceChange,
   onClose,
-  onResetGameDate
+  onResetGameDate,
+  highlightKeywords, onHighlightChange
 }) {
   const [showToken, setShowToken] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState(null);
   const [wizardToken, setWizardToken] = useState('');
+  const [currentTheme, setCurrentTheme] = useState(getStoredThemeId);
+  const [fontScale, setFontScale] = useState(getStoredFontScale);
+  const [newWord, setNewWord] = useState('');
+  const [bulkWords, setBulkWords] = useState('');
+  const [confirmClearWords, setConfirmClearWords] = useState(false);
+  const confirmWordsTimer = useRef(null);
 
   const updateSetting = (key, value) => {
     onSettingsChange(prev => ({ ...prev, [key]: value }));
@@ -104,7 +137,7 @@ export default function SettingsPanel({
       onClick={onClose}
       style={{
         position: 'fixed', inset: 0,
-        background: 'rgba(0,0,0,0.7)',
+        background: 'var(--overlay-medium)',
         zIndex: 3000,
         display: 'flex', alignItems: 'center', justifyContent: 'center'
       }}
@@ -114,8 +147,8 @@ export default function SettingsPanel({
         style={{
           width: '80%', maxWidth: '800px',
           height: '80vh',
-          background: '#1e1b16',
-          border: '1px solid #3a3530',
+          background: 'var(--bg-panel)',
+          border: '1px solid var(--border-default)',
           borderRadius: '8px',
           display: 'flex', flexDirection: 'column',
           overflow: 'hidden'
@@ -124,13 +157,13 @@ export default function SettingsPanel({
         {/* Header */}
         <div style={{
           padding: '14px 20px',
-          borderBottom: '1px solid #3a3530',
+          borderBottom: '1px solid var(--border-default)',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          flexShrink: 0, background: '#252018'
+          flexShrink: 0, background: 'var(--bg-elevated)'
         }}>
           <span style={{
             fontSize: '14px', fontWeight: '600',
-            color: '#c9a96e', letterSpacing: '1px'
+            color: 'var(--accent)', letterSpacing: '1px'
           }}>
             Impostazioni
           </span>
@@ -139,6 +172,280 @@ export default function SettingsPanel({
 
         {/* Scrollable content */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+
+          {/* === ASPETTO === */}
+          <div style={sectionStyle}>Aspetto</div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={labelStyle}>Tema</label>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: '8px',
+              marginBottom: '8px'
+            }}>
+              {THEME_LIST.map(t => {
+                const theme = THEMES[t.id];
+                const isActive = t.id === currentTheme;
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => {
+                      applyTheme(t.id);
+                      saveThemeId(t.id);
+                      setCurrentTheme(t.id);
+                    }}
+                    style={{
+                      cursor: 'pointer',
+                      border: isActive ? '2px solid var(--accent)' : '1px solid var(--border-default)',
+                      borderRadius: '6px',
+                      padding: isActive ? '7px' : '8px',
+                      background: 'var(--bg-main)',
+                      transition: 'all 0.15s',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    {/* Color swatches */}
+                    <div style={{ display: 'flex', gap: '3px' }}>
+                      <div style={{ width: '18px', height: '18px', borderRadius: '3px', background: theme['--bg-main'], border: '1px solid ' + theme['--border-default'] }} />
+                      <div style={{ width: '18px', height: '18px', borderRadius: '3px', background: theme['--accent'] }} />
+                      <div style={{ width: '18px', height: '18px', borderRadius: '3px', background: theme['--text-primary'], opacity: 0.8 }} />
+                    </div>
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: isActive ? '600' : '400',
+                      color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                      textAlign: 'center',
+                      lineHeight: '1.2'
+                    }}>
+                      {t.name}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '32px' }}>
+            <label style={labelStyle}>
+              Scala caratteri: {fontScale.toFixed(1)}x
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>A</span>
+              <input
+                type="range"
+                min="0.8"
+                max="1.4"
+                step="0.1"
+                value={fontScale}
+                onChange={e => {
+                  const v = parseFloat(e.target.value);
+                  setFontScale(v);
+                  applyFontScale(v);
+                  saveFontScale(v);
+                }}
+                style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent)' }}
+              />
+              <span style={{ fontSize: '16px', color: 'var(--text-tertiary)' }}>A</span>
+            </div>
+          </div>
+
+          {/* === PAROLE EVIDENZIATE === */}
+          <div style={{ ...sectionStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>Parole evidenziate</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '400', textTransform: 'none', letterSpacing: '0' }}>
+              <span style={{ color: highlightKeywords?.enabled ? 'var(--color-success)' : 'var(--text-disabled)' }}>
+                {highlightKeywords?.enabled ? 'ON' : 'OFF'}
+              </span>
+              <span
+                onClick={() => onHighlightChange(prev => ({ ...prev, enabled: !prev.enabled }))}
+                style={{
+                  width: '32px', height: '16px', borderRadius: '8px',
+                  background: highlightKeywords?.enabled ? 'var(--accent)' : 'var(--border-default)',
+                  position: 'relative', cursor: 'pointer', transition: 'background 0.2s',
+                  display: 'inline-block', flexShrink: 0
+                }}
+              >
+                <span style={{
+                  width: '12px', height: '12px', borderRadius: '50%',
+                  background: 'var(--text-bright)',
+                  position: 'absolute', top: '2px',
+                  left: highlightKeywords?.enabled ? '18px' : '2px',
+                  transition: 'left 0.2s'
+                }} />
+              </span>
+            </label>
+          </div>
+
+          {/* Default color + palette */}
+          <div style={{ marginBottom: '12px' }}>
+            <label style={labelStyle}>Colore predefinito</label>
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+              {HIGHLIGHT_PALETTE.map(c => (
+                <span
+                  key={c}
+                  onClick={() => onHighlightChange(prev => ({ ...prev, defaultColor: c }))}
+                  style={{
+                    width: '22px', height: '22px', borderRadius: '3px',
+                    background: c, cursor: 'pointer',
+                    border: highlightKeywords?.defaultColor === c ? '2px solid var(--accent)' : '1px solid var(--border-default)',
+                    transition: 'border 0.15s'
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Word list */}
+          {(highlightKeywords?.words || []).length > 0 && (
+            <div style={{
+              border: '1px solid var(--border-default)', borderRadius: '4px',
+              marginBottom: '12px', maxHeight: '200px', overflowY: 'auto'
+            }}>
+              {highlightKeywords.words.map((w, idx) => (
+                <div key={idx} style={{
+                  padding: '5px 10px', display: 'flex', alignItems: 'center', gap: '8px',
+                  borderBottom: idx < highlightKeywords.words.length - 1 ? '1px solid var(--border-subtle)' : 'none'
+                }}>
+                  <span style={{ flex: 1, fontSize: '12px', color: 'var(--text-primary)' }}>{w.text}</span>
+                  {/* Color picker swatch */}
+                  <span style={{ position: 'relative', flexShrink: 0 }}>
+                    <input
+                      type="color"
+                      value={rgbaToHex(w.color)}
+                      onChange={e => {
+                        const hex = e.target.value;
+                        const rgba = hexToRgba(hex, 0.3);
+                        onHighlightChange(prev => ({
+                          ...prev,
+                          words: prev.words.map((ww, i) => i === idx ? { ...ww, color: rgba } : ww)
+                        }));
+                      }}
+                      style={{
+                        width: '18px', height: '18px', border: 'none', padding: 0,
+                        cursor: 'pointer', background: 'transparent'
+                      }}
+                      title="Cambia colore"
+                    />
+                    <span style={{
+                      position: 'absolute', inset: 0, pointerEvents: 'none',
+                      background: w.color, borderRadius: '2px', border: '1px solid var(--border-default)'
+                    }} />
+                  </span>
+                  {/* Quick color palette */}
+                  {HIGHLIGHT_PALETTE.map(c => (
+                    <span
+                      key={c}
+                      onClick={() => onHighlightChange(prev => ({
+                        ...prev,
+                        words: prev.words.map((ww, i) => i === idx ? { ...ww, color: c } : ww)
+                      }))}
+                      style={{
+                        width: '12px', height: '12px', borderRadius: '2px',
+                        background: c, cursor: 'pointer', flexShrink: 0,
+                        border: w.color === c ? '1px solid var(--accent)' : '1px solid transparent'
+                      }}
+                    />
+                  ))}
+                  <span
+                    className="close-btn"
+                    onClick={() => onHighlightChange(prev => ({
+                      ...prev,
+                      words: prev.words.filter((_, i) => i !== idx)
+                    }))}
+                    style={{ fontSize: '12px', flexShrink: 0 }}
+                  >✕</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add single word */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+            <input
+              type="text"
+              value={newWord}
+              onChange={e => setNewWord(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  const w = newWord.trim();
+                  if (!w) return;
+                  onHighlightChange(prev => {
+                    if (prev.words.some(ww => ww.text.toLowerCase() === w.toLowerCase())) return prev;
+                    return { ...prev, words: [...prev.words, { text: w, color: prev.defaultColor }] };
+                  });
+                  setNewWord('');
+                }
+              }}
+              placeholder="Aggiungi parola..."
+              style={{ ...inputStyle, flex: 1 }}
+              onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+              onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+            />
+          </div>
+
+          {/* Bulk add */}
+          <div style={{ marginBottom: '12px' }}>
+            <label style={labelStyle}>Aggiunta rapida (una parola per riga)</label>
+            <textarea
+              value={bulkWords}
+              onChange={e => setBulkWords(e.target.value)}
+              rows={3}
+              style={{
+                ...inputStyle, resize: 'none', fontFamily: 'inherit',
+                lineHeight: '1.5', marginBottom: '6px'
+              }}
+              onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+              onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+            />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => {
+                  const lines = bulkWords.split('\n').map(l => l.trim()).filter(Boolean);
+                  if (lines.length === 0) return;
+                  onHighlightChange(prev => {
+                    const existing = new Set(prev.words.map(w => w.text.toLowerCase()));
+                    const newWords = lines.filter(l => !existing.has(l.toLowerCase()))
+                      .map(text => ({ text, color: prev.defaultColor }));
+                    return { ...prev, words: [...prev.words, ...newWords] };
+                  });
+                  setBulkWords('');
+                }}
+                disabled={!bulkWords.trim()}
+                style={{
+                  background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                  padding: '4px 12px', color: bulkWords.trim() ? 'var(--accent)' : 'var(--text-disabled)',
+                  fontSize: '11px', cursor: bulkWords.trim() ? 'pointer' : 'not-allowed', transition: 'all 0.2s'
+                }}
+              >
+                Aggiungi tutte
+              </button>
+              {(highlightKeywords?.words || []).length > 0 && (
+                <button
+                  onClick={() => {
+                    if (confirmClearWords) {
+                      onHighlightChange(prev => ({ ...prev, words: [] }));
+                      setConfirmClearWords(false);
+                      clearTimeout(confirmWordsTimer.current);
+                    } else {
+                      setConfirmClearWords(true);
+                      confirmWordsTimer.current = setTimeout(() => setConfirmClearWords(false), 3000);
+                    }
+                  }}
+                  style={{
+                    background: 'none', border: '1px solid var(--color-danger-bg)', borderRadius: '4px',
+                    padding: '4px 12px', color: 'var(--color-danger)',
+                    fontSize: '11px', cursor: 'pointer', transition: 'all 0.2s'
+                  }}
+                >
+                  {confirmClearWords ? 'Sicuro?' : 'Svuota tutto'}
+                </button>
+              )}
+            </div>
+          </div>
 
           {/* === PROGETTO === */}
           <div style={sectionStyle}>Progetto</div>
@@ -151,8 +458,8 @@ export default function SettingsPanel({
               placeholder={defaultProjectName}
               onChange={e => updateSetting('projectName', e.target.value)}
               style={inputStyle}
-              onFocus={e => e.currentTarget.style.borderColor = '#c9a96e'}
-              onBlur={e => e.currentTarget.style.borderColor = '#3a3530'}
+              onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+              onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
             />
           </div>
 
@@ -165,8 +472,8 @@ export default function SettingsPanel({
                 value={date.day}
                 onChange={e => updateDate('day', parseInt(e.target.value) || 1)}
                 style={{ ...inputStyle, width: '70px', textAlign: 'center' }}
-                onFocus={e => e.currentTarget.style.borderColor = '#c9a96e'}
-                onBlur={e => e.currentTarget.style.borderColor = '#3a3530'}
+                onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
               />
               <select
                 value={date.month}
@@ -185,20 +492,20 @@ export default function SettingsPanel({
                 value={date.year}
                 onChange={e => updateDate('year', parseInt(e.target.value) || 2000)}
                 style={{ ...inputStyle, width: '90px', textAlign: 'center' }}
-                onFocus={e => e.currentTarget.style.borderColor = '#c9a96e'}
-                onBlur={e => e.currentTarget.style.borderColor = '#3a3530'}
+                onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
               />
               {onResetGameDate && (
                 <button
                   onClick={onResetGameDate}
                   title="Riporta la data del gioco alla data iniziale configurata"
                   style={{
-                    background: 'none', border: '1px solid #3a3530', borderRadius: '4px',
-                    padding: '6px 12px', color: '#8a7a60', fontSize: '12px', cursor: 'pointer',
+                    background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                    padding: '6px 12px', color: 'var(--text-secondary)', fontSize: '12px', cursor: 'pointer',
                     whiteSpace: 'nowrap', transition: 'all 0.2s'
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9a96e'; e.currentTarget.style.color = '#c9a96e'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#3a3530'; e.currentTarget.style.color = '#8a7a60'; }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
                 >
                   🔄 Reimposta data gioco
                 </button>
@@ -220,34 +527,34 @@ export default function SettingsPanel({
             onClick={addPlayer}
             style={{
               background: 'none',
-              border: '1px solid #3a3530',
+              border: '1px solid var(--border-default)',
               borderRadius: '4px',
               padding: '6px 16px',
-              color: '#c9a96e',
+              color: 'var(--accent)',
               fontSize: '13px',
               cursor: 'pointer',
               marginBottom: '16px',
               transition: 'all 0.2s'
             }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9a96e'; e.currentTarget.style.background = '#252018'; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = '#3a3530'; e.currentTarget.style.background = 'none'; }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-elevated)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.background = 'none'; }}
           >
             ➕ Aggiungi PG
           </button>
 
           {players.length === 0 && (
-            <div style={{ color: '#4a4035', fontSize: '13px', fontStyle: 'italic', marginBottom: '16px' }}>
+            <div style={{ color: 'var(--text-disabled)', fontSize: '13px', fontStyle: 'italic', marginBottom: '16px' }}>
               Nessun personaggio configurato
             </div>
           )}
 
           {players.map((pg, idx) => (
             <div key={pg.id} style={{
-              border: '1px solid #3a3530',
+              border: '1px solid var(--border-default)',
               borderRadius: '6px',
               padding: '16px',
               marginBottom: '12px',
-              background: '#1a1714'
+              background: 'var(--bg-main)'
             }}>
               <div style={{ display: 'flex', gap: '12px', marginBottom: '10px' }}>
                 <div style={{ flex: 1 }}>
@@ -258,8 +565,8 @@ export default function SettingsPanel({
                     placeholder="es. Ispettore Kimura"
                     onChange={e => updatePlayer(pg.id, 'characterName', e.target.value)}
                     style={inputStyle}
-                    onFocus={e => e.currentTarget.style.borderColor = '#c9a96e'}
-                    onBlur={e => e.currentTarget.style.borderColor = '#3a3530'}
+                    onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                    onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
                   />
                 </div>
                 <div style={{ flex: 1 }}>
@@ -270,8 +577,8 @@ export default function SettingsPanel({
                     placeholder="es. Marco"
                     onChange={e => updatePlayer(pg.id, 'playerName', e.target.value)}
                     style={inputStyle}
-                    onFocus={e => e.currentTarget.style.borderColor = '#c9a96e'}
-                    onBlur={e => e.currentTarget.style.borderColor = '#3a3530'}
+                    onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                    onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
                   />
                 </div>
               </div>
@@ -284,8 +591,8 @@ export default function SettingsPanel({
                   placeholder="es. Specialista in interrogatori, ex militare"
                   onChange={e => updatePlayer(pg.id, 'note', e.target.value)}
                   style={inputStyle}
-                  onFocus={e => e.currentTarget.style.borderColor = '#c9a96e'}
-                  onBlur={e => e.currentTarget.style.borderColor = '#3a3530'}
+                  onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                  onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
                 />
               </div>
 
@@ -296,23 +603,23 @@ export default function SettingsPanel({
                     <button
                       onClick={() => selectSheet(pg.id)}
                       style={{
-                        background: '#252018',
-                        border: '1px solid #3a3530',
+                        background: 'var(--bg-elevated)',
+                        border: '1px solid var(--border-default)',
                         borderRadius: '4px',
                         padding: '6px 12px',
-                        color: '#d4c5a9',
+                        color: 'var(--text-primary)',
                         fontSize: '12px',
                         cursor: 'pointer',
                         flexShrink: 0
                       }}
-                      onMouseEnter={e => e.currentTarget.style.borderColor = '#c9a96e'}
-                      onMouseLeave={e => e.currentTarget.style.borderColor = '#3a3530'}
+                      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
                     >
                       Sfoglia...
                     </button>
                     <span style={{
                       fontSize: '12px',
-                      color: pg.characterSheet ? '#d4c5a9' : '#4a4035',
+                      color: pg.characterSheet ? 'var(--text-primary)' : 'var(--text-disabled)',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap'
@@ -333,8 +640,8 @@ export default function SettingsPanel({
                     placeholder="ID numerico"
                     onChange={e => updatePlayer(pg.id, 'telegramChatId', e.target.value)}
                     style={inputStyle}
-                    onFocus={e => e.currentTarget.style.borderColor = '#c9a96e'}
-                    onBlur={e => e.currentTarget.style.borderColor = '#3a3530'}
+                    onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                    onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
                   />
                 </div>
               </div>
@@ -344,16 +651,16 @@ export default function SettingsPanel({
                   onClick={() => removePlayer(pg.id)}
                   style={{
                     background: 'none',
-                    border: '1px solid #3a2020',
+                    border: '1px solid var(--color-danger-bg)',
                     borderRadius: '4px',
                     padding: '4px 12px',
-                    color: '#c96e6e',
+                    color: 'var(--color-danger)',
                     fontSize: '12px',
                     cursor: 'pointer',
                     transition: 'all 0.2s'
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.background = '#3a2020'; e.currentTarget.style.borderColor = '#c96e6e'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.borderColor = '#3a2020'; }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-bg)'; e.currentTarget.style.borderColor = 'var(--color-danger)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.borderColor = 'var(--color-danger-bg)'; }}
                 >
                   Rimuovi
                 </button>
@@ -366,15 +673,15 @@ export default function SettingsPanel({
 
           {!telegram.botToken ? (
             /* === WIZARD === */
-            <div style={{ background: '#1a1714', border: '1px solid #2a2520', borderRadius: '6px', padding: '20px' }}>
-              <div style={{ fontSize: '13px', fontWeight: '600', color: '#c9a96e', marginBottom: '12px' }}>
+            <div style={{ background: 'var(--bg-main)', border: '1px solid var(--border-subtle)', borderRadius: '6px', padding: '20px' }}>
+              <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--accent)', marginBottom: '12px' }}>
                 📱 Configurazione Telegram — Prima volta
               </div>
-              <div style={{ fontSize: '12px', color: '#8a7a60', lineHeight: '1.8', marginBottom: '16px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.8', marginBottom: '16px' }}>
                 Per ricevere e inviare messaggi ai giocatori serve un bot Telegram.<br />
                 Crearlo richiede 2 minuti:<br /><br />
-                1. Apri Telegram e cerca <span style={{ color: '#c9a96e' }}>@BotFather</span><br />
-                2. Scrivi <span style={{ color: '#c9a96e' }}>/newbot</span><br />
+                1. Apri Telegram e cerca <span style={{ color: 'var(--accent)' }}>@BotFather</span><br />
+                2. Scrivi <span style={{ color: 'var(--accent)' }}>/newbot</span><br />
                 3. Scegli un nome per il bot (es. "GENKAI Dashboard")<br />
                 4. Scegli un username che finisca con "bot"<br />
                 5. BotFather ti darà un token — copialo qui sotto
@@ -385,10 +692,10 @@ export default function SettingsPanel({
                 onChange={e => { setWizardToken(e.target.value); setVerifyError(null); }}
                 placeholder="Incolla il token qui"
                 style={{ ...inputStyle, marginBottom: '12px' }}
-                onFocus={e => e.currentTarget.style.borderColor = '#c9a96e'}
-                onBlur={e => e.currentTarget.style.borderColor = '#3a3530'}
+                onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
               />
-              {verifyError && <div style={{ fontSize: '12px', color: '#c96e6e', marginBottom: '8px' }}>{verifyError}</div>}
+              {verifyError && <div style={{ fontSize: '12px', color: 'var(--color-danger)', marginBottom: '8px' }}>{verifyError}</div>}
               <button
                 disabled={!wizardToken.trim() || verifying}
                 onClick={async () => {
@@ -409,8 +716,8 @@ export default function SettingsPanel({
                   }
                 }}
                 style={{
-                  background: '#252018', border: '1px solid #3a3530', borderRadius: '4px',
-                  padding: '8px 20px', color: wizardToken.trim() ? '#c9a96e' : '#4a4035',
+                  background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: '4px',
+                  padding: '8px 20px', color: wizardToken.trim() ? 'var(--accent)' : 'var(--text-disabled)',
                   fontSize: '13px', cursor: wizardToken.trim() && !verifying ? 'pointer' : 'not-allowed',
                   transition: 'all 0.2s'
                 }}
@@ -430,16 +737,16 @@ export default function SettingsPanel({
                     value={telegram.botToken}
                     onChange={e => onTelegramChange(prev => ({ ...prev, botToken: e.target.value }))}
                     style={{ ...inputStyle, flex: 1 }}
-                    onFocus={e => e.currentTarget.style.borderColor = '#c9a96e'}
-                    onBlur={e => e.currentTarget.style.borderColor = '#3a3530'}
+                    onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                    onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
                   />
-                  <span onClick={() => setShowToken(v => !v)} style={{ cursor: 'pointer', fontSize: '16px', color: '#8a7a60', flexShrink: 0, userSelect: 'none' }} title={showToken ? 'Nascondi' : 'Mostra'}>
+                  <span onClick={() => setShowToken(v => !v)} style={{ cursor: 'pointer', fontSize: '16px', color: 'var(--text-secondary)', flexShrink: 0, userSelect: 'none' }} title={showToken ? 'Nascondi' : 'Mostra'}>
                     {showToken ? '🙈' : '👁'}
                   </span>
-                  <span style={{ fontSize: '11px', color: '#6a9a6a', flexShrink: 0 }}>✅ Configurato</span>
+                  <span style={{ fontSize: '11px', color: 'var(--color-success)', flexShrink: 0 }}>✅ Configurato</span>
                 </div>
                 {telegram.botInfo && (
-                  <div style={{ fontSize: '11px', color: '#6a5a40', marginTop: '4px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
                     Bot: @{telegram.botInfo.username} — {telegram.botInfo.firstName}
                   </div>
                 )}
@@ -449,7 +756,7 @@ export default function SettingsPanel({
               <div style={{ marginBottom: '12px' }}>
                 <label style={labelStyle}>Codice Sessione</label>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '20px', fontWeight: '700', color: '#c9a96e', letterSpacing: '3px', fontFamily: 'monospace' }}>
+                  <span style={{ fontSize: '20px', fontWeight: '700', color: 'var(--accent)', letterSpacing: '3px', fontFamily: 'monospace' }}>
                     {telegram.sessionCode || '------'}
                   </span>
                   <button
@@ -459,11 +766,11 @@ export default function SettingsPanel({
                       onTelegramChange(prev => ({ ...prev, sessionCode: code }));
                     }}
                     style={{
-                      background: 'none', border: '1px solid #3a3530', borderRadius: '4px',
-                      padding: '4px 10px', color: '#8a7a60', fontSize: '11px', cursor: 'pointer', transition: 'all 0.2s'
+                      background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                      padding: '4px 10px', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer', transition: 'all 0.2s'
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9a96e'; e.currentTarget.style.color = '#c9a96e'; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#3a3530'; e.currentTarget.style.color = '#8a7a60'; }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
                   >
                     🔄 Genera nuovo
                   </button>
@@ -474,58 +781,71 @@ export default function SettingsPanel({
               <div style={{ marginBottom: '16px' }}>
                 <label style={labelStyle}>Stato Bot</label>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', color: botStatus?.running ? '#6a9a6a' : '#8a7a60' }}>
+                  <span style={{ fontSize: '12px', color: botStatus?.running ? 'var(--color-success)' : 'var(--text-secondary)' }}>
                     {botStatus?.running
                       ? `🟢 Attiva — ${players.filter(p => p.telegramChatId).length} giocatori connessi`
                       : '🔴 Non attiva'}
                   </span>
                   {botStatus?.running ? (
                     <button onClick={onStopBot} style={{
-                      background: 'none', border: '1px solid #3a3530', borderRadius: '4px',
-                      padding: '4px 12px', color: '#c96e6e', fontSize: '11px', cursor: 'pointer', transition: 'all 0.2s'
+                      background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                      padding: '4px 12px', color: 'var(--color-danger)', fontSize: '11px', cursor: 'pointer', transition: 'all 0.2s'
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#c96e6e'; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#3a3530'; }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--color-danger)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; }}
                     >⏹ Ferma bot</button>
                   ) : (
                     <button onClick={onStartBot} disabled={!telegram.sessionCode} style={{
-                      background: 'none', border: '1px solid #3a3530', borderRadius: '4px',
-                      padding: '4px 12px', color: telegram.sessionCode ? '#6a9a6a' : '#4a4035',
+                      background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                      padding: '4px 12px', color: telegram.sessionCode ? 'var(--color-success)' : 'var(--text-disabled)',
                       fontSize: '11px', cursor: telegram.sessionCode ? 'pointer' : 'not-allowed', transition: 'all 0.2s'
                     }}
-                    onMouseEnter={e => { if (telegram.sessionCode) e.currentTarget.style.borderColor = '#6a9a6a'; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#3a3530'; }}
+                    onMouseEnter={e => { if (telegram.sessionCode) e.currentTarget.style.borderColor = 'var(--color-success)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; }}
                     >▶ Avvia bot</button>
                   )}
                 </div>
-                {botStatus?.error && <div style={{ fontSize: '11px', color: '#c96e6e', marginTop: '4px' }}>{botStatus.error}</div>}
+                {botStatus?.error && <div style={{ fontSize: '11px', color: 'var(--color-danger)', marginTop: '4px' }}>{botStatus.error}</div>}
               </div>
 
               {/* Connected players */}
               <div style={{ marginBottom: '12px' }}>
                 <label style={labelStyle}>Giocatori connessi</label>
-                <div style={{ background: '#1a1714', border: '1px solid #2a2520', borderRadius: '4px', padding: '10px 14px' }}>
+                <div style={{ background: 'var(--bg-main)', border: '1px solid var(--border-subtle)', borderRadius: '4px', padding: '10px 14px' }}>
                   {players.length === 0 ? (
-                    <div style={{ fontSize: '12px', color: '#4a4035', fontStyle: 'italic' }}>Nessun PG configurato</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>Nessun PG configurato</div>
                   ) : (
                     players.map(pg => (
                       <div key={pg.id} style={{ fontSize: '12px', padding: '3px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '8px' }}>{pg.telegramChatId ? '🟢' : '⚪'}</span>
-                        <span style={{ color: '#c9a96e', fontWeight: '600' }}>{pg.characterName || 'Senza nome'}</span>
-                        {pg.playerName && <span style={{ color: '#6a5a40' }}>— {pg.playerName}</span>}
-                        {pg.telegramChatId && <span style={{ color: '#4a4035', fontSize: '10px' }}>(Chat ID: {pg.telegramChatId})</span>}
-                        {!pg.telegramChatId && <span style={{ color: '#4a4035', fontSize: '10px', fontStyle: 'italic' }}>(in attesa)</span>}
+                        <span style={{ fontSize: '8px' }}>{pg.telegramChatId ? '🟢' : '🟣'}</span>
+                        <span style={{ color: 'var(--accent)', fontWeight: '600' }}>{pg.characterName || 'Senza nome'}</span>
+                        {pg.playerName && <span style={{ color: 'var(--text-tertiary)' }}>— {pg.playerName}</span>}
+                        {pg.telegramChatId && <span style={{ color: 'var(--text-disabled)', fontSize: '10px' }}>(Chat ID: {pg.telegramChatId})</span>}
+                        {pg.telegramChatId && (
+                          <span
+                            onClick={() => updatePlayer(pg.id, 'telegramChatId', '')}
+                            style={{
+                              fontSize: '10px', color: 'var(--text-tertiary)', cursor: 'pointer',
+                              transition: 'color 0.15s'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--color-danger)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+                          >
+                            Disconnetti
+                          </span>
+                        )}
+                        {!pg.telegramChatId && <span style={{ color: 'var(--text-disabled)', fontSize: '10px', fontStyle: 'italic' }}>(in attesa)</span>}
                       </div>
                     ))
                   )}
                 </div>
                 {players.some(p => p.telegramChatId) && (
                   <button onClick={onDisconnectAllPlayers} style={{
-                    background: 'none', border: '1px solid #3a2020', borderRadius: '4px',
-                    padding: '4px 12px', color: '#c96e6e', fontSize: '11px', cursor: 'pointer',
+                    background: 'none', border: '1px solid var(--color-danger-bg)', borderRadius: '4px',
+                    padding: '4px 12px', color: 'var(--color-danger)', fontSize: '11px', cursor: 'pointer',
                     marginTop: '8px', transition: 'all 0.2s'
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.background = '#3a2020'; }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-bg)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
                   >Disconnetti tutti i giocatori</button>
                 )}
@@ -533,11 +853,11 @@ export default function SettingsPanel({
 
               {/* Instructions */}
               <div style={{
-                padding: '10px 14px', background: '#1a1714', border: '1px solid #2a2520',
-                borderRadius: '4px', fontSize: '11px', color: '#6a5a40', lineHeight: '1.5'
+                padding: '10px 14px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
+                borderRadius: '4px', fontSize: '11px', color: 'var(--text-tertiary)', lineHeight: '1.5'
               }}>
                 Comunica ai giocatori di cercare il bot su Telegram e scrivere:<br />
-                <span style={{ color: '#c9a96e', fontFamily: 'monospace' }}>/join {telegram.sessionCode || '------'}</span>
+                <span style={{ color: 'var(--accent)', fontFamily: 'monospace' }}>/join {telegram.sessionCode || '------'}</span>
               </div>
 
               {/* Reset token */}
@@ -547,11 +867,11 @@ export default function SettingsPanel({
                   onTelegramChange({ botToken: '', configured: false, sessionCode: '', botActive: false, botInfo: null });
                 }
               }} style={{
-                background: 'none', border: 'none', padding: '8px 0', color: '#4a4035',
+                background: 'none', border: 'none', padding: '8px 0', color: 'var(--text-disabled)',
                 fontSize: '11px', cursor: 'pointer', marginTop: '8px'
               }}
-              onMouseEnter={e => e.currentTarget.style.color = '#c96e6e'}
-              onMouseLeave={e => e.currentTarget.style.color = '#4a4035'}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--color-danger)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-disabled)'}
               >🗑️ Rimuovi token e riconfigura</button>
             </>
           )}
@@ -568,26 +888,26 @@ export default function SettingsPanel({
               }
             }}
             style={{
-              background: 'none', border: '1px solid #3a3530', borderRadius: '4px',
-              padding: '6px 16px', color: '#c9a96e', fontSize: '13px',
+              background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+              padding: '6px 16px', color: 'var(--accent)', fontSize: '13px',
               cursor: 'pointer', marginBottom: '16px', transition: 'all 0.2s'
             }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9a96e'; e.currentTarget.style.background = '#252018'; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = '#3a3530'; e.currentTarget.style.background = 'none'; }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-elevated)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.background = 'none'; }}
           >
             ➕ Aggiungi manuale
           </button>
 
           {(referenceManuals || []).length === 0 && (
-            <div style={{ color: '#4a4035', fontSize: '13px', fontStyle: 'italic', marginBottom: '16px' }}>
+            <div style={{ color: 'var(--text-disabled)', fontSize: '13px', fontStyle: 'italic', marginBottom: '16px' }}>
               Nessun manuale configurato
             </div>
           )}
 
           {(referenceManuals || []).map((manual, idx) => (
             <div key={manual.id} style={{
-              border: '1px solid #3a3530', borderRadius: '6px',
-              padding: '12px 16px', marginBottom: '10px', background: '#1a1714',
+              border: '1px solid var(--border-default)', borderRadius: '6px',
+              padding: '12px 16px', marginBottom: '10px', background: 'var(--bg-main)',
               display: 'flex', gap: '10px', alignItems: 'center'
             }}>
               {/* Reorder buttons */}
@@ -602,7 +922,7 @@ export default function SettingsPanel({
                     });
                   }}
                   style={{
-                    background: 'none', border: 'none', color: idx === 0 ? '#2a2520' : '#8a7a60',
+                    background: 'none', border: 'none', color: idx === 0 ? 'var(--border-subtle)' : 'var(--text-secondary)',
                     cursor: idx === 0 ? 'default' : 'pointer', fontSize: '10px', padding: '0', lineHeight: '1'
                   }}
                 >▲</button>
@@ -617,7 +937,7 @@ export default function SettingsPanel({
                   }}
                   style={{
                     background: 'none', border: 'none',
-                    color: idx === (referenceManuals || []).length - 1 ? '#2a2520' : '#8a7a60',
+                    color: idx === (referenceManuals || []).length - 1 ? 'var(--border-subtle)' : 'var(--text-secondary)',
                     cursor: idx === (referenceManuals || []).length - 1 ? 'default' : 'pointer',
                     fontSize: '10px', padding: '0', lineHeight: '1'
                   }}
@@ -631,13 +951,13 @@ export default function SettingsPanel({
                 onChange={e => onReferenceChange(prev => prev.map(m => m.id === manual.id ? { ...m, name: e.target.value } : m))}
                 placeholder="Nome manuale"
                 style={{ ...inputStyle, flex: 1 }}
-                onFocus={e => e.currentTarget.style.borderColor = '#c9a96e'}
-                onBlur={e => e.currentTarget.style.borderColor = '#3a3530'}
+                onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
               />
 
               {/* File path */}
               <span style={{
-                fontSize: '11px', color: '#6a5a40', maxWidth: '200px',
+                fontSize: '11px', color: 'var(--text-tertiary)', maxWidth: '200px',
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0
               }} title={manual.file}>
                 {manual.file}
@@ -651,11 +971,11 @@ export default function SettingsPanel({
                   }
                 }}
                 style={{
-                  background: 'none', border: '1px solid #3a2020', borderRadius: '3px',
-                  padding: '3px 8px', color: '#c96e6e', fontSize: '11px',
+                  background: 'none', border: '1px solid var(--color-danger-bg)', borderRadius: '3px',
+                  padding: '3px 8px', color: 'var(--color-danger)', fontSize: '11px',
                   cursor: 'pointer', flexShrink: 0, transition: 'all 0.2s'
                 }}
-                onMouseEnter={e => { e.currentTarget.style.background = '#3a2020'; }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-bg)'; }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
               >
                 ✕

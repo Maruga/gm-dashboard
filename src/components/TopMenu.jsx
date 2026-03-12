@@ -80,29 +80,29 @@ function DatePickerDropdown({ gameDate, onSetGameDate, calendarEvents, onClose }
       transform: 'translateX(-50%)',
       marginTop: '6px',
       width: '280px',
-      background: '#252018',
-      border: '1px solid #3a3530',
+      background: 'var(--bg-elevated)',
+      border: '1px solid var(--border-default)',
       borderRadius: '6px',
       zIndex: 1200,
-      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+      boxShadow: '0 8px 24px var(--shadow-dropdown)',
       padding: '12px'
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-        <span onClick={prevMonth} style={{ cursor: 'pointer', color: '#8a7a60', fontSize: '13px', padding: '2px 6px' }}
-          onMouseEnter={e => e.currentTarget.style.color = '#c9a96e'}
-          onMouseLeave={e => e.currentTarget.style.color = '#8a7a60'}>◀</span>
-        <span style={{ fontSize: '13px', fontWeight: '600', color: '#d4c5a9', fontFamily: "'Georgia', serif" }}>
+        <span onClick={prevMonth} style={{ cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '13px', padding: '2px 6px' }}
+          onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+          onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}>◀</span>
+        <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', fontFamily: "'Georgia', serif" }}>
           {MONTHS_IT_CAP[viewMonth]} {viewYear}
         </span>
-        <span onClick={nextMonth} style={{ cursor: 'pointer', color: '#8a7a60', fontSize: '13px', padding: '2px 6px' }}
-          onMouseEnter={e => e.currentTarget.style.color = '#c9a96e'}
-          onMouseLeave={e => e.currentTarget.style.color = '#8a7a60'}>▶</span>
+        <span onClick={nextMonth} style={{ cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '13px', padding: '2px 6px' }}
+          onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+          onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}>▶</span>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '1px', marginBottom: '4px' }}>
         {DAYS_IT.map(d => (
           <div key={d} style={{
-            textAlign: 'center', fontSize: '9px', color: '#6a5a40',
+            textAlign: 'center', fontSize: '9px', color: 'var(--text-tertiary)',
             fontWeight: '600', textTransform: 'uppercase', padding: '2px 0'
           }}>
             {d}
@@ -127,13 +127,13 @@ function DatePickerDropdown({ gameDate, onSetGameDate, calendarEvents, onClose }
                 cursor: 'pointer',
                 borderRadius: '3px',
                 fontSize: '12px',
-                color: isGameDay ? '#1a1714' : '#d4c5a9',
-                background: isGameDay ? '#c9a96e' : 'transparent',
+                color: isGameDay ? 'var(--bg-main)' : 'var(--text-primary)',
+                background: isGameDay ? 'var(--accent)' : 'transparent',
                 fontWeight: isGameDay ? '700' : '400',
                 transition: 'all 0.1s',
                 position: 'relative'
               }}
-              onMouseEnter={e => { if (!isGameDay) e.currentTarget.style.background = '#3a3530'; }}
+              onMouseEnter={e => { if (!isGameDay) e.currentTarget.style.background = 'var(--border-default)'; }}
               onMouseLeave={e => { if (!isGameDay) e.currentTarget.style.background = 'transparent'; }}
             >
               {day}
@@ -141,7 +141,7 @@ function DatePickerDropdown({ gameDate, onSetGameDate, calendarEvents, onClose }
                 <div style={{
                   position: 'absolute', bottom: '1px', left: '50%', transform: 'translateX(-50%)',
                   width: '4px', height: '4px', borderRadius: '50%',
-                  background: isGameDay ? '#1a1714' : '#c9a96e'
+                  background: isGameDay ? 'var(--bg-main)' : 'var(--accent)'
                 }} />
               )}
             </div>
@@ -244,7 +244,7 @@ function TimerWidget() {
     setSeconds(DEFAULT_TIME);
   }, []);
 
-  const timerColor = expired ? '#ff6b6b' : running && seconds <= 30 ? '#e0a040' : running ? '#e8dcc0' : '#8a7a60';
+  const timerColor = expired ? 'var(--color-danger-bright)' : running && seconds <= 30 ? 'var(--color-warning)' : running ? 'var(--text-bright)' : 'var(--text-secondary)';
 
   const ctrlBtn = (label, active, onClick, title) => (
     <button
@@ -252,12 +252,12 @@ function TimerWidget() {
       title={title}
       style={{
         background: 'none', border: 'none', cursor: 'pointer',
-        color: active ? '#c9a96e' : '#6a5a40', fontSize: '12px',
+        color: active ? 'var(--accent)' : 'var(--text-tertiary)', fontSize: '12px',
         padding: '2px 4px', borderRadius: '3px', lineHeight: '1',
         transition: 'color 0.15s', flexShrink: 0
       }}
-      onMouseEnter={e => e.currentTarget.style.color = '#c9a96e'}
-      onMouseLeave={e => { if (!active) e.currentTarget.style.color = '#6a5a40'; }}
+      onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+      onMouseLeave={e => { if (!active) e.currentTarget.style.color = 'var(--text-tertiary)'; }}
     >{label}</button>
   );
 
@@ -273,7 +273,7 @@ function TimerWidget() {
           borderRadius: '3px', transition: 'color 0.3s', userSelect: 'none',
           border: '1px solid transparent'
         }}
-        onMouseEnter={e => e.currentTarget.style.borderColor = '#3a3530'}
+        onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
         onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}
         title="Aggiungi tempo"
       >
@@ -289,12 +289,12 @@ function TimerWidget() {
       {dropdownOpen && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, marginTop: '4px',
-          background: '#252018', border: '1px solid #3a3530', borderRadius: '6px',
-          padding: '8px', zIndex: 1100, boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+          background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: '6px',
+          padding: '8px', zIndex: 1100, boxShadow: '0 8px 24px var(--shadow-dropdown)',
           width: '220px'
         }}>
           {/* SET section */}
-          <div style={{ fontSize: '9px', color: '#6a5a40', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px', fontWeight: '600' }}>
+          <div style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px', fontWeight: '600' }}>
             Imposta
           </div>
           <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', marginBottom: '8px' }}>
@@ -303,16 +303,16 @@ function TimerWidget() {
                 key={t}
                 onClick={() => setTime(t)}
                 style={{
-                  background: seconds === t && !running ? 'rgba(201,169,110,0.15)' : 'none',
-                  border: '1px solid', borderColor: seconds === t && !running ? '#c9a96e' : '#3a3530',
-                  borderRadius: '3px', padding: '3px 8px', color: '#c9a96e', fontSize: '11px',
+                  background: seconds === t && !running ? 'var(--accent-a15)' : 'none',
+                  border: '1px solid', borderColor: seconds === t && !running ? 'var(--accent)' : 'var(--border-default)',
+                  borderRadius: '3px', padding: '3px 8px', color: 'var(--accent)', fontSize: '11px',
                   cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit', fontWeight: '600'
                 }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9a96e'; e.currentTarget.style.background = 'rgba(201,169,110,0.12)'; }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--accent-a12)'; }}
                 onMouseLeave={e => {
                   const isActive = seconds === t && !running;
-                  e.currentTarget.style.borderColor = isActive ? '#c9a96e' : '#3a3530';
-                  e.currentTarget.style.background = isActive ? 'rgba(201,169,110,0.15)' : 'none';
+                  e.currentTarget.style.borderColor = isActive ? 'var(--accent)' : 'var(--border-default)';
+                  e.currentTarget.style.background = isActive ? 'var(--accent-a15)' : 'none';
                 }}
               >
                 {t >= 60 ? `${t / 60}m` : `${t}s`}
@@ -321,7 +321,7 @@ function TimerWidget() {
           </div>
 
           {/* ADD section */}
-          <div style={{ fontSize: '9px', color: '#6a5a40', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px', fontWeight: '600' }}>
+          <div style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px', fontWeight: '600' }}>
             Aggiungi
           </div>
           <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
@@ -330,12 +330,12 @@ function TimerWidget() {
                 key={t}
                 onClick={() => addTime(t)}
                 style={{
-                  background: 'none', border: '1px solid #3a3530', borderRadius: '3px',
-                  padding: '3px 8px', color: '#8a7a60', fontSize: '11px',
+                  background: 'none', border: '1px solid var(--border-default)', borderRadius: '3px',
+                  padding: '3px 8px', color: 'var(--text-secondary)', fontSize: '11px',
                   cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit'
                 }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9a96e'; e.currentTarget.style.background = '#2a2520'; e.currentTarget.style.color = '#c9a96e'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = '#3a3530'; e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#8a7a60'; }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--border-subtle)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
               >
                 +{t >= 60 ? `${t / 60}m` : `${t}s`}
               </button>
@@ -348,7 +348,7 @@ function TimerWidget() {
 }
 
 const Separator = () => (
-  <div style={{ width: '1px', background: '#3a3530', height: '18px', flexShrink: 0, margin: '0 4px' }} />
+  <div style={{ width: '1px', background: 'var(--border-default)', height: '18px', flexShrink: 0, margin: '0 4px' }} />
 );
 
 export default function TopMenu({
@@ -356,7 +356,8 @@ export default function TopMenu({
   gameDate, onPrevDay, onNextDay, onSetGameDate, hasEvents,
   players, onOpenCharacterSheet, calendarEvents, botRunning,
   chatMessages, chatOpen, chatFlash, onToggleChat,
-  onOpenReference, referenceOpen
+  onOpenReference, referenceOpen,
+  highlightEnabled, onToggleHighlight
 }) {
   const connectedPlayers = (players || []).filter(p => p.telegramChatId).length;
 
@@ -385,8 +386,8 @@ export default function TopMenu({
     <div
       style={{
         height: '40px',
-        background: 'linear-gradient(180deg, #252018 0%, #1e1b16 100%)',
-        borderBottom: '1px solid #3a3530',
+        background: 'linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-panel) 100%)',
+        borderBottom: '1px solid var(--border-default)',
         display: 'flex',
         alignItems: 'center',
         padding: '0 12px',
@@ -399,7 +400,7 @@ export default function TopMenu({
       <span style={{
         fontSize: '15px',
         fontWeight: '600',
-        color: '#c9a96e',
+        color: 'var(--accent)',
         letterSpacing: '2px',
         fontFamily: "'Georgia', serif",
         flexShrink: 0,
@@ -420,7 +421,7 @@ export default function TopMenu({
             <span
               onClick={() => setDatePickerOpen(v => !v)}
               style={{
-                fontSize: '12px', color: datePickerOpen ? '#c9a96e' : '#d4c5a9',
+                fontSize: '12px', color: datePickerOpen ? 'var(--accent)' : 'var(--text-primary)',
                 letterSpacing: '0.5px', minWidth: '130px', textAlign: 'center',
                 fontFamily: "'Georgia', serif",
                 cursor: 'pointer',
@@ -429,8 +430,8 @@ export default function TopMenu({
                 transition: 'color 0.2s',
                 display: 'inline-block'
               }}
-              onMouseEnter={e => e.currentTarget.style.color = '#c9a96e'}
-              onMouseLeave={e => { if (!datePickerOpen) e.currentTarget.style.color = '#d4c5a9'; }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+              onMouseLeave={e => { if (!datePickerOpen) e.currentTarget.style.color = 'var(--text-primary)'; }}
             >
               {formatDateIT(gameDate)}
             </span>
@@ -472,16 +473,16 @@ export default function TopMenu({
               left: 0,
               marginTop: '4px',
               width: '300px',
-              background: '#252018',
-              border: '1px solid #3a3530',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-default)',
               borderRadius: '6px',
               zIndex: 1100,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+              boxShadow: '0 8px 24px var(--shadow-dropdown)',
               maxHeight: '400px',
               overflowY: 'auto'
             }}>
               {(!players || players.length === 0) ? (
-                <div style={{ padding: '16px', color: '#6a5a40', fontSize: '12px', textAlign: 'center' }}>
+                <div style={{ padding: '16px', color: 'var(--text-tertiary)', fontSize: '12px', textAlign: 'center' }}>
                   Nessun PG — vai in ⚙️ Impostazioni
                 </div>
               ) : (
@@ -490,17 +491,17 @@ export default function TopMenu({
                     key={pg.id}
                     style={{
                       padding: '10px 14px',
-                      borderBottom: '1px solid #2a2520',
+                      borderBottom: '1px solid var(--border-subtle)',
                       display: 'flex',
                       alignItems: 'flex-start',
                       gap: '10px'
                     }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#2a2520'}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--border-subtle)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{
-                        fontSize: '14px', fontWeight: '600', color: '#c9a96e',
+                        fontSize: '14px', fontWeight: '600', color: 'var(--accent)',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         display: 'flex', alignItems: 'center', gap: '6px'
                       }}>
@@ -508,12 +509,12 @@ export default function TopMenu({
                         {pg.characterName || 'Senza nome'}
                       </div>
                       {pg.playerName && (
-                        <div style={{ fontSize: '11px', color: '#8a7a60', marginTop: '2px' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
                           giocato da {pg.playerName}
                         </div>
                       )}
                       {pg.note && (
-                        <div style={{ fontSize: '11px', color: '#4a4035', marginTop: '2px' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-disabled)', marginTop: '2px' }}>
                           {pg.note}
                         </div>
                       )}
@@ -557,6 +558,9 @@ export default function TopMenu({
           <BarButton icon="☐" label="Checklist" onClick={onOpenChecklist} />
         </span>
 
+        {/* Highlight keywords toggle */}
+        <BarButton icon="🔆" tooltip={highlightEnabled ? 'Evidenziazione parole (ON)' : 'Evidenziazione parole (OFF)'} onClick={onToggleHighlight} active={highlightEnabled} />
+
         {/* Reference manuals */}
         <BarButton icon="📖" tooltip="Manuali di riferimento" onClick={onOpenReference} active={referenceOpen} />
 
@@ -581,7 +585,7 @@ export default function TopMenu({
           {totalUnread > 0 && (
             <span style={{
               position: 'absolute', top: '0', right: '0',
-              background: '#c96e6e', color: '#fff', fontSize: '9px', fontWeight: '700',
+              background: 'var(--color-danger)', color: '#fff', fontSize: '9px', fontWeight: '700',
               borderRadius: '8px', padding: '0 4px', lineHeight: '14px', minWidth: '14px',
               textAlign: 'center', pointerEvents: 'none',
               animation: chatFlash ? 'chatFlash 1s ease' : 'none'
@@ -622,7 +626,7 @@ function DateNavButton({ label, onClick }) {
         background: 'none',
         border: 'none',
         cursor: 'pointer',
-        color: '#8a7a60',
+        color: 'var(--text-secondary)',
         fontSize: '11px',
         padding: '4px 6px',
         borderRadius: '3px',
@@ -633,8 +637,8 @@ function DateNavButton({ label, onClick }) {
         lineHeight: '1',
         flexShrink: 0
       }}
-      onMouseEnter={e => e.currentTarget.style.color = '#c9a96e'}
-      onMouseLeave={e => e.currentTarget.style.color = '#8a7a60'}
+      onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}
     >
       {label}
     </button>
@@ -653,7 +657,7 @@ function BarButton({ icon, label, onClick, disabled, tooltip, active, hasDropdow
         borderRadius: '4px',
         padding: '4px 8px',
         cursor: disabled ? 'not-allowed' : 'pointer',
-        color: disabled ? '#4a4035' : active ? '#c9a96e' : '#d4c5a9',
+        color: disabled ? 'var(--text-disabled)' : active ? 'var(--accent)' : 'var(--text-primary)',
         fontSize: '13px',
         display: 'flex',
         alignItems: 'center',
@@ -662,12 +666,12 @@ function BarButton({ icon, label, onClick, disabled, tooltip, active, hasDropdow
         transition: 'all 0.2s',
         flexShrink: 0
       }}
-      onMouseEnter={e => { if (!disabled) e.currentTarget.style.borderColor = '#3a3530'; }}
+      onMouseEnter={e => { if (!disabled) e.currentTarget.style.borderColor = 'var(--border-default)'; }}
       onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}
     >
       <span style={{ fontSize: '13px', lineHeight: '1' }}>{icon}</span>
       {label && <span style={{ fontSize: '11px' }}>{label}</span>}
-      {hasDropdown && <span style={{ fontSize: '8px', color: '#6a5a40' }}>▼</span>}
+      {hasDropdown && <span style={{ fontSize: '8px', color: 'var(--text-tertiary)' }}>▼</span>}
     </button>
   );
 }
@@ -682,7 +686,7 @@ function WindowButton({ icon, onClick, isClose }) {
         width: '32px',
         height: '28px',
         cursor: 'pointer',
-        color: '#8a7a60',
+        color: 'var(--text-secondary)',
         fontSize: '13px',
         display: 'flex',
         alignItems: 'center',
@@ -691,12 +695,12 @@ function WindowButton({ icon, onClick, isClose }) {
         transition: 'all 0.2s'
       }}
       onMouseEnter={e => {
-        e.currentTarget.style.background = isClose ? '#5a2020' : '#3a3530';
-        e.currentTarget.style.color = isClose ? '#ff6b6b' : '#d4c5a9';
+        e.currentTarget.style.background = isClose ? 'var(--color-danger-bg)' : 'var(--border-default)';
+        e.currentTarget.style.color = isClose ? 'var(--color-danger-bright)' : 'var(--text-primary)';
       }}
       onMouseLeave={e => {
         e.currentTarget.style.background = 'none';
-        e.currentTarget.style.color = '#8a7a60';
+        e.currentTarget.style.color = 'var(--text-secondary)';
       }}
     >
       {icon}

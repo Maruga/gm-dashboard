@@ -8,13 +8,13 @@ const MONTHS_IT = [
 const DAYS_IT = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 
 const EVENT_TYPES = [
-  { value: 'indizio', label: 'Indizio', color: '#c9a96e' },
-  { value: 'promemoria', label: 'Promemoria', color: '#6e9ec9' },
-  { value: 'evento', label: 'Evento', color: '#c96e6e' }
+  { value: 'indizio', label: 'Indizio', color: 'var(--accent)' },
+  { value: 'promemoria', label: 'Promemoria', color: 'var(--color-info)' },
+  { value: 'evento', label: 'Evento', color: 'var(--color-danger)' }
 ];
 
 function getEventColor(type) {
-  return EVENT_TYPES.find(t => t.value === type)?.color || '#c9a96e';
+  return EVENT_TYPES.find(t => t.value === type)?.color || 'var(--accent)';
 }
 
 function toISO(y, m, d) {
@@ -29,10 +29,10 @@ function parseISO(iso) {
 const inputStyle = {
   width: '100%',
   padding: '6px 10px',
-  background: '#252018',
-  border: '1px solid #3a3530',
+  background: 'var(--bg-elevated)',
+  border: '1px solid var(--border-default)',
   borderRadius: '4px',
-  color: '#d4c5a9',
+  color: 'var(--text-primary)',
   fontSize: '13px',
   outline: 'none',
   fontFamily: 'inherit',
@@ -202,7 +202,7 @@ export default function CalendarPanel({
       onClick={onClose}
       style={{
         position: 'fixed', inset: 0,
-        background: 'rgba(0,0,0,0.6)',
+        background: 'var(--overlay-light)',
         zIndex: 3000,
         display: 'flex', alignItems: 'center', justifyContent: 'center'
       }}
@@ -212,8 +212,8 @@ export default function CalendarPanel({
         style={{
           width: '520px',
           maxHeight: '80vh',
-          background: '#1e1b16',
-          border: '1px solid #3a3530',
+          background: 'var(--bg-panel)',
+          border: '1px solid var(--border-default)',
           borderRadius: '8px',
           display: 'flex', flexDirection: 'column',
           overflow: 'hidden'
@@ -222,11 +222,11 @@ export default function CalendarPanel({
         {/* Header */}
         <div style={{
           padding: '12px 16px',
-          borderBottom: '1px solid #3a3530',
+          borderBottom: '1px solid var(--border-default)',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          flexShrink: 0, background: '#252018'
+          flexShrink: 0, background: 'var(--bg-elevated)'
         }}>
-          <span style={{ fontSize: '14px', fontWeight: '600', color: '#c9a96e', letterSpacing: '1px' }}>
+          <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--accent)', letterSpacing: '1px' }}>
             Calendario
           </span>
           <span className="close-btn" onClick={onClose} style={{ fontSize: '16px' }}>✕</span>
@@ -235,22 +235,22 @@ export default function CalendarPanel({
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
           {/* Month navigation */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <span onClick={prevMonth} style={{ cursor: 'pointer', color: '#8a7a60', fontSize: '14px', padding: '4px 8px' }}
-              onMouseEnter={e => e.currentTarget.style.color = '#c9a96e'}
-              onMouseLeave={e => e.currentTarget.style.color = '#8a7a60'}>◀</span>
-            <span style={{ fontSize: '14px', fontWeight: '600', color: '#d4c5a9', fontFamily: "'Georgia', serif" }}>
+            <span onClick={prevMonth} style={{ cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '14px', padding: '4px 8px' }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}>◀</span>
+            <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', fontFamily: "'Georgia', serif" }}>
               {MONTHS_IT[viewMonth]} {viewYear}
             </span>
-            <span onClick={nextMonth} style={{ cursor: 'pointer', color: '#8a7a60', fontSize: '14px', padding: '4px 8px' }}
-              onMouseEnter={e => e.currentTarget.style.color = '#c9a96e'}
-              onMouseLeave={e => e.currentTarget.style.color = '#8a7a60'}>▶</span>
+            <span onClick={nextMonth} style={{ cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '14px', padding: '4px 8px' }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}>▶</span>
           </div>
 
           {/* Day names */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '4px' }}>
             {DAYS_IT.map(d => (
               <div key={d} style={{
-                textAlign: 'center', fontSize: '10px', color: '#6a5a40',
+                textAlign: 'center', fontSize: '10px', color: 'var(--text-tertiary)',
                 fontWeight: '600', textTransform: 'uppercase', padding: '4px 0'
               }}>
                 {d}
@@ -279,20 +279,20 @@ export default function CalendarPanel({
                     cursor: 'pointer',
                     borderRadius: '4px',
                     fontSize: '13px',
-                    color: isGameDay ? '#1a1714' : isSelected ? '#c9a96e' : '#d4c5a9',
-                    background: isGameDay ? '#c9a96e' : isSelected ? '#2a2520' : 'transparent',
+                    color: isGameDay ? 'var(--bg-main)' : isSelected ? 'var(--accent)' : 'var(--text-primary)',
+                    background: isGameDay ? 'var(--accent)' : isSelected ? 'var(--border-subtle)' : 'transparent',
                     fontWeight: isGameDay ? '700' : '400',
                     transition: 'all 0.15s',
                     position: 'relative'
                   }}
-                  onMouseEnter={e => { if (!isGameDay && !isSelected) e.currentTarget.style.background = '#2a2520'; }}
+                  onMouseEnter={e => { if (!isGameDay && !isSelected) e.currentTarget.style.background = 'var(--border-subtle)'; }}
                   onMouseLeave={e => { if (!isGameDay && !isSelected) e.currentTarget.style.background = 'transparent'; }}
                 >
                   {day}
                   {hasEvt && (
                     <div style={{
                       width: '5px', height: '5px', borderRadius: '50%',
-                      background: isGameDay ? '#1a1714' : dotColor,
+                      background: isGameDay ? 'var(--bg-main)' : dotColor,
                       margin: '2px auto 0'
                     }} />
                   )}
@@ -304,10 +304,10 @@ export default function CalendarPanel({
 
           {/* Events for selected day */}
           <div style={{
-            borderTop: '1px solid #3a3530', paddingTop: '12px'
+            borderTop: '1px solid var(--border-default)', paddingTop: '12px'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <span style={{ fontSize: '12px', fontWeight: '600', color: '#c9a96e' }}>
+              <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--accent)' }}>
                 {dayEvents.length > 0
                   ? `Eventi del ${selectedParsed.day} ${MONTHS_IT[selectedParsed.month]} ${selectedParsed.year}`
                   : `Nessun evento il ${selectedParsed.day} ${MONTHS_IT[selectedParsed.month]} ${selectedParsed.year}`
@@ -316,12 +316,12 @@ export default function CalendarPanel({
               <button
                 onClick={addEvent}
                 style={{
-                  background: 'none', border: '1px solid #3a3530', borderRadius: '4px',
-                  padding: '4px 10px', color: '#c9a96e', fontSize: '11px', cursor: 'pointer',
+                  background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                  padding: '4px 10px', color: 'var(--accent)', fontSize: '11px', cursor: 'pointer',
                   transition: 'all 0.2s'
                 }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9a96e'; e.currentTarget.style.background = '#252018'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = '#3a3530'; e.currentTarget.style.background = 'none'; }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-elevated)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.background = 'none'; }}
               >
                 ➕ Aggiungi evento
               </button>
@@ -329,8 +329,8 @@ export default function CalendarPanel({
 
             {dayEvents.map(ev => (
               <div key={ev.id} style={{
-                border: '1px solid #3a3530', borderRadius: '6px',
-                padding: '12px', marginBottom: '10px', background: '#1a1714'
+                border: '1px solid var(--border-default)', borderRadius: '6px',
+                padding: '12px', marginBottom: '10px', background: 'var(--bg-main)'
               }}>
                 {/* Title + type row */}
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
@@ -343,8 +343,8 @@ export default function CalendarPanel({
                     value={ev.title}
                     onChange={e => updateEvent(ev.id, 'title', e.target.value)}
                     style={{ ...inputStyle, flex: 1, fontWeight: '600' }}
-                    onFocus={e => e.currentTarget.style.borderColor = '#c9a96e'}
-                    onBlur={e => e.currentTarget.style.borderColor = '#3a3530'}
+                    onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                    onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
                   />
                   <select
                     value={ev.type}
@@ -367,15 +367,15 @@ export default function CalendarPanel({
                     ...inputStyle, resize: 'vertical', marginBottom: '8px',
                     fontFamily: 'inherit'
                   }}
-                  onFocus={e => e.currentTarget.style.borderColor = '#c9a96e'}
-                  onBlur={e => e.currentTarget.style.borderColor = '#3a3530'}
+                  onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                  onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
                 />
 
                 {/* Linked document */}
                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '8px' }}>
                   {ev.linkedDocument ? (
                     <>
-                      <span style={{ fontSize: '12px', color: '#d4c5a9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                      <span style={{ fontSize: '12px', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                         📎 {ev.linkedDocument}
                       </span>
                       <button
@@ -383,11 +383,11 @@ export default function CalendarPanel({
                           if (onOpenCalDoc) onOpenCalDoc(ev.linkedDocument);
                         }}
                         style={{
-                          background: 'none', border: '1px solid #3a3530', borderRadius: '3px',
-                          padding: '2px 8px', color: '#c9a96e', fontSize: '11px', cursor: 'pointer'
+                          background: 'none', border: '1px solid var(--border-default)', borderRadius: '3px',
+                          padding: '2px 8px', color: 'var(--accent)', fontSize: '11px', cursor: 'pointer'
                         }}
-                        onMouseEnter={e => e.currentTarget.style.borderColor = '#c9a96e'}
-                        onMouseLeave={e => e.currentTarget.style.borderColor = '#3a3530'}
+                        onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                        onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
                       >
                         Apri
                       </button>
@@ -398,11 +398,11 @@ export default function CalendarPanel({
                     <button
                       onClick={() => selectLinkedDoc(ev.id)}
                       style={{
-                        background: 'none', border: '1px solid #3a3530', borderRadius: '3px',
-                        padding: '4px 10px', color: '#8a7a60', fontSize: '11px', cursor: 'pointer'
+                        background: 'none', border: '1px solid var(--border-default)', borderRadius: '3px',
+                        padding: '4px 10px', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer'
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9a96e'; e.currentTarget.style.color = '#c9a96e'; }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = '#3a3530'; e.currentTarget.style.color = '#8a7a60'; }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
                     >
                       📎 Collega documento
                     </button>
@@ -411,18 +411,18 @@ export default function CalendarPanel({
 
                 {/* Telegram section */}
                 <div style={{
-                  padding: '8px', background: '#252018', borderRadius: '4px',
+                  padding: '8px', background: 'var(--bg-elevated)', borderRadius: '4px',
                   marginBottom: '8px'
                 }}>
                   <label style={{
                     display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px',
-                    color: '#c9a96e', cursor: 'pointer'
+                    color: 'var(--accent)', cursor: 'pointer'
                   }}>
                     <input
                       type="checkbox"
                       checked={ev.telegram?.enabled || false}
                       onChange={e => updateTelegram(ev.id, 'enabled', e.target.checked)}
-                      style={{ accentColor: '#c9a96e' }}
+                      style={{ accentColor: 'var(--accent)' }}
                     />
                     ✉️ Invia via Telegram
                   </label>
@@ -434,7 +434,7 @@ export default function CalendarPanel({
                         return (
                           <label key={pg.id} style={{
                             display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px',
-                            color: connected ? '#d4c5a9' : '#4a4035',
+                            color: connected ? 'var(--text-primary)' : 'var(--text-disabled)',
                             cursor: connected ? 'pointer' : 'not-allowed'
                           }}>
                             <input
@@ -442,7 +442,7 @@ export default function CalendarPanel({
                               checked={(ev.telegram?.recipients || []).includes(pg.id)}
                               onChange={() => connected && toggleTelegramRecipient(ev.id, pg.id, ev.telegram?.recipients || [])}
                               disabled={!connected}
-                              style={{ accentColor: '#c9a96e' }}
+                              style={{ accentColor: 'var(--accent)' }}
                             />
                             {connected ? '🟢' : '⚪'} {pg.characterName || pg.playerName}
                           </label>
@@ -451,22 +451,22 @@ export default function CalendarPanel({
 
                       {/* Auto/Manual toggle */}
                       <div style={{ marginTop: '6px', display: 'flex', gap: '12px' }}>
-                        <label style={{ color: '#8a7a60', cursor: 'pointer', fontSize: '11px' }}>
+                        <label style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '11px' }}>
                           <input
                             type="radio"
                             name={`send-${ev.id}`}
                             checked={ev.telegram?.autoSend || false}
                             onChange={() => updateTelegram(ev.id, 'autoSend', true)}
-                            style={{ accentColor: '#c9a96e' }}
+                            style={{ accentColor: 'var(--accent)' }}
                           /> Automatico
                         </label>
-                        <label style={{ color: '#8a7a60', cursor: 'pointer', fontSize: '11px' }}>
+                        <label style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '11px' }}>
                           <input
                             type="radio"
                             name={`send-${ev.id}`}
                             checked={!ev.telegram?.autoSend}
                             onChange={() => updateTelegram(ev.id, 'autoSend', false)}
-                            style={{ accentColor: '#c9a96e' }}
+                            style={{ accentColor: 'var(--accent)' }}
                           /> Manuale
                         </label>
                       </div>
@@ -478,14 +478,14 @@ export default function CalendarPanel({
                           disabled={!botRunning || (ev.telegram?.recipients || []).length === 0 || sending[ev.id]}
                           style={{
                             marginTop: '6px', background: 'none',
-                            border: `1px solid ${botRunning ? '#c9a96e' : '#3a3530'}`,
+                            border: `1px solid ${botRunning ? 'var(--accent)' : 'var(--border-default)'}`,
                             borderRadius: '4px', padding: '4px 10px',
-                            color: botRunning ? '#c9a96e' : '#4a4035',
+                            color: botRunning ? 'var(--accent)' : 'var(--text-disabled)',
                             fontSize: '11px',
                             cursor: botRunning && (ev.telegram?.recipients || []).length > 0 ? 'pointer' : 'not-allowed',
                             transition: 'all 0.2s'
                           }}
-                          onMouseEnter={e => { if (botRunning) { e.currentTarget.style.background = '#2a2520'; } }}
+                          onMouseEnter={e => { if (botRunning) { e.currentTarget.style.background = 'var(--border-subtle)'; } }}
                           onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
                         >
                           {sending[ev.id] ? '⏳ Invio...' : '✉️ Invia ora'}
@@ -493,7 +493,7 @@ export default function CalendarPanel({
                       )}
 
                       {!botRunning && (
-                        <div style={{ fontSize: '10px', color: '#c96e6e', marginTop: '4px' }}>
+                        <div style={{ fontSize: '10px', color: 'var(--color-danger)', marginTop: '4px' }}>
                           Bot non attivo
                         </div>
                       )}
@@ -506,12 +506,12 @@ export default function CalendarPanel({
                   <button
                     onClick={() => removeEvent(ev.id)}
                     style={{
-                      background: 'none', border: '1px solid #3a2020', borderRadius: '4px',
-                      padding: '3px 10px', color: '#c96e6e', fontSize: '11px', cursor: 'pointer',
+                      background: 'none', border: '1px solid var(--border-danger)', borderRadius: '4px',
+                      padding: '3px 10px', color: 'var(--color-danger)', fontSize: '11px', cursor: 'pointer',
                       transition: 'all 0.2s'
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#3a2020'; e.currentTarget.style.borderColor = '#c96e6e'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.borderColor = '#3a2020'; }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--border-danger)'; e.currentTarget.style.borderColor = 'var(--color-danger)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.borderColor = 'var(--border-danger)'; }}
                   >
                     🗑️ Elimina
                   </button>

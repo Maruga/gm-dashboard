@@ -1,28 +1,32 @@
 import React, { useState, useCallback } from 'react';
 import { getFileIcon } from '../utils/fileTypes';
 
-export default function SlotPanel({ label, files, isActive, activeFileIndex, onClear, onRemoveFile, onRemoveFiles, onFileSelect }) {
-  const [checkedPaths, setCheckedPaths] = useState(new Set());
-  const hasChecked = checkedPaths.size > 0;
+function itemKey(f) {
+  return f.type === 'snippet' ? f.id : f.path;
+}
 
-  const toggleCheck = useCallback((e, path) => {
+export default function SlotPanel({ label, files, isActive, activeFileIndex, onClear, onRemoveFile, onRemoveFiles, onFileSelect }) {
+  const [checkedKeys, setCheckedKeys] = useState(new Set());
+  const hasChecked = checkedKeys.size > 0;
+
+  const toggleCheck = useCallback((e, key) => {
     e.stopPropagation();
-    setCheckedPaths(prev => {
+    setCheckedKeys(prev => {
       const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }, []);
 
   const handleRemoveChecked = useCallback(() => {
-    onRemoveFiles(label, Array.from(checkedPaths));
-    setCheckedPaths(new Set());
-  }, [label, checkedPaths, onRemoveFiles]);
+    onRemoveFiles(label, Array.from(checkedKeys));
+    setCheckedKeys(new Set());
+  }, [label, checkedKeys, onRemoveFiles]);
 
   const handleClearAll = useCallback(() => {
     onClear();
-    setCheckedPaths(new Set());
+    setCheckedKeys(new Set());
   }, [onClear]);
 
   return (
@@ -31,8 +35,8 @@ export default function SlotPanel({ label, files, isActive, activeFileIndex, onC
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
-      background: '#1e1b16',
-      borderLeft: isActive ? '2px solid #c9a96e' : '2px solid transparent',
+      background: 'var(--bg-panel)',
+      borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
       transition: 'border-color 0.2s'
     }}>
       {/* Header */}
@@ -41,9 +45,9 @@ export default function SlotPanel({ label, files, isActive, activeFileIndex, onC
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '5px 10px',
-        borderBottom: '1px solid #2a2520',
+        borderBottom: '1px solid var(--border-subtle)',
         flexShrink: 0,
-        background: isActive ? '#252018' : 'transparent',
+        background: isActive ? 'var(--bg-elevated)' : 'transparent',
         gap: '6px'
       }}>
         <span style={{
@@ -51,84 +55,112 @@ export default function SlotPanel({ label, files, isActive, activeFileIndex, onC
           fontWeight: '600',
           textTransform: 'uppercase',
           letterSpacing: '1.5px',
-          color: isActive ? '#c9a96e' : '#8a7a60',
+          color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
           flexShrink: 0
         }}>
           Slot {label}
         </span>
 
         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-          {/* Remove checked */}
           {hasChecked && (
             <ActionBtn
-              title={`Rimuovi ${checkedPaths.size} selezionati`}
+              title={`Rimuovi ${checkedKeys.size} selezionati`}
               onClick={handleRemoveChecked}
-              color="#c97a6e"
+              color="var(--color-danger)"
             >
-              −{checkedPaths.size}
+              −{checkedKeys.size}
             </ActionBtn>
           )}
-          {/* Clear all */}
           {files.length > 0 && (
-            <ActionBtn title="Svuota slot" onClick={handleClearAll} color="#6a5a40">✕</ActionBtn>
+            <ActionBtn title="Svuota slot" onClick={handleClearAll} color="var(--text-tertiary)">✕</ActionBtn>
           )}
         </div>
       </div>
 
-      {/* File list */}
+      {/* Items list */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {files.map((f, i) => {
+          const isSnippet = f.type === 'snippet';
+          const key = itemKey(f);
           const isSelected = isActive && i === activeFileIndex;
-          const isChecked = checkedPaths.has(f.path);
+          const isChecked = checkedKeys.has(key);
+          const sourceName = isSnippet && f.source ? f.source : null;
           return (
             <div
-              key={f.path}
+              key={key}
               onClick={() => onFileSelect(label, i)}
               style={{
-                padding: '3px 6px 3px 10px',
+                padding: isSnippet ? '4px 6px 4px 10px' : '3px 6px 3px 10px',
                 fontSize: '12px',
                 cursor: 'pointer',
-                color: isSelected ? '#c9a96e' : '#a09080',
-                background: isSelected ? '#2a2520' : 'transparent',
+                color: isSelected ? 'var(--accent)' : 'var(--text-secondary-light)',
+                background: isSelected ? 'var(--bg-hover-strong)' : 'transparent',
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: isSnippet ? 'flex-start' : 'center',
                 gap: '4px',
                 transition: 'background 0.1s'
               }}
-              onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#201d18'; }}
-              onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = isSelected ? '#2a2520' : 'transparent'; }}
+              onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover-subtle)'; }}
+              onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = isSelected ? 'var(--bg-hover-strong)' : 'transparent'; }}
             >
               {/* Checkbox */}
               <span
-                onClick={(e) => toggleCheck(e, f.path)}
+                onClick={(e) => toggleCheck(e, key)}
                 style={{
                   width: '14px',
                   height: '14px',
-                  border: `1px solid ${isChecked ? '#c9a96e' : '#3a3530'}`,
+                  border: isChecked ? '1px solid var(--accent)' : '1px solid var(--border-default)',
                   borderRadius: '2px',
                   flexShrink: 0,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: '9px',
-                  color: '#c9a96e',
-                  background: isChecked ? '#c9a96e20' : 'transparent',
-                  cursor: 'pointer'
+                  color: 'var(--accent)',
+                  background: isChecked ? 'var(--accent-a12)' : 'transparent',
+                  cursor: 'pointer',
+                  marginTop: isSnippet ? '1px' : '0'
                 }}
               >
                 {isChecked ? '✓' : ''}
               </span>
 
-              {/* Icon + name */}
-              <span style={{ fontSize: '12px', flexShrink: 0 }}>{getFileIcon(f)}</span>
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {f.name.replace(/\.[^.]+$/, '')}
-              </span>
+              {isSnippet ? (
+                /* Snippet item */
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ fontSize: '11px', flexShrink: 0 }}>✂️</span>
+                    <span style={{
+                      flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      fontStyle: 'italic', fontSize: '11px'
+                    }}>
+                      "{f.title}"
+                    </span>
+                  </div>
+                  {sourceName && (
+                    <div style={{
+                      fontSize: '9px', color: 'var(--text-disabled)',
+                      paddingLeft: '19px', marginTop: '1px',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                    }}>
+                      da: {sourceName}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* File item */
+                <>
+                  <span style={{ fontSize: '12px', flexShrink: 0 }}>{getFileIcon(f)}</span>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {f.name.replace(/\.[^.]+$/, '')}
+                  </span>
+                </>
+              )}
 
               {/* Individual remove */}
               <span
                 className="close-btn"
-                onClick={(e) => { e.stopPropagation(); onRemoveFile(label, f.path); }}
+                onClick={(e) => { e.stopPropagation(); onRemoveFile(label, key); }}
                 style={{ fontSize: '13px', flexShrink: 0 }}
                 title="Rimuovi"
               >
@@ -140,7 +172,7 @@ export default function SlotPanel({ label, files, isActive, activeFileIndex, onC
         {files.length === 0 && (
           <div style={{
             height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#3a3530', fontSize: '11px'
+            color: 'var(--border-default)', fontSize: '11px'
           }}>
             Vuoto
           </div>

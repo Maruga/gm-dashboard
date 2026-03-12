@@ -8,14 +8,14 @@ function rollDie(sides) {
 }
 
 const DIE_COLORS = {
-  4: '#8a7a5a', 6: '#9a8a65', 8: '#a89a70', 10: '#b8a87a',
-  12: '#c5b585', 20: '#d4c490', 100: '#e2d4a0'
+  4: 'var(--dice-d4)', 6: 'var(--dice-d6)', 8: 'var(--dice-d8)', 10: 'var(--dice-d10)',
+  12: 'var(--dice-d12)', 20: 'var(--dice-d20)', 100: 'var(--dice-d100)'
 };
 
 function dieValueColor(value, sides) {
-  if (value === 1) return '#ff6b6b';
-  if (value === sides) return '#6bff6b';
-  return '#e8dcc0';
+  if (value === 1) return 'var(--color-danger-bright)';
+  if (value === sides) return 'var(--color-success-bright)';
+  return 'var(--text-bright)';
 }
 
 function DicePanel() {
@@ -37,14 +37,14 @@ function DicePanel() {
 
   return (
     <div style={{
-      width: '150px', flexShrink: 0, borderLeft: '1px solid #2a2520',
+      width: '150px', flexShrink: 0, borderLeft: '1px solid var(--border-subtle)',
       display: 'flex', flexDirection: 'column', overflow: 'hidden'
     }}>
       {/* Header */}
       <div style={{
         padding: '6px 8px', fontSize: '10px', fontWeight: '600',
-        textTransform: 'uppercase', letterSpacing: '1.5px', color: '#c9a96e',
-        borderBottom: '1px solid #2a2520', flexShrink: 0,
+        textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--accent)',
+        borderBottom: '1px solid var(--border-subtle)', flexShrink: 0,
         display: 'flex', justifyContent: 'space-between', alignItems: 'center'
       }}>
         <span>Dadi</span>
@@ -65,12 +65,12 @@ function DicePanel() {
               key={d}
               onClick={() => handleRoll(d)}
               style={{
-                background: 'none', border: '1px solid #3a3530', borderRadius: '3px',
+                background: 'none', border: '1px solid var(--border-default)', borderRadius: '3px',
                 padding: '3px 0', width: '40px', color: DIE_COLORS[d], fontSize: '11px',
                 cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit', fontWeight: '600'
               }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = DIE_COLORS[d]; e.currentTarget.style.background = 'rgba(201,169,110,0.08)'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = '#3a3530'; e.currentTarget.style.background = 'none'; }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = DIE_COLORS[d]; e.currentTarget.style.background = 'var(--accent-a08)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.background = 'none'; }}
             >
               d{d}
             </button>
@@ -85,11 +85,11 @@ function DicePanel() {
             return (
               <div key={roll.id}>
                 {showSep && (
-                  <div style={{ borderTop: '1px dashed #4a4035', margin: '4px 0' }} />
+                  <div style={{ borderTop: '1px dashed var(--text-disabled)', margin: '4px 0' }} />
                 )}
                 <div style={{
                   padding: '2px 6px', marginBottom: '1px', borderRadius: '3px',
-                  background: 'rgba(255,255,255,0.03)',
+                  background: 'var(--bg-glow-subtle)',
                   display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '4px'
                 }}>
                   <span style={{ fontSize: '10px', color: DIE_COLORS[roll.sides], fontWeight: '600' }}>
@@ -227,7 +227,7 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
     let pos = 0;
     while ((pos = lower.indexOf(qLower, lastIdx)) !== -1) {
       if (pos > lastIdx) parts.push(<span key={lastIdx}>{text.substring(lastIdx, pos)}</span>);
-      parts.push(<span key={`h${pos}`} style={{ color: '#c9a96e', fontWeight: '600' }}>{text.substring(pos, pos + query.length)}</span>);
+      parts.push(<span key={`h${pos}`} style={{ color: 'var(--accent)', fontWeight: '600' }}>{text.substring(pos, pos + query.length)}</span>);
       lastIdx = pos + query.length;
     }
     if (lastIdx < text.length) parts.push(<span key={lastIdx}>{text.substring(lastIdx)}</span>);
@@ -255,7 +255,7 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {/* Tab Header */}
         <div style={{
-          display: 'flex', borderBottom: '1px solid #2a2520', flexShrink: 0
+          display: 'flex', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0
         }}>
           {[
             { key: 'search', label: 'Ricerca' },
@@ -267,12 +267,12 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
               style={{
                 padding: '6px 12px', fontSize: '10px', fontWeight: '600',
                 textTransform: 'uppercase', letterSpacing: '1.2px', cursor: 'pointer',
-                color: activeTab === tab.key ? '#c9a96e' : '#6a5a40',
-                borderBottom: activeTab === tab.key ? '2px solid #c9a96e' : '2px solid transparent',
+                color: activeTab === tab.key ? 'var(--accent)' : 'var(--text-tertiary)',
+                borderBottom: activeTab === tab.key ? '2px solid var(--accent)' : '2px solid transparent',
                 transition: 'all 0.15s'
               }}
-              onMouseEnter={e => { if (activeTab !== tab.key) e.currentTarget.style.color = '#9a8a6a'; }}
-              onMouseLeave={e => { if (activeTab !== tab.key) e.currentTarget.style.color = '#6a5a40'; }}
+              onMouseEnter={e => { if (activeTab !== tab.key) e.currentTarget.style.color = 'var(--text-secondary-light)'; }}
+              onMouseLeave={e => { if (activeTab !== tab.key) e.currentTarget.style.color = 'var(--text-tertiary)'; }}
             >
               {tab.key === 'log' ? '📨 ' : '🔍 '}{tab.label}
             </div>
@@ -293,12 +293,12 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
                   placeholder="Cerca nei documenti..."
                   autoComplete="off"
                   style={{
-                    width: '100%', background: '#141210', border: '1px solid #3a3530',
-                    borderRadius: '4px', padding: '6px 28px 6px 10px', color: '#d4c5a9',
+                    width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+                    borderRadius: '4px', padding: '6px 28px 6px 10px', color: 'var(--text-primary)',
                     fontSize: '12px', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box'
                   }}
-                  onFocus={e => { e.currentTarget.style.borderColor = '#c9a96e'; if (searchHistory.length > 0 && !searchQuery) setShowSuggestions(true); }}
-                  onBlur={e => { e.currentTarget.style.borderColor = '#3a3530'; setTimeout(() => setShowSuggestions(false), 150); }}
+                  onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent)'; if (searchHistory.length > 0 && !searchQuery) setShowSuggestions(true); }}
+                  onBlur={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; setTimeout(() => setShowSuggestions(false), 150); }}
                 />
                 {searchQuery && (
                   <span className="close-btn" onClick={clearSearch}
@@ -309,7 +309,7 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
                 {showSuggestions && searchHistory.length > 0 && (
                   <div style={{
                     position: 'absolute', top: '100%', left: 0, right: 0,
-                    background: '#252018', border: '1px solid #3a3530', borderTop: 'none',
+                    background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderTop: 'none',
                     borderRadius: '0 0 4px 4px', zIndex: 10, maxHeight: '150px', overflowY: 'auto'
                   }}>
                     {searchHistory
@@ -318,8 +318,8 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
                       .map((q, i) => (
                         <div key={i}
                           onMouseDown={(e) => { e.preventDefault(); setSearchQuery(q); setShowSuggestions(false); saveToHistory(q); doSearch(q); }}
-                          style={{ padding: '4px 10px', fontSize: '11px', color: '#9a8a6a', cursor: 'pointer', transition: 'background 0.1s' }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#3a3530'}
+                          style={{ padding: '4px 10px', fontSize: '11px', color: 'var(--text-secondary-light)', cursor: 'pointer', transition: 'background 0.1s' }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--border-default)'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >{q}</div>
                       ))}
@@ -331,17 +331,17 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
             {/* Results */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 8px' }}>
               {searching && (
-                <div style={{ color: '#8a7a60', fontSize: '11px', padding: '6px 0' }}>Ricerca in corso...</div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '11px', padding: '6px 0' }}>Ricerca in corso...</div>
               )}
 
               {searchResults && !searching && (
                 searchResults.totalMatches > 0 ? (
-                  <div style={{ fontSize: '11px', color: '#6a5a40', padding: '4px 0 6px', borderBottom: '1px solid #2a2520', marginBottom: '4px' }}>
-                    <span style={{ color: '#c9a96e', fontWeight: '600' }}>{searchResults.totalMatches}</span> risultat{searchResults.totalMatches === 1 ? 'o' : 'i'} in{' '}
-                    <span style={{ color: '#c9a96e', fontWeight: '600' }}>{searchResults.totalFiles}</span> file
+                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', padding: '4px 0 6px', borderBottom: '1px solid var(--border-subtle)', marginBottom: '4px' }}>
+                    <span style={{ color: 'var(--accent)', fontWeight: '600' }}>{searchResults.totalMatches}</span> risultat{searchResults.totalMatches === 1 ? 'o' : 'i'} in{' '}
+                    <span style={{ color: 'var(--accent)', fontWeight: '600' }}>{searchResults.totalFiles}</span> file
                   </div>
                 ) : (
-                  <div style={{ fontSize: '11px', color: '#4a4035', fontStyle: 'italic', padding: '8px 0' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-disabled)', fontStyle: 'italic', padding: '8px 0' }}>
                     Nessun risultato per: "{searchQuery.trim()}"
                   </div>
                 )
@@ -354,14 +354,14 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
                     style={{
                       padding: '5px 6px', cursor: 'pointer', display: 'flex', alignItems: 'baseline', gap: '6px',
                       borderRadius: '3px', transition: 'background 0.1s',
-                      background: '#1a1815', marginBottom: '2px', borderLeft: '2px solid #c9a96e'
+                      background: 'var(--bg-main)', marginBottom: '2px', borderLeft: '2px solid var(--accent)'
                     }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#252018'}
-                    onMouseLeave={e => e.currentTarget.style.background = '#1a1815'}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-elevated)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-main)'}
                   >
                     <span style={{ fontSize: '11px', flexShrink: 0 }}>{fileIcon(result.name)}</span>
-                    <span style={{ fontSize: '11px', color: '#c9a96e', fontWeight: '600', flexShrink: 0 }}>{result.name}</span>
-                    <span style={{ fontSize: '11px', color: '#9a8a6a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: '600', flexShrink: 0 }}>{result.name}</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary-light)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {result.relativePath}
                     </span>
                   </div>
@@ -370,10 +370,10 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
                       onClick={() => handleMatchClick(result, m)}
                       style={{
                         padding: '2px 4px 2px 18px', cursor: 'pointer',
-                        fontSize: '11px', color: '#8a7a60', lineHeight: '1.5',
+                        fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.5',
                         borderRadius: '2px', transition: 'background 0.1s', wordBreak: 'break-word'
                       }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#252018'}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-elevated)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
                       {renderSnippet(m.text, searchQuery.trim())}
@@ -397,12 +397,12 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
                 <button
                   onClick={onClearLog}
                   style={{
-                    background: 'none', border: '1px solid #3a3530', borderRadius: '3px',
-                    padding: '2px 8px', color: '#8a7a60', fontSize: '10px', cursor: 'pointer',
+                    background: 'none', border: '1px solid var(--border-default)', borderRadius: '3px',
+                    padding: '2px 8px', color: 'var(--text-secondary)', fontSize: '10px', cursor: 'pointer',
                     transition: 'all 0.15s'
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9a96e'; e.currentTarget.style.color = '#c9a96e'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#3a3530'; e.currentTarget.style.color = '#8a7a60'; }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
                 >
                   🗑️ Svuota log
                 </button>
@@ -412,33 +412,33 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
             {/* Log entries */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 8px' }}>
               {telegramLog.length === 0 ? (
-                <div style={{ fontSize: '11px', color: '#4a4035', fontStyle: 'italic', padding: '12px 0', textAlign: 'center' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-disabled)', fontStyle: 'italic', padding: '12px 0', textAlign: 'center' }}>
                   Nessun invio registrato
                 </div>
               ) : (
                 telegramLog.map((entry, i) => (
                   <div key={i} style={{
                     padding: '4px 8px', marginBottom: '2px', borderRadius: '3px',
-                    background: 'rgba(255,255,255,0.02)',
-                    borderLeft: `2px solid ${entry.success ? '#6baa5d' : '#c96e6e'}`,
+                    background: 'var(--bg-glow-faint)',
+                    borderLeft: `2px solid ${entry.success ? 'var(--color-success-alt)' : 'var(--color-danger)'}`,
                     fontSize: '11px', lineHeight: '1.5'
                   }}>
                     <div style={{ display: 'flex', gap: '6px', alignItems: 'baseline' }}>
                       <span>{entry.icon || (entry.success ? '✅' : '❌')}</span>
-                      <span style={{ color: '#6a5a40', fontSize: '10px', flexShrink: 0 }}>
+                      <span style={{ color: 'var(--text-tertiary)', fontSize: '10px', flexShrink: 0 }}>
                         {entry.date}
                       </span>
-                      <span style={{ color: '#d4c5a9' }}>
+                      <span style={{ color: 'var(--text-primary)' }}>
                         {entry.description}
                       </span>
                     </div>
                     {entry.recipient && (
-                      <div style={{ paddingLeft: '22px', color: '#8a7a60', fontSize: '10px' }}>
+                      <div style={{ paddingLeft: '22px', color: 'var(--text-secondary)', fontSize: '10px' }}>
                         → {entry.recipient}
                       </div>
                     )}
                     {entry.error && (
-                      <div style={{ paddingLeft: '22px', color: '#c96e6e', fontSize: '10px' }}>
+                      <div style={{ paddingLeft: '22px', color: 'var(--color-danger)', fontSize: '10px' }}>
                         {entry.error}
                       </div>
                     )}

@@ -14,7 +14,7 @@ function highlightSearch(html, query) {
     let pos = 0;
     while ((pos = lower.indexOf(qLower, lastPos)) !== -1) {
       result += part.substring(lastPos, pos);
-      result += `<mark data-ref-hl="${count}" style="background:rgba(201,169,110,0.35);color:inherit;padding:0 1px;border-radius:2px">${part.substring(pos, pos + query.length)}</mark>`;
+      result += `<mark data-ref-hl="${count}" style="background:var(--accent-a35);color:inherit;padding:0 1px;border-radius:2px">${part.substring(pos, pos + query.length)}</mark>`;
       count++;
       lastPos = pos + query.length;
     }
@@ -24,7 +24,26 @@ function highlightSearch(html, query) {
   return { html: processed.join(''), count };
 }
 
-export default function QuickReference({ manuals, projectPath, scrollPositions, onScrollPositionsChange, selectedManualId, onSelectedChange, onClose }) {
+function applyKeywordHighlightsToHtml(html, words) {
+  if (!html || !words || words.length === 0) return html;
+  const sorted = [...words].sort((a, b) => b.text.length - a.text.length);
+  const pattern = new RegExp(
+    '(' + sorted.map(w => w.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'gi'
+  );
+  const colorMap = {};
+  for (const w of words) colorMap[w.text.toLowerCase()] = w.color;
+  const parts = html.split(/(<[^>]+>)/);
+  const processed = parts.map(part => {
+    if (part.startsWith('<')) return part;
+    return part.replace(pattern, (match) => {
+      const color = colorMap[match.toLowerCase()] || 'rgba(201,169,110,0.55)';
+      return `<mark data-kw-hl="true" style="background:${color};color:inherit;padding:1px 2px;border-radius:2px">${match}</mark>`;
+    });
+  });
+  return processed.join('');
+}
+
+export default function QuickReference({ manuals, projectPath, scrollPositions, onScrollPositionsChange, selectedManualId, onSelectedChange, onClose, highlightKeywords }) {
   const [renderedHtml, setRenderedHtml] = useState('');
   const [headings, setHeadings] = useState([]);
   const [activeHeading, setActiveHeading] = useState(-1);
@@ -50,7 +69,7 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
 
     window.electronAPI.readFile(fullPath.replace(/\//g, '\\')).then(text => {
       if (!text) {
-        setRenderedHtml('<div style="padding:20px;color:#c96e6e;font-style:italic">File non trovato</div>');
+        setRenderedHtml('<div style="padding:20px;color:var(--color-danger);font-style:italic">File non trovato</div>');
         return;
       }
       const ext = selected.file.split('.').pop().toLowerCase();
@@ -59,7 +78,7 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
       } else if (ext === 'html' || ext === 'htm') {
         setRenderedHtml(text);
       } else {
-        setRenderedHtml(`<pre style="white-space:pre-wrap;font-family:'Courier New',monospace;color:#d4c5a9">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`);
+        setRenderedHtml(`<pre style="white-space:pre-wrap;font-family:'Courier New',monospace;color:var(--text-primary)">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`);
       }
       // Restore scroll position
       requestAnimationFrame(() => {
@@ -128,12 +147,22 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
     debounceRef.current = setTimeout(() => setDebouncedQuery(val.trim()), 400);
   }, []);
 
-  // Apply search highlights
+  // Keyword highlighting (HTML string pipeline)
+  const kwEnabled = highlightKeywords?.enabled && highlightKeywords?.words?.length > 0;
+  const kwWords = highlightKeywords?.words;
+  const kwVersion = kwEnabled ? kwWords.map(w => w.text + w.color).join('|') : '';
+
+  const kwHtml = useMemo(() => {
+    if (!kwEnabled || !renderedHtml) return renderedHtml;
+    return applyKeywordHighlightsToHtml(renderedHtml, kwWords);
+  }, [renderedHtml, kwEnabled, kwVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Apply search highlights (on top of keyword highlights)
   const { displayHtml, matchCount } = useMemo(() => {
-    if (!debouncedQuery || debouncedQuery.length < 2) return { displayHtml: renderedHtml, matchCount: 0 };
-    const result = highlightSearch(renderedHtml, debouncedQuery);
+    if (!debouncedQuery || debouncedQuery.length < 2) return { displayHtml: kwHtml, matchCount: 0 };
+    const result = highlightSearch(kwHtml, debouncedQuery);
     return { displayHtml: result.html, matchCount: result.count };
-  }, [renderedHtml, debouncedQuery]);
+  }, [kwHtml, debouncedQuery]);
 
   // Scroll to first match
   useEffect(() => {
@@ -172,7 +201,7 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
       onClick={onClose}
       style={{
         position: 'fixed', inset: 0,
-        background: 'rgba(0,0,0,0.7)',
+        background: 'var(--overlay-medium)',
         zIndex: 3500,
         display: 'flex', alignItems: 'center', justifyContent: 'center'
       }}
@@ -181,8 +210,8 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
         onClick={e => e.stopPropagation()}
         style={{
           width: '85vw', height: '85vh',
-          background: '#1e1b16',
-          border: '1px solid #3a3530',
+          background: 'var(--bg-panel)',
+          border: '1px solid var(--border-default)',
           borderRadius: '8px',
           display: 'flex', flexDirection: 'column',
           overflow: 'hidden'
@@ -191,11 +220,11 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
         {/* Header */}
         <div style={{
           padding: '10px 16px',
-          borderBottom: '1px solid #3a3530',
+          borderBottom: '1px solid var(--border-default)',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          flexShrink: 0, background: '#252018'
+          flexShrink: 0, background: 'var(--bg-elevated)'
         }}>
-          <span style={{ fontSize: '14px', fontWeight: '600', color: '#c9a96e', letterSpacing: '1px' }}>
+          <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--accent)', letterSpacing: '1px' }}>
             Manuali di Riferimento
           </span>
           <span className="close-btn" onClick={onClose} style={{ fontSize: '16px' }}>✕</span>
@@ -205,16 +234,16 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
           {/* Column 1: Manual list */}
           <div style={{
-            width: '140px', flexShrink: 0, borderRight: '1px solid #2a2520',
+            width: '140px', flexShrink: 0, borderRight: '1px solid var(--border-subtle)',
             display: 'flex', flexDirection: 'column', overflowY: 'auto'
           }}>
             <div style={{
               padding: '8px 10px', fontSize: '10px', fontWeight: '600',
-              textTransform: 'uppercase', letterSpacing: '1.2px', color: '#c9a96e',
-              borderBottom: '1px solid #2a2520', flexShrink: 0
+              textTransform: 'uppercase', letterSpacing: '1.2px', color: 'var(--accent)',
+              borderBottom: '1px solid var(--border-subtle)', flexShrink: 0
             }}>Manuali</div>
             {manuals.length === 0 ? (
-              <div style={{ padding: '12px 10px', fontSize: '11px', color: '#4a4035', fontStyle: 'italic' }}>
+              <div style={{ padding: '12px 10px', fontSize: '11px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
                 Nessun manuale — vai in Impostazioni
               </div>
             ) : (
@@ -227,16 +256,16 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
                     style={{
                       padding: '8px 10px',
                       cursor: 'pointer',
-                      background: isSel ? 'rgba(201,169,110,0.1)' : 'transparent',
-                      borderLeft: isSel ? '3px solid #c9a96e' : '3px solid transparent',
-                      color: isSel ? '#c9a96e' : '#d4c5a9',
+                      background: isSel ? 'var(--accent-a10)' : 'transparent',
+                      borderLeft: isSel ? '3px solid var(--accent)' : '3px solid transparent',
+                      color: isSel ? 'var(--accent)' : 'var(--text-primary)',
                       fontSize: '12px',
                       fontWeight: isSel ? '600' : '400',
                       transition: 'all 0.15s',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
                     }}
-                    onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = '#222018'; }}
-                    onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = isSel ? 'rgba(201,169,110,0.1)' : 'transparent'; }}
+                    onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'var(--bg-hover-subtle)'; }}
+                    onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = isSel ? 'var(--accent-a10)' : 'transparent'; }}
                     title={m.name}
                   >
                     {m.name}
@@ -248,18 +277,18 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
 
           {/* Column 2: TOC + Search */}
           <div style={{
-            width: '220px', flexShrink: 0, borderRight: '1px solid #2a2520',
+            width: '220px', flexShrink: 0, borderRight: '1px solid var(--border-subtle)',
             display: 'flex', flexDirection: 'column', overflow: 'hidden'
           }}>
             {/* TOC */}
             <div style={{
               padding: '8px 10px', fontSize: '10px', fontWeight: '600',
-              textTransform: 'uppercase', letterSpacing: '1.2px', color: '#c9a96e',
-              borderBottom: '1px solid #2a2520', flexShrink: 0
+              textTransform: 'uppercase', letterSpacing: '1.2px', color: 'var(--accent)',
+              borderBottom: '1px solid var(--border-subtle)', flexShrink: 0
             }}>Indice</div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
               {headings.length === 0 ? (
-                <div style={{ padding: '8px 10px', fontSize: '11px', color: '#4a4035', fontStyle: 'italic' }}>
+                <div style={{ padding: '8px 10px', fontSize: '11px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
                   {selected ? 'Nessun heading' : 'Seleziona un manuale'}
                 </div>
               ) : (
@@ -272,14 +301,14 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
                       paddingLeft: h.level === 2 ? '22px' : '10px',
                       fontSize: h.level === 1 ? '12px' : '11px',
                       fontWeight: h.level === 1 ? '600' : '400',
-                      color: i === activeHeading ? '#c9a96e' : '#d4c5a9',
+                      color: i === activeHeading ? 'var(--accent)' : 'var(--text-primary)',
                       cursor: 'pointer',
                       lineHeight: '1.6',
-                      borderLeft: i === activeHeading ? '2px solid #c9a96e' : '2px solid transparent',
+                      borderLeft: i === activeHeading ? '2px solid var(--accent)' : '2px solid transparent',
                       transition: 'all 0.15s'
                     }}
-                    onMouseEnter={e => { if (i !== activeHeading) e.currentTarget.style.color = '#c9a96e'; }}
-                    onMouseLeave={e => { if (i !== activeHeading) e.currentTarget.style.color = '#d4c5a9'; }}
+                    onMouseEnter={e => { if (i !== activeHeading) e.currentTarget.style.color = 'var(--accent)'; }}
+                    onMouseLeave={e => { if (i !== activeHeading) e.currentTarget.style.color = 'var(--text-primary)'; }}
                   >
                     {h.text}
                   </div>
@@ -289,7 +318,7 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
 
             {/* Search */}
             <div style={{
-              borderTop: '1px solid #2a2520', padding: '8px 10px', flexShrink: 0
+              borderTop: '1px solid var(--border-subtle)', padding: '8px 10px', flexShrink: 0
             }}>
               <div style={{ position: 'relative' }}>
                 <input
@@ -299,12 +328,12 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
                   onChange={handleSearchChange}
                   placeholder="Cerca nel manuale..."
                   style={{
-                    width: '100%', background: '#141210', border: '1px solid #3a3530',
-                    borderRadius: '4px', padding: '6px 26px 6px 8px', color: '#d4c5a9',
+                    width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+                    borderRadius: '4px', padding: '6px 26px 6px 8px', color: 'var(--text-primary)',
                     fontSize: '11px', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box'
                   }}
-                  onFocus={e => e.currentTarget.style.borderColor = '#c9a96e'}
-                  onBlur={e => e.currentTarget.style.borderColor = '#3a3530'}
+                  onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                  onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
                 />
                 {searchQuery && (
                   <span
@@ -315,9 +344,9 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
                 )}
               </div>
               {debouncedQuery.length >= 2 && (
-                <div style={{ fontSize: '10px', color: '#6a5a40', marginTop: '4px' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
                   {matchCount > 0
-                    ? <><span style={{ color: '#c9a96e', fontWeight: '600' }}>{matchCount}</span> risultat{matchCount === 1 ? 'o' : 'i'}</>
+                    ? <><span style={{ color: 'var(--accent)', fontWeight: '600' }}>{matchCount}</span> risultat{matchCount === 1 ? 'o' : 'i'}</>
                     : 'Nessun risultato'
                   }
                 </div>
@@ -336,14 +365,14 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
                   flex: 1, overflowY: 'auto',
                   padding: '24px 32px',
                   fontFamily: "'Georgia', 'Times New Roman', serif",
-                  fontSize: '15px', lineHeight: '1.7', color: '#d4c5a9'
+                  fontSize: '15px', lineHeight: '1.7', color: 'var(--text-primary)'
                 }}
                 dangerouslySetInnerHTML={{ __html: displayHtml }}
               />
             ) : (
               <div style={{
                 flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#4a4035', fontSize: '13px', fontStyle: 'italic'
+                color: 'var(--text-disabled)', fontSize: '13px', fontStyle: 'italic'
               }}>
                 {manuals.length === 0 ? 'Configura i manuali nelle Impostazioni' : 'Seleziona un manuale'}
               </div>
