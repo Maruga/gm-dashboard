@@ -7,10 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "electron": "electron .",
-    "start": "vite build && electron ."
+    "start": "vite build && electron .",
+    "dist": "npm run build && electron-builder --win"
   },
   "keywords": [],
-  "author": "",
+  "author": "Genkai",
   "license": "ISC",
   "dependencies": {
     "electron-store": "^11.0.2",
@@ -24,6 +25,36 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^5.1.4",
     "electron": "^40.8.0",
+    "electron-builder": "^26.8.1",
     "vite": "^7.3.1"
+  },
+  "build": {
+    "appId": "com.genkai.gmdashboard",
+    "productName": "GENKAI GM Dashboard",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "language": "1040",
+      "installerLanguages": ["it"],
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   }
 }
