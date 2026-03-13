@@ -80,19 +80,29 @@ const Viewer = forwardRef(function Viewer({
   scrollMapRef, onScrollChanged
 }, ref) {
   const [renderedHtml, setRenderedHtml] = useState('');
+  const [isHtmlFile, setIsHtmlFile] = useState(false);
+  const [htmlFileUrl, setHtmlFileUrl] = useState('');
   const containerRef = useRef(null);
+  const iframeRef = useRef(null);
+  const isHtmlRef = useRef(false);
   const currentKeyRef = useRef(null);
   const fadeTimerRef = useRef(null);
   const { saveScroll, getScroll } = useScrollMemory(scrollMapRef, onScrollChanged);
 
-  useImperativeHandle(ref, () => containerRef.current);
+  useImperativeHandle(ref, () => isHtmlFile ? null : containerRef.current);
 
   const makeKey = useCallback((filePath) => {
     return scrollKeyPrefix ? `${scrollKeyPrefix}:${filePath}` : filePath;
   }, [scrollKeyPrefix]);
 
   const saveCurrentScroll = useCallback(() => {
-    if (currentKeyRef.current && containerRef.current) {
+    if (!currentKeyRef.current) return;
+    if (isHtmlRef.current) {
+      try {
+        const scrollY = iframeRef.current?.contentWindow?.scrollY;
+        if (scrollY != null) saveScroll(currentKeyRef.current, scrollY);
+      } catch (_) { /* cross-origin safety */ }
+    } else if (containerRef.current) {
       saveScroll(currentKeyRef.current, containerRef.current.scrollTop);
     }
   }, [saveScroll]);
@@ -121,39 +131,52 @@ const Viewer = forwardRef(function Viewer({
     }
 
     if (type === FILE_TYPES.DOCUMENT) {
-      window.electronAPI.readFile(currentFile.path).then(text => {
-        if (!text) return;
+      const ext = currentFile.extension;
+      if (ext === '.html' || ext === '.htm') {
+        // HTML files: use iframe for CSS isolation
+        setIsHtmlFile(true);
+        isHtmlRef.current = true;
+        setRenderedHtml('');
         currentKeyRef.current = scrollKey;
+        window.electronAPI.getFileUrl(currentFile.path).then(url => {
+          setHtmlFileUrl(url);
+        });
+      } else {
+        setIsHtmlFile(false);
+        isHtmlRef.current = false;
+        setHtmlFileUrl('');
+        window.electronAPI.readFile(currentFile.path).then(text => {
+          if (!text) return;
+          currentKeyRef.current = scrollKey;
 
-        if (currentFile.extension === '.md') {
-          setRenderedHtml(renderMarkdown(text));
-        } else if (currentFile.extension === '.html' || currentFile.extension === '.htm') {
-          setRenderedHtml(text);
-        } else {
-          setRenderedHtml(`<pre style="white-space: pre-wrap; font-family: 'Courier New', monospace; color: var(--text-primary);">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`);
-        }
-
-        const targetScroll = getScroll(scrollKey);
-        const applyScroll = () => {
-          if (containerRef.current) {
-            containerRef.current.scrollTop = targetScroll;
+          if (ext === '.md') {
+            setRenderedHtml(renderMarkdown(text));
+          } else {
+            setRenderedHtml(`<pre style="white-space: pre-wrap; font-family: 'Courier New', monospace; color: var(--text-primary);">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`);
           }
-        };
 
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            applyScroll();
+          const targetScroll = getScroll(scrollKey);
+          const applyScroll = () => {
             if (containerRef.current) {
-              const imgs = containerRef.current.querySelectorAll('img');
-              imgs.forEach(img => {
-                if (!img.complete) {
-                  img.addEventListener('load', applyScroll, { once: true });
-                }
-              });
+              containerRef.current.scrollTop = targetScroll;
             }
+          };
+
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              applyScroll();
+              if (containerRef.current) {
+                const imgs = containerRef.current.querySelectorAll('img');
+                imgs.forEach(img => {
+                  if (!img.complete) {
+                    img.addEventListener('load', applyScroll, { once: true });
+                  }
+                });
+              }
+            });
           });
         });
-      });
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileIdentity]);
@@ -208,6 +231,41 @@ const Viewer = forwardRef(function Viewer({
       saveScroll(currentKeyRef.current, containerRef.current.scrollTop);
     }
   }, [saveScroll]);
+
+  const handleIframeLoad = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe || !currentKeyRef.current) return;
+    const targetScroll = getScroll(currentKeyRef.current);
+    setTimeout(() => {
+      try {
+        iframe.contentWindow.scrollTo(0, targetScroll);
+        // Attach scroll listener for saving position
+        iframe.contentWindow.addEventListener('scroll', () => {
+          try {
+            if (currentKeyRef.current) {
+              saveScroll(currentKeyRef.current, iframe.contentWindow.scrollY);
+            }
+          } catch (_) {}
+        }, { passive: true });
+      } catch (_) { /* cross-origin safety */ }
+    }, 100);
+  }, [getScroll, saveScroll]);
+
+  if (isHtmlFile) {
+    return (
+      <iframe
+        ref={iframeRef}
+        src={htmlFileUrl}
+        onLoad={handleIframeLoad}
+        style={{
+          width: '100%',
+          height: '100%',
+          border: 'none'
+        }}
+        sandbox="allow-same-origin"
+      />
+    );
+  }
 
   return (
     <div

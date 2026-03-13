@@ -636,6 +636,23 @@ export default function SettingsPanel({
             </select>
           </div>
 
+          {/* Hidden extensions */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={labelStyle}>Estensioni nascoste nell'Explorer</label>
+            <input
+              type="text"
+              value={settings.hiddenExtensions ?? '.json, .yml, .yaml, .git, .gitignore, .DS_Store, .thumbs.db, .ini, .cfg, .log, .bak, .tmp, .swp, .lock'}
+              onChange={e => updateSetting('hiddenExtensions', e.target.value)}
+              style={inputStyle}
+              onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+              onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+              placeholder=".json, .yml, .bak, .tmp"
+            />
+            <div style={{ fontSize: '10px', color: 'var(--text-disabled)', marginTop: '4px' }}>
+              Separate da virgola. Cartelle con punto e file con _ sono sempre nascosti.
+            </div>
+          </div>
+
           {/* Relations file */}
           <div style={{ marginBottom: '16px' }}>
             <label style={labelStyle}>File relazioni PNG ↔ PG</label>

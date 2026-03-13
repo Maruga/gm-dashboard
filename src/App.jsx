@@ -932,6 +932,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
         highlightEnabled={highlightKeywords.enabled}
         onToggleHighlight={() => setHighlightKeywords(prev => ({ ...prev, enabled: !prev.enabled }))}
         onOpenAdventures={() => setAdventuresOpen(true)}
+        onOpenProjectFolder={() => window.electronAPI.openProjectFolder(projectPath)}
         onOpenRelationsOverlay={() => setRelationsOpen(true)}
         relationsHasFile={!!projectSettings.relationsFile && Object.keys(relationsBase).length > 0}
         relationsBase={relationsBase}
@@ -954,6 +955,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
             expandedDirs={expandedDirs}
             onExpandedDirsChange={setExpandedDirs}
             onTelegramFile={handleTelegramFile}
+            hiddenExtensions={projectSettings.hiddenExtensions}
           />
         </div>
         <ResizeHandle direction="horizontal" onResize={handleExplorerResize} />

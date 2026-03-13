@@ -1,7 +1,28 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { getFileIcon, getFileType, FILE_TYPES } from '../utils/fileTypes';
 
-function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, toggleDir, activeFilePath }) {
+const DEFAULT_HIDDEN = '.json, .yml, .yaml, .git, .gitignore, .DS_Store, .thumbs.db, .ini, .cfg, .log, .bak, .tmp, .swp, .lock';
+
+function buildHiddenSet(str) {
+  return new Set(
+    (str || DEFAULT_HIDDEN).split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+  );
+}
+
+function shouldHide(entry, hiddenSet) {
+  const name = entry.name;
+  // Always hide dot-directories
+  if (entry.isDirectory && name.startsWith('.')) return true;
+  // Always hide files starting with _
+  if (!entry.isDirectory && name.startsWith('_')) return true;
+  // Check full filename match (e.g. .gitignore, .DS_Store, thumbs.db)
+  if (hiddenSet.has(name.toLowerCase())) return true;
+  // Check extension match
+  if (entry.extension && hiddenSet.has(entry.extension.toLowerCase())) return true;
+  return false;
+}
+
+function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, toggleDir, activeFilePath, hiddenSet }) {
   const isExpanded = expandedDirs[entry.path];
   const [children, setChildren] = useState(null);
   const isActive = !entry.isDirectory && entry.path === activeFilePath;
@@ -62,7 +83,7 @@ function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, togg
       </div>
       {entry.isDirectory && isExpanded && children && (
         <div>
-          {children.map(child => (
+          {children.filter(child => !shouldHide(child, hiddenSet)).map(child => (
             <TreeNode
               key={child.path}
               entry={child}
@@ -72,6 +93,7 @@ function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, togg
               expandedDirs={expandedDirs}
               toggleDir={toggleDir}
               activeFilePath={activeFilePath}
+              hiddenSet={hiddenSet}
             />
           ))}
         </div>
@@ -83,13 +105,15 @@ function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, togg
 export default function Explorer({
   projectFolder, activeFilePath, onFileOpen, onSlotAssign, onMediaAdd,
   expandedDirs: externalExpanded, onExpandedDirsChange,
-  onTelegramFile
+  onTelegramFile,
+  hiddenExtensions
 }) {
   const [entries, setEntries] = useState([]);
   const [internalExpanded, setInternalExpanded] = useState({});
   const expandedDirs = externalExpanded !== undefined ? externalExpanded : internalExpanded;
   const setExpandedDirs = onExpandedDirsChange || setInternalExpanded;
   const [contextMenu, setContextMenu] = useState(null);
+  const hiddenSet = useMemo(() => buildHiddenSet(hiddenExtensions), [hiddenExtensions]);
 
   useEffect(() => {
     if (projectFolder) {
@@ -161,7 +185,7 @@ export default function Explorer({
         Explorer
       </div>
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 0' }}>
-        {entries.map(entry => (
+        {entries.filter(entry => !shouldHide(entry, hiddenSet)).map(entry => (
           <TreeNode
             key={entry.path}
             entry={entry}
@@ -171,6 +195,7 @@ export default function Explorer({
             expandedDirs={expandedDirs}
             toggleDir={toggleDir}
             activeFilePath={activeFilePath}
+            hiddenSet={hiddenSet}
           />
         ))}
         {entries.length === 0 && (

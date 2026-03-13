@@ -45,11 +45,14 @@ function applyKeywordHighlightsToHtml(html, words) {
 
 export default function QuickReference({ manuals, projectPath, scrollPositions, onScrollPositionsChange, selectedManualId, onSelectedChange, onClose, highlightKeywords }) {
   const [renderedHtml, setRenderedHtml] = useState('');
+  const [isHtmlFile, setIsHtmlFile] = useState(false);
+  const [htmlFileUrl, setHtmlFileUrl] = useState('');
   const [headings, setHeadings] = useState([]);
   const [activeHeading, setActiveHeading] = useState(-1);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const contentRef = useRef(null);
+  const iframeRef = useRef(null);
   const searchRef = useRef(null);
   const debounceRef = useRef(null);
   const scrollSaveRef = useRef(null);
@@ -61,34 +64,55 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
     if (!selected) { setRenderedHtml(''); return; }
     const fullPath = projectPath + '/' + selected.file;
     // Save scroll before switching
-    if (scrollSaveRef.current && contentRef.current) {
+    if (scrollSaveRef.current) {
       const oldId = scrollSaveRef.current;
-      onScrollPositionsChange(prev => ({ ...prev, [oldId]: contentRef.current.scrollTop }));
+      try {
+        const scrollY = iframeRef.current?.contentWindow?.scrollY;
+        if (scrollY != null) {
+          onScrollPositionsChange(prev => ({ ...prev, [oldId]: scrollY }));
+        } else if (contentRef.current) {
+          onScrollPositionsChange(prev => ({ ...prev, [oldId]: contentRef.current.scrollTop }));
+        }
+      } catch (_) {
+        if (contentRef.current) {
+          onScrollPositionsChange(prev => ({ ...prev, [oldId]: contentRef.current.scrollTop }));
+        }
+      }
     }
     scrollSaveRef.current = selected.id;
 
-    window.electronAPI.readFile(fullPath.replace(/\//g, '\\')).then(text => {
-      if (!text) {
-        setRenderedHtml('<div style="padding:20px;color:var(--color-danger);font-style:italic">File non trovato</div>');
-        return;
-      }
-      const ext = selected.file.split('.').pop().toLowerCase();
-      if (ext === 'md') {
-        setRenderedHtml(renderMarkdown(text));
-      } else if (ext === 'html' || ext === 'htm') {
-        setRenderedHtml(text);
-      } else {
-        setRenderedHtml(`<pre style="white-space:pre-wrap;font-family:'Courier New',monospace;color:var(--text-primary)">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`);
-      }
-      // Restore scroll position
-      requestAnimationFrame(() => {
+    const ext = selected.file.split('.').pop().toLowerCase();
+    if (ext === 'html' || ext === 'htm') {
+      // HTML files: use iframe for CSS isolation
+      setIsHtmlFile(true);
+      setRenderedHtml('');
+      const normalizedPath = fullPath.replace(/\//g, '\\');
+      window.electronAPI.getFileUrl(normalizedPath).then(url => {
+        setHtmlFileUrl(url);
+      });
+    } else {
+      setIsHtmlFile(false);
+      setHtmlFileUrl('');
+      window.electronAPI.readFile(fullPath.replace(/\//g, '\\')).then(text => {
+        if (!text) {
+          setRenderedHtml('<div style="padding:20px;color:var(--color-danger);font-style:italic">File non trovato</div>');
+          return;
+        }
+        if (ext === 'md') {
+          setRenderedHtml(renderMarkdown(text));
+        } else {
+          setRenderedHtml(`<pre style="white-space:pre-wrap;font-family:'Courier New',monospace;color:var(--text-primary)">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`);
+        }
+        // Restore scroll position
         requestAnimationFrame(() => {
-          if (contentRef.current) {
-            contentRef.current.scrollTop = scrollPositions[selected.id] || 0;
-          }
+          requestAnimationFrame(() => {
+            if (contentRef.current) {
+              contentRef.current.scrollTop = scrollPositions[selected.id] || 0;
+            }
+          });
         });
       });
-    });
+    }
     setSearchQuery('');
     setDebouncedQuery('');
   }, [selected?.id, projectPath]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -138,6 +162,25 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
       onScrollPositionsChange(prev => ({ ...prev, [selected.id]: contentRef.current.scrollTop }));
     }
   }, [selected, onScrollPositionsChange]);
+
+  // iframe load handler for HTML files
+  const handleIframeLoad = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe || !selected) return;
+    const targetScroll = scrollPositions[selected.id] || 0;
+    setTimeout(() => {
+      try {
+        iframe.contentWindow.scrollTo(0, targetScroll);
+        iframe.contentWindow.addEventListener('scroll', () => {
+          try {
+            if (selected) {
+              onScrollPositionsChange(prev => ({ ...prev, [selected.id]: iframe.contentWindow.scrollY }));
+            }
+          } catch (_) {}
+        }, { passive: true });
+      } catch (_) {}
+    }, 100);
+  }, [selected, scrollPositions, onScrollPositionsChange]);
 
   // Debounce search
   const handleSearchChange = useCallback((e) => {
@@ -190,7 +233,16 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
   // Save scroll on close
   useEffect(() => {
     return () => {
-      if (scrollSaveRef.current && contentRef.current) {
+      if (!scrollSaveRef.current) return;
+      // Try iframe first, then container
+      try {
+        const scrollY = iframeRef.current?.contentWindow?.scrollY;
+        if (scrollY != null) {
+          onScrollPositionsChange(prev => ({ ...prev, [scrollSaveRef.current]: scrollY }));
+          return;
+        }
+      } catch (_) {}
+      if (contentRef.current) {
         onScrollPositionsChange(prev => ({ ...prev, [scrollSaveRef.current]: contentRef.current.scrollTop }));
       }
     };
@@ -357,18 +409,28 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
           {/* Column 3: Content */}
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             {selected ? (
-              <div
-                ref={contentRef}
-                onScroll={handleContentScroll}
-                className="viewer-content"
-                style={{
-                  flex: 1, overflowY: 'auto',
-                  padding: '24px 32px',
-                  fontFamily: "'Georgia', 'Times New Roman', serif",
-                  fontSize: '15px', lineHeight: '1.7', color: 'var(--text-primary)'
-                }}
-                dangerouslySetInnerHTML={{ __html: displayHtml }}
-              />
+              isHtmlFile ? (
+                <iframe
+                  ref={iframeRef}
+                  src={htmlFileUrl}
+                  onLoad={handleIframeLoad}
+                  style={{ flex: 1, width: '100%', border: 'none' }}
+                  sandbox="allow-same-origin"
+                />
+              ) : (
+                <div
+                  ref={contentRef}
+                  onScroll={handleContentScroll}
+                  className="viewer-content"
+                  style={{
+                    flex: 1, overflowY: 'auto',
+                    padding: '24px 32px',
+                    fontFamily: "'Georgia', 'Times New Roman', serif",
+                    fontSize: '15px', lineHeight: '1.7', color: 'var(--text-primary)'
+                  }}
+                  dangerouslySetInnerHTML={{ __html: displayHtml }}
+                />
+              )
             ) : (
               <div style={{
                 flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',

@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getProjectState: (path) => ipcRenderer.invoke('get-project-state', path),
   saveProjectState: (path, state) => ipcRenderer.invoke('save-project-state', path, state),
 
+  // Open folder in system explorer
+  openProjectFolder: (folderPath) => ipcRenderer.invoke('open-project-folder', folderPath),
+
   // File system
   readDirectory: (dirPath) => ipcRenderer.invoke('read-directory', dirPath),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),

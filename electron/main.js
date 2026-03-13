@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
@@ -91,6 +91,11 @@ app.on('window-all-closed', () => {
 });
 
 // === IPC Handlers ===
+
+// Open project folder in system file explorer
+ipcMain.handle('open-project-folder', async (_, folderPath) => {
+  await shell.openPath(folderPath);
+});
 
 // Project management
 ipcMain.handle('select-folder', async () => {

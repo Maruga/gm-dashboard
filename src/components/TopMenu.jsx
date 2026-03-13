@@ -4,7 +4,7 @@ import {
   Timer, Play, Pause, RotateCcw,
   Users, StickyNote, CheckSquare, Highlighter, Network, MessageCircle,
   BookOpen, Monitor, Eye, Search,
-  Info, Settings, Globe, FolderOpen,
+  Info, Settings, Globe, FolderOpen, FolderRoot,
   Minus, Square, X
 } from 'lucide-react';
 
@@ -532,7 +532,7 @@ function RelationsDropdown({ relationsBase, onClose, onOpenOverlay, onOpenViewer
 
 export default function TopMenu({
   onChangeProject, onOpenInfo, onOpenSettings, onOpenCalendar, onOpenNotes, onOpenChecklist,
-  onOpenAdventures, onOpenRelationsOverlay,
+  onOpenAdventures, onOpenProjectFolder, onOpenRelationsOverlay,
   relationsHasFile, relationsBase,
   onOpenRelationsViewer, onOpenRelationsStage,
   gameDate, onPrevDay, onNextDay, onSetGameDate, hasEvents,
@@ -820,6 +820,7 @@ export default function TopMenu({
           <IconBtn Icon={Info} tooltip="Informazioni" onClick={onOpenInfo} />
           <IconBtn Icon={Settings} tooltip="Impostazioni" onClick={onOpenSettings} />
           <IconBtn Icon={Globe} tooltip="Avventure online" onClick={onOpenAdventures} />
+          <IconBtn Icon={FolderRoot} tooltip="Apri cartella avventura" onClick={onOpenProjectFolder} />
           <IconBtn Icon={FolderOpen} tooltip="Cambia progetto" onClick={onChangeProject} />
         </div>
       </div>
