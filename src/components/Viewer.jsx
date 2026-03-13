@@ -235,6 +235,18 @@ const Viewer = forwardRef(function Viewer({
   const handleIframeLoad = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe || !currentKeyRef.current) return;
+    // Inject scrollbar styles matching current theme
+    try {
+      const iframeDoc = iframe.contentDocument;
+      if (iframeDoc) {
+        const cs = getComputedStyle(document.documentElement);
+        const thumb = cs.getPropertyValue('--scrollbar-thumb').trim() || '#3a3530';
+        const hover = cs.getPropertyValue('--scrollbar-hover').trim() || '#5a4a3a';
+        const style = iframeDoc.createElement('style');
+        style.textContent = `::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${thumb};border-radius:3px}::-webkit-scrollbar-thumb:hover{background:${hover}}`;
+        iframeDoc.head.appendChild(style);
+      }
+    } catch (_) {}
     const targetScroll = getScroll(currentKeyRef.current);
     setTimeout(() => {
       try {

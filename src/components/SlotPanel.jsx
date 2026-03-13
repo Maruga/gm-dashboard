@@ -1,12 +1,14 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Eye, Send } from 'lucide-react';
 import { getFileIcon } from '../utils/fileTypes';
 
 function itemKey(f) {
   return f.type === 'snippet' ? f.id : f.path;
 }
 
-export default function SlotPanel({ label, files, isActive, activeFileIndex, onClear, onRemoveFile, onRemoveFiles, onFileSelect }) {
+export default function SlotPanel({ label, files, isActive, activeFileIndex, onClear, onRemoveFile, onRemoveFiles, onFileSelect, onFileOpen, onTelegramFile }) {
   const [checkedKeys, setCheckedKeys] = useState(new Set());
+  const [contextMenu, setContextMenu] = useState(null);
   const hasChecked = checkedKeys.size > 0;
 
   const toggleCheck = useCallback((e, key) => {
@@ -28,6 +30,51 @@ export default function SlotPanel({ label, files, isActive, activeFileIndex, onC
     onClear();
     setCheckedKeys(new Set());
   }, [onClear]);
+
+  const handleContextMenu = useCallback((e, item) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, item });
+  }, []);
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handler = () => closeContextMenu();
+    window.addEventListener('click', handler);
+    return () => window.removeEventListener('click', handler);
+  }, [contextMenu, closeContextMenu]);
+
+  const handleCtxOpen = useCallback(() => {
+    if (!contextMenu?.item) return;
+    const item = contextMenu.item;
+    if (item.type === 'snippet') {
+      if (item.sourcePath && onFileOpen) {
+        const name = item.sourcePath.split('/').pop().split('\\').pop();
+        const ext = name.includes('.') ? '.' + name.split('.').pop().toLowerCase() : '';
+        onFileOpen({ name, extension: ext, path: item.sourcePath });
+      }
+    } else if (onFileOpen) {
+      onFileOpen(item);
+    }
+    closeContextMenu();
+  }, [contextMenu, onFileOpen, closeContextMenu]);
+
+  const handleCtxTelegram = useCallback(() => {
+    if (!contextMenu?.item || !onTelegramFile) return;
+    const item = contextMenu.item;
+    if (item.type === 'snippet') {
+      if (item.sourcePath) {
+        const name = item.sourcePath.split('/').pop().split('\\').pop();
+        const ext = name.includes('.') ? '.' + name.split('.').pop().toLowerCase() : '';
+        onTelegramFile({ name, extension: ext, path: item.sourcePath });
+      }
+    } else {
+      onTelegramFile(item);
+    }
+    closeContextMenu();
+  }, [contextMenu, onTelegramFile, closeContextMenu]);
 
   return (
     <div style={{
@@ -89,6 +136,7 @@ export default function SlotPanel({ label, files, isActive, activeFileIndex, onC
             <div
               key={key}
               onClick={() => onFileSelect(label, i)}
+              onContextMenu={(e) => handleContextMenu(e, f)}
               style={{
                 padding: isSnippet ? '4px 6px 4px 10px' : '3px 6px 3px 10px',
                 fontSize: '12px',
@@ -178,6 +226,52 @@ export default function SlotPanel({ label, files, isActive, activeFileIndex, onC
           </div>
         )}
       </div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div style={{
+          position: 'fixed',
+          left: contextMenu.x,
+          top: contextMenu.y,
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-default)',
+          borderRadius: '6px',
+          padding: '4px 0',
+          zIndex: 1000,
+          minWidth: '200px',
+          boxShadow: 'var(--shadow-dropdown)'
+        }}>
+          <CtxMenuItem icon={<Eye size={14} />} label="Apri nel Viewer" onClick={handleCtxOpen} />
+          {onTelegramFile && (
+            <>
+              <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '4px 0' }} />
+              <CtxMenuItem icon={<Send size={14} />} label="Invia via Telegram" onClick={handleCtxTelegram} />
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CtxMenuItem({ icon, label, onClick }) {
+  return (
+    <div
+      style={{
+        padding: '6px 16px',
+        cursor: 'pointer',
+        fontSize: '13px',
+        color: 'var(--text-primary)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px'
+      }}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--border-default)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+      onClick={onClick}
+    >
+      <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>{icon}</span>
+      {label}
     </div>
   );
 }

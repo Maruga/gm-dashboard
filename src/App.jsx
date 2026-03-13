@@ -1116,15 +1116,15 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       {/* === RIGHT COLUMN === */}
       <div style={{ width: `${rightWidth}px`, display: 'flex', flexDirection: 'column', flexShrink: 0, borderLeft: '1px solid var(--border-subtle)' }}>
         <div style={{ height: `${(slotRatios[0] || 0.333) * 100}%`, overflow: 'hidden' }}>
-          <SlotPanel label="A" files={slotFiles.A} isActive={activeStageSlot === 'A'} activeFileIndex={slotSelectedIndices.A} onClear={() => handleSlotClear('A')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} />
+          <SlotPanel label="A" files={slotFiles.A} isActive={activeStageSlot === 'A'} activeFileIndex={slotSelectedIndices.A} onClear={() => handleSlotClear('A')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onTelegramFile={handleTelegramFile} />
         </div>
         <ResizeHandle direction="horizontal" onResize={(d) => handleSlotResize(0, d)} />
         <div style={{ height: `${(slotRatios[1] || 0.333) * 100}%`, overflow: 'hidden' }}>
-          <SlotPanel label="B" files={slotFiles.B} isActive={activeStageSlot === 'B'} activeFileIndex={slotSelectedIndices.B} onClear={() => handleSlotClear('B')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} />
+          <SlotPanel label="B" files={slotFiles.B} isActive={activeStageSlot === 'B'} activeFileIndex={slotSelectedIndices.B} onClear={() => handleSlotClear('B')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onTelegramFile={handleTelegramFile} />
         </div>
         <ResizeHandle direction="horizontal" onResize={(d) => handleSlotResize(1, d)} />
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <SlotPanel label="C" files={slotFiles.C} isActive={activeStageSlot === 'C'} activeFileIndex={slotSelectedIndices.C} onClear={() => handleSlotClear('C')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} />
+          <SlotPanel label="C" files={slotFiles.C} isActive={activeStageSlot === 'C'} activeFileIndex={slotSelectedIndices.C} onClear={() => handleSlotClear('C')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onTelegramFile={handleTelegramFile} />
         </div>
       </div>
 
