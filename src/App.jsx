@@ -852,13 +852,25 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
     const ext = '.' + snippet.sourcePath.split('.').pop().toLowerCase();
     const name = snippet.sourcePath.split('/').pop().split('\\').pop();
     const file = { name, path: snippet.sourcePath, extension: ext };
+    const scrollKey = `viewer:${snippet.sourcePath}`;
     // Set scroll position so it opens at the right spot
     if (snippet.sourceScrollTop != null) {
-      scrollMapRef.current[`viewer:${snippet.sourcePath}`] = snippet.sourceScrollTop;
+      scrollMapRef.current[scrollKey] = snippet.sourceScrollTop;
     }
-    setCurrentFile(file);
-    setActiveViewerTab(0);
-  }, []);
+    // Extract a search phrase from snippet text (first non-empty line, strip markdown, max 60 chars)
+    const rawLine = (snippet.text || '').split('\n').find(l => l.trim()) || '';
+    const cleanPhrase = rawLine.replace(/^#+\s*/, '').replace(/[*_~`>]/g, '').trim();
+    const searchPhrase = cleanPhrase.length > 60 ? cleanPhrase.substring(0, 60).replace(/\s+\S*$/, '') : cleanPhrase;
+    const alreadyOpen = activeViewerTab === 0 && currentFile?.path === snippet.sourcePath;
+    if (!alreadyOpen) {
+      setCurrentFile(file);
+      setActiveViewerTab(0);
+    }
+    // Trigger search highlight effect (same as Console search navigation)
+    if (searchPhrase) {
+      setSearchHighlight({ query: searchPhrase, offset: 0 });
+    }
+  }, [activeViewerTab, currentFile?.path]);
 
   // Resize handlers
   const handleLeftResize = useCallback((delta) => {
@@ -1116,15 +1128,15 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       {/* === RIGHT COLUMN === */}
       <div style={{ width: `${rightWidth}px`, display: 'flex', flexDirection: 'column', flexShrink: 0, borderLeft: '1px solid var(--border-subtle)' }}>
         <div style={{ height: `${(slotRatios[0] || 0.333) * 100}%`, overflow: 'hidden' }}>
-          <SlotPanel label="A" files={slotFiles.A} isActive={activeStageSlot === 'A'} activeFileIndex={slotSelectedIndices.A} onClear={() => handleSlotClear('A')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onTelegramFile={handleTelegramFile} />
+          <SlotPanel label="A" files={slotFiles.A} isActive={activeStageSlot === 'A'} activeFileIndex={slotSelectedIndices.A} onClear={() => handleSlotClear('A')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onOpenSnippetSource={handleOpenSnippetSource} onTelegramFile={handleTelegramFile} />
         </div>
         <ResizeHandle direction="horizontal" onResize={(d) => handleSlotResize(0, d)} />
         <div style={{ height: `${(slotRatios[1] || 0.333) * 100}%`, overflow: 'hidden' }}>
-          <SlotPanel label="B" files={slotFiles.B} isActive={activeStageSlot === 'B'} activeFileIndex={slotSelectedIndices.B} onClear={() => handleSlotClear('B')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onTelegramFile={handleTelegramFile} />
+          <SlotPanel label="B" files={slotFiles.B} isActive={activeStageSlot === 'B'} activeFileIndex={slotSelectedIndices.B} onClear={() => handleSlotClear('B')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onOpenSnippetSource={handleOpenSnippetSource} onTelegramFile={handleTelegramFile} />
         </div>
         <ResizeHandle direction="horizontal" onResize={(d) => handleSlotResize(1, d)} />
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <SlotPanel label="C" files={slotFiles.C} isActive={activeStageSlot === 'C'} activeFileIndex={slotSelectedIndices.C} onClear={() => handleSlotClear('C')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onTelegramFile={handleTelegramFile} />
+          <SlotPanel label="C" files={slotFiles.C} isActive={activeStageSlot === 'C'} activeFileIndex={slotSelectedIndices.C} onClear={() => handleSlotClear('C')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onOpenSnippetSource={handleOpenSnippetSource} onTelegramFile={handleTelegramFile} />
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Eye, Send } from 'lucide-react';
 import { getFileIcon } from '../utils/fileTypes';
 
@@ -6,9 +6,10 @@ function itemKey(f) {
   return f.type === 'snippet' ? f.id : f.path;
 }
 
-export default function SlotPanel({ label, files, isActive, activeFileIndex, onClear, onRemoveFile, onRemoveFiles, onFileSelect, onFileOpen, onTelegramFile }) {
+export default function SlotPanel({ label, files, isActive, activeFileIndex, onClear, onRemoveFile, onRemoveFiles, onFileSelect, onFileOpen, onOpenSnippetSource, onTelegramFile }) {
   const [checkedKeys, setCheckedKeys] = useState(new Set());
   const [contextMenu, setContextMenu] = useState(null);
+  const ctxMenuRef = useRef(null);
   const hasChecked = checkedKeys.size > 0;
 
   const toggleCheck = useCallback((e, key) => {
@@ -46,20 +47,32 @@ export default function SlotPanel({ label, files, isActive, activeFileIndex, onC
     return () => window.removeEventListener('click', handler);
   }, [contextMenu, closeContextMenu]);
 
+  // Reposition menu if it overflows the viewport
+  useEffect(() => {
+    const el = ctxMenuRef.current;
+    if (!el || !contextMenu) return;
+    const rect = el.getBoundingClientRect();
+    let { x, y } = contextMenu;
+    if (rect.right > window.innerWidth) x = Math.max(0, x - rect.width);
+    if (rect.bottom > window.innerHeight) y = Math.max(0, y - rect.height);
+    if (x !== contextMenu.x || y !== contextMenu.y) {
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+    }
+  }, [contextMenu]);
+
   const handleCtxOpen = useCallback(() => {
     if (!contextMenu?.item) return;
     const item = contextMenu.item;
     if (item.type === 'snippet') {
-      if (item.sourcePath && onFileOpen) {
-        const name = item.sourcePath.split('/').pop().split('\\').pop();
-        const ext = name.includes('.') ? '.' + name.split('.').pop().toLowerCase() : '';
-        onFileOpen({ name, extension: ext, path: item.sourcePath });
+      if (item.sourcePath && onOpenSnippetSource) {
+        onOpenSnippetSource(item);
       }
     } else if (onFileOpen) {
       onFileOpen(item);
     }
     closeContextMenu();
-  }, [contextMenu, onFileOpen, closeContextMenu]);
+  }, [contextMenu, onFileOpen, onOpenSnippetSource, closeContextMenu]);
 
   const handleCtxTelegram = useCallback(() => {
     if (!contextMenu?.item || !onTelegramFile) return;
@@ -229,7 +242,7 @@ export default function SlotPanel({ label, files, isActive, activeFileIndex, onC
 
       {/* Context menu */}
       {contextMenu && (
-        <div style={{
+        <div ref={ctxMenuRef} style={{
           position: 'fixed',
           left: contextMenu.x,
           top: contextMenu.y,
