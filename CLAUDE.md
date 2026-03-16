@@ -21,9 +21,20 @@ File disponibili:
 4. **Lingua UI**: italiano per label, commenti, messaggi
 5. **Release**: seguire `RELEASE-GUIDE.md` nella root del progetto
 
+## Pannelli UI (nomi nel codice)
+| Pannello | Componente | Posizione |
+|----------|------------|-----------|
+| **Explorer** | `Explorer.jsx` | Sinistra alto — albero file |
+| **MediaPanel** | `MediaPanel.jsx` | Sinistra basso — audio/immagini/video |
+| **Viewer** | `Viewer.jsx` | Centro alto — visualizzatore documento |
+| **Stage** | `Stage.jsx` | Centro alto (affiancato) — tab Slot A/B/C + Cal + Vista |
+| **Console** | `Console.jsx` | Centro basso — ricerca file, log Telegram |
+| **SlotPanel** | `SlotPanel.jsx` | Destra — lista file negli slot A/B/C |
+| **TopMenu** | `TopMenu.jsx` | Barra superiore — data, timer, dadi, toggle pannelli |
+
 ## File principali del codice
 - `electron/main.js` — Main process Electron
 - `electron/preload.js` — Bridge API
 - `src/App.jsx` — TUTTO lo state dell'app (700+ righe di logica)
-- `src/components/` — 18 componenti React
+- `src/components/` — 20 componenti React
 - `src/themes/themeDefinitions.js` — 8 temi (unico file con hex hardcoded)

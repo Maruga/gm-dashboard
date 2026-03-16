@@ -97,6 +97,11 @@ ipcMain.handle('open-project-folder', async (_, folderPath) => {
   await shell.openPath(folderPath);
 });
 
+// Open URL in system default browser
+ipcMain.handle('open-external', async (_, url) => {
+  await shell.openExternal(url);
+});
+
 // Project management
 ipcMain.handle('select-folder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {

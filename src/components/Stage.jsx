@@ -1,8 +1,10 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { Eye } from 'lucide-react';
 import Viewer from './Viewer';
 import RelationsView from './RelationsView';
 import DocToc from './DocToc';
+import PanelToolbar from './PanelToolbar';
+import PanelSearch from './PanelSearch';
 import { renderMarkdown } from '../utils/markdownRenderer';
 
 const SLOT_TABS = [
@@ -26,9 +28,13 @@ export default function Stage({
   tocPinned, onTocPinnedChange,
   onOpenSnippetSource,
   highlightKeywords,
-  onClearAll
+  onClearAll,
+  fontSize, onFontSizeChange,
+  isFullscreen, onToggleFullscreen
 }) {
   const viewerRef = useRef(null);
+  const snippetRef = useRef(null);
+  const [stageSearchOpen, setStageSearchOpen] = useState(false);
 
   const isCalTab = activeTab === 'Cal';
   const isVistaTab = activeTab === 'Vista';
@@ -64,6 +70,15 @@ export default function Stage({
       }}>
         <span>Stage</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <PanelToolbar
+            fontSize={fontSize}
+            onFontSizeChange={onFontSizeChange}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={onToggleFullscreen}
+            searchOpen={stageSearchOpen}
+            onSearchToggle={() => setStageSearchOpen(v => !v)}
+            isHtmlIframe={activeItem?.extension === '.html' || activeItem?.extension === '.htm' || activeItem?.extension === '.url'}
+          />
           {hasStageContent && onClearAll && (
             <span className="close-btn" onClick={onClearAll} style={{ fontSize: '12px' }} title="Svuota stage">✕</span>
           )}
@@ -113,6 +128,11 @@ export default function Stage({
         })}
       </div>
 
+      {/* Panel search */}
+      {stageSearchOpen && !(activeItem?.extension === '.html' || activeItem?.extension === '.htm' || activeItem?.extension === '.url') && !isVistaTab && (
+        <PanelSearch containerRef={isSnippet ? snippetRef : viewerRef} onClose={() => setStageSearchOpen(false)} />
+      )}
+
       {/* Document / Snippet / Vista content */}
       <div style={{ flex: 1, overflow: 'hidden' }}>
         {isVistaTab ? (
@@ -121,6 +141,7 @@ export default function Stage({
               pngName={vistaContent.pngName}
               relationsBase={relationsBase}
               relationsSession={relationsSession}
+              fontSize={fontSize}
             />
           ) : (
             <div style={{
@@ -132,9 +153,11 @@ export default function Stage({
           )
         ) : isSnippet ? (
           <SnippetView
+            ref={snippetRef}
             snippet={activeItem}
             html={snippetHtml}
             onOpenSource={onOpenSnippetSource}
+            fontSize={fontSize}
           />
         ) : activeItem ? (
           <Viewer
@@ -146,6 +169,7 @@ export default function Stage({
             onVideoClick={onVideoClick}
             scrollMapRef={scrollMapRef}
             onScrollChanged={onScrollChanged}
+            fontSize={fontSize}
           />
         ) : (
           <div style={{
@@ -160,8 +184,11 @@ export default function Stage({
   );
 }
 
-function SnippetView({ snippet, html, onOpenSource }) {
+const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpenSource, fontSize }, ref) {
   const sourceName = snippet.source || (snippet.sourcePath ? snippet.sourcePath.split('/').pop().split('\\').pop() : null);
+  const contentRef = useRef(null);
+
+  React.useImperativeHandle(ref, () => contentRef.current);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -205,6 +232,7 @@ function SnippetView({ snippet, html, onOpenSource }) {
 
       {/* Snippet content */}
       <div
+        ref={contentRef}
         className="viewer-content"
         data-source-name={sourceName || ''}
         data-source-path={snippet.sourcePath || ''}
@@ -213,11 +241,11 @@ function SnippetView({ snippet, html, onOpenSource }) {
           overflowY: 'auto',
           padding: '16px 20px',
           color: 'var(--text-primary)',
-          fontSize: '13px',
+          fontSize: `calc(${fontSize || 15}px * var(--font-size-scale, 1))`,
           lineHeight: '1.7'
         }}
         dangerouslySetInnerHTML={{ __html: html }}
       />
     </div>
   );
-}
+});

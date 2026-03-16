@@ -3,6 +3,7 @@ export const FILE_TYPES = {
   IMAGE: 'image',
   AUDIO: 'audio',
   VIDEO: 'video',
+  WEBLINK: 'weblink',
   UNKNOWN: 'unknown'
 };
 
@@ -28,7 +29,9 @@ const extensionMap = {
   '.webm': FILE_TYPES.VIDEO,
   '.mkv': FILE_TYPES.VIDEO,
   '.avi': FILE_TYPES.VIDEO,
-  '.mov': FILE_TYPES.VIDEO
+  '.mov': FILE_TYPES.VIDEO,
+  '.url': FILE_TYPES.WEBLINK,
+  '.webloc': FILE_TYPES.WEBLINK
 };
 
 export function getFileType(extension) {
@@ -46,6 +49,17 @@ export function getFileIcon(entry) {
     case FILE_TYPES.IMAGE: return '🖼️';
     case FILE_TYPES.AUDIO: return '🎵';
     case FILE_TYPES.VIDEO: return '🎬';
+    case FILE_TYPES.WEBLINK: return '🔗';
     default: return '📄';
   }
+}
+
+/**
+ * Parse a .url (Windows Internet Shortcut) file content and extract the URL.
+ * Format: [InternetShortcut]\nURL=https://...
+ */
+export function parseUrlFile(text) {
+  if (!text) return null;
+  const match = text.match(/^\s*URL\s*=\s*(.+)/mi);
+  return match ? match[1].trim() : null;
 }

@@ -19,6 +19,8 @@ import InfoPanel from './components/InfoPanel';
 import AdventuresPanel from './components/AdventuresPanel';
 import RelationsPanel from './components/RelationsPanel';
 import RelationsView from './components/RelationsView';
+import PanelToolbar from './components/PanelToolbar';
+import PanelSearch from './components/PanelSearch';
 import ResizeHandle from './components/ResizeHandle';
 import { getFileType, FILE_TYPES } from './utils/fileTypes';
 import { initTheme } from './themes/themeEngine';
@@ -32,7 +34,9 @@ const DEFAULT_PROJECT_STATE = {
   slotRatios: [0.333, 0.333, 0.334],
   viewerDocument: null,
   slotDocuments: { A: [], B: [], C: [] },
-  scrollPositions: { viewer: {}, slotA: {}, slotB: {}, slotC: {} }
+  scrollPositions: { viewer: {}, slotA: {}, slotB: {}, slotC: {} },
+  viewerFontSize: 15,
+  stageFontSize: 15
 };
 
 export default function App() {
@@ -150,6 +154,10 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
   const [relationsBase, setRelationsBase] = useState({});
   const [relationsSession, setRelationsSession] = useState({});
   const [vistaContent, setVistaContent] = useState(null);
+  const [viewerFontSize, setViewerFontSize] = useState(15);
+  const [stageFontSize, setStageFontSize] = useState(15);
+  const [fullscreenPanel, setFullscreenPanel] = useState(null);
+  const [viewerSearchOpen, setViewerSearchOpen] = useState(false);
   const [stateLoaded, setStateLoaded] = useState(false);
 
   const mainViewerRef = useRef(null);
@@ -218,6 +226,8 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
         setRelationsBase(saved.relationsBase ?? {});
         setRelationsSession(saved.relationsSession ?? {});
         setVistaContent(saved.vistaContent ?? null);
+        setViewerFontSize(saved.viewerFontSize ?? 15);
+        setStageFontSize(saved.stageFontSize ?? 15);
         setMediaFilter(saved.mediaFilter ?? 'all');
         // Restore media items (audio paused, re-resolve URLs)
         const savedMedia = saved.savedMediaItems || saved.savedAudioTracks;
@@ -282,6 +292,8 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       relationsBase: relationsBase,
       relationsSession: relationsSession,
       vistaContent: vistaContent,
+      viewerFontSize: viewerFontSize,
+      stageFontSize: stageFontSize,
       mediaFilter: mediaFilter,
       savedMediaItems: mediaItems.map(item => ({
         id: item.id, type: item.type, path: item.path, name: item.name,
@@ -296,7 +308,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
     saveTimer.current = setTimeout(() => {
       window.electronAPI.saveProjectState(projectPath, latestState.current);
     }, 400);
-  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, scrollVersion]);
+  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, viewerFontSize, stageFontSize, scrollVersion]);
 
   // Save immediately on unmount (project switch)
   useEffect(() => {
@@ -525,6 +537,10 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
     setSlotSelectedIndices({ A: -1, B: -1, C: -1 });
     setCalFile(null);
     setVistaContent(null);
+  }, []);
+
+  const handleToggleFullscreen = useCallback((panel) => {
+    setFullscreenPanel(prev => prev === panel ? null : panel);
   }, []);
 
   // Open relations in Viewer (new tab each time)
@@ -993,7 +1009,11 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
         {/* Top row: VIEWER + STAGE side by side */}
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden', borderBottom: '1px solid var(--border-subtle)' }}>
           {/* VIEWER */}
-          <div data-source-name={viewerActiveFile?.name || ''} data-source-path={viewerActiveFile?.path || ''} style={{ width: `${viewerStageRatio * 100}%`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div data-source-name={viewerActiveFile?.name || ''} data-source-path={viewerActiveFile?.path || ''} style={{
+            width: fullscreenPanel === 'stage' ? '0' : fullscreenPanel === 'viewer' ? '100%' : `${viewerStageRatio * 100}%`,
+            display: fullscreenPanel === 'stage' ? 'none' : 'flex',
+            overflow: 'hidden', flexDirection: 'column'
+          }}>
             <div style={{
               padding: '0 12px',
               height: '26px',
@@ -1012,6 +1032,15 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
             }}>
               <span>Viewer</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <PanelToolbar
+                  fontSize={viewerFontSize}
+                  onFontSizeChange={setViewerFontSize}
+                  isFullscreen={fullscreenPanel === 'viewer'}
+                  onToggleFullscreen={() => handleToggleFullscreen('viewer')}
+                  searchOpen={viewerSearchOpen}
+                  onSearchToggle={() => setViewerSearchOpen(v => !v)}
+                  isHtmlIframe={viewerActiveFile?.extension === '.html' || viewerActiveFile?.extension === '.htm' || viewerActiveFile?.extension === '.url'}
+                />
                 {(currentFile || viewerTabs.length > 1) && (
                   <span className="close-btn" onClick={handleClearViewerTabs} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', lineHeight: 1 }} title="Svuota viewer">✕</span>
                 )}
@@ -1057,12 +1086,16 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
                 })}
               </div>
             )}
+            {viewerSearchOpen && !(viewerActiveFile?.extension === '.html' || viewerActiveFile?.extension === '.htm' || viewerActiveFile?.extension === '.url') && (
+              <PanelSearch containerRef={mainViewerRef} onClose={() => setViewerSearchOpen(false)} />
+            )}
             <div style={{ flex: 1, overflow: 'hidden' }}>
               {viewerTabs[activeViewerTab]?.type === 'relations' ? (
                 <RelationsView
                   pngName={viewerTabs[activeViewerTab].pngName}
                   relationsBase={relationsBase}
                   relationsSession={relationsSession}
+                  fontSize={viewerFontSize}
                 />
               ) : viewerActiveFile ? (
                 <Viewer
@@ -1075,6 +1108,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
                   onVideoClick={handleVideoClick}
                   scrollMapRef={scrollMapRef}
                   onScrollChanged={onScrollChanged}
+                  fontSize={viewerFontSize}
                 />
               ) : (
                 <div style={{
@@ -1089,10 +1123,14 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
             </div>
           </div>
 
-          <ResizeHandle direction="vertical" onResize={handleViewerStageResize} />
+          {!fullscreenPanel && <ResizeHandle direction="vertical" onResize={handleViewerStageResize} />}
 
           {/* STAGE */}
-          <div data-source-name={stageActiveItem?.name || ''} data-source-path={stageActiveItem?.path || ''} style={{ flex: 1, overflow: 'hidden', borderLeft: '1px solid var(--border-subtle)' }}>
+          <div data-source-name={stageActiveItem?.name || ''} data-source-path={stageActiveItem?.path || ''} style={{
+            flex: 1, overflow: 'hidden',
+            borderLeft: fullscreenPanel ? 'none' : '1px solid var(--border-subtle)',
+            display: fullscreenPanel === 'viewer' ? 'none' : undefined
+          }}>
             <Stage
               slotFiles={slotFiles}
               activeTab={activeStageSlot}
@@ -1111,6 +1149,10 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
               onOpenSnippetSource={handleOpenSnippetSource}
               highlightKeywords={highlightKeywords}
               onClearAll={handleClearStage}
+              fontSize={stageFontSize}
+              onFontSizeChange={setStageFontSize}
+              isFullscreen={fullscreenPanel === 'stage'}
+              onToggleFullscreen={() => handleToggleFullscreen('stage')}
             />
           </div>
         </div>
@@ -1570,6 +1612,62 @@ function GlobalStyles() {
       .timer-expired {
         animation: timerExpired 0.5s ease-in-out 10;
         color: var(--color-danger-bright) !important;
+      }
+      .panel-search-bar {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 8px;
+        background: var(--bg-elevated);
+        border-bottom: 1px solid var(--border-subtle);
+      }
+      .panel-search-bar input {
+        flex: 1;
+        min-width: 80px;
+        padding: 2px 6px;
+        font-size: 12px;
+        background: var(--bg-input);
+        border: 1px solid var(--border-default);
+        border-radius: 3px;
+        color: var(--text-primary);
+        outline: none;
+      }
+      .panel-search-bar input:focus {
+        border-color: var(--accent);
+      }
+      .panel-search-results {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        max-height: 200px;
+        overflow-y: auto;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border-default);
+        border-top: none;
+        box-shadow: var(--shadow-dropdown);
+        z-index: 100;
+      }
+      .panel-search-results .result-item {
+        padding: 4px 8px;
+        cursor: pointer;
+        border-bottom: 1px solid var(--border-subtle);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .panel-search-results .result-item:hover,
+      .panel-search-results .result-item.active {
+        background: var(--bg-hover-subtle);
+      }
+      mark[data-panel-search] {
+        background: var(--accent-a30);
+        color: inherit;
+        padding: 0 1px;
+        border-radius: 2px;
+      }
+      mark[data-panel-search].current {
+        background: var(--accent-a55);
       }
       .close-btn {
         cursor: pointer;

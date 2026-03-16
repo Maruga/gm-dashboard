@@ -10,11 +10,11 @@ function scoreColor(v) {
 
 const thStyle = {
   padding: '6px 10px', textAlign: 'left', color: 'var(--text-tertiary)',
-  fontWeight: '600', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1px'
+  fontWeight: '600', fontSize: '0.85em', textTransform: 'uppercase', letterSpacing: '1px'
 };
 const tdStyle = { padding: '6px 10px', color: 'var(--text-primary)' };
 
-export default function RelationsView({ pngName, relationsBase, relationsSession }) {
+export default function RelationsView({ pngName, relationsBase, relationsSession, fontSize }) {
   const pgNames = useMemo(() => {
     const names = new Set();
     const base = relationsBase[pngName];
@@ -33,19 +33,19 @@ export default function RelationsView({ pngName, relationsBase, relationsSession
   };
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: '16px 20px', color: 'var(--text-primary)' }}>
+    <div style={{ height: '100%', overflowY: 'auto', padding: '16px 20px', color: 'var(--text-primary)', fontSize: `calc(${fontSize || 15}px * var(--font-size-scale, 1))` }}>
       <div style={{
-        fontSize: '15px', fontWeight: '600', color: 'var(--accent)',
+        fontSize: '1em', fontWeight: '600', color: 'var(--accent)',
         marginBottom: '12px', letterSpacing: '0.5px'
       }}>
         {pngName}
       </div>
       {pgNames.length === 0 ? (
-        <div style={{ fontSize: '12px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
+        <div style={{ fontSize: '0.8em', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
           Nessuna relazione
         </div>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8em' }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
               <th style={thStyle}>PG</th>
@@ -74,9 +74,9 @@ export default function RelationsView({ pngName, relationsBase, relationsSession
                   <td style={{
                     ...tdStyle,
                     color: rel.note ? 'var(--text-secondary)' : 'var(--text-disabled)',
-                    fontStyle: rel.note ? 'normal' : 'italic', fontSize: '11px'
+                    fontStyle: rel.note ? 'normal' : 'italic', fontSize: '0.9em'
                   }}>
-                    {rel.note || '—'}
+                    {rel.note || '\u2014'}
                   </td>
                 </tr>
               );

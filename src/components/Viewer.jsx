@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { renderMarkdown } from '../utils/markdownRenderer';
-import { getFileType, FILE_TYPES } from '../utils/fileTypes';
+import { getFileType, FILE_TYPES, parseUrlFile } from '../utils/fileTypes';
+import { ExternalLink } from 'lucide-react';
 import { useScrollMemory } from '../hooks/useScrollMemory';
 
 /**
@@ -77,11 +78,16 @@ function highlightHtml(html, query, targetOffset) {
 
 const Viewer = forwardRef(function Viewer({
   currentFile, scrollKeyPrefix, searchHighlight, highlightKeywords, onImageClick, onVideoClick,
-  scrollMapRef, onScrollChanged
+  scrollMapRef, onScrollChanged, fontSize
 }, ref) {
   const [renderedHtml, setRenderedHtml] = useState('');
   const [isHtmlFile, setIsHtmlFile] = useState(false);
   const [htmlFileUrl, setHtmlFileUrl] = useState('');
+  const [isUrlFile, setIsUrlFile] = useState(false);
+  const [urlTarget, setUrlTarget] = useState('');
+  const [urlError, setUrlError] = useState(false);
+  const [urlLoaded, setUrlLoaded] = useState(false);
+  const urlTimeoutRef = useRef(null);
   const containerRef = useRef(null);
   const iframeRef = useRef(null);
   const isHtmlRef = useRef(false);
@@ -89,7 +95,7 @@ const Viewer = forwardRef(function Viewer({
   const fadeTimerRef = useRef(null);
   const { saveScroll, getScroll } = useScrollMemory(scrollMapRef, onScrollChanged);
 
-  useImperativeHandle(ref, () => isHtmlFile ? null : containerRef.current);
+  useImperativeHandle(ref, () => (isHtmlFile || isUrlFile) ? null : containerRef.current);
 
   const makeKey = useCallback((filePath) => {
     return scrollKeyPrefix ? `${scrollKeyPrefix}:${filePath}` : filePath;
@@ -112,6 +118,9 @@ const Viewer = forwardRef(function Viewer({
   useEffect(() => {
     if (!currentFile) {
       setRenderedHtml('');
+      setIsUrlFile(false);
+      setUrlTarget('');
+      setUrlError(false);
       currentKeyRef.current = null;
       return;
     }
@@ -129,6 +138,36 @@ const Viewer = forwardRef(function Viewer({
       onVideoClick(currentFile.path);
       return;
     }
+
+    if (type === FILE_TYPES.WEBLINK) {
+      setIsHtmlFile(false);
+      isHtmlRef.current = false;
+      setRenderedHtml('');
+      setHtmlFileUrl('');
+      setIsUrlFile(true);
+      setUrlError(false);
+      setUrlLoaded(false);
+      if (urlTimeoutRef.current) clearTimeout(urlTimeoutRef.current);
+      currentKeyRef.current = scrollKey;
+      window.electronAPI.readFile(currentFile.path).then(text => {
+        const url = parseUrlFile(text);
+        setUrlTarget(url || '');
+        if (!url) { setUrlError(true); return; }
+        // Timeout: se dopo 3s non ha caricato, probabilmente bloccato
+        urlTimeoutRef.current = setTimeout(() => {
+          setUrlLoaded(prev => {
+            if (!prev) setUrlError(true);
+            return prev;
+          });
+        }, 3000);
+      });
+      return;
+    }
+
+    // Reset URL state for non-URL files
+    setIsUrlFile(false);
+    setUrlTarget('');
+    setUrlError(false);
 
     if (type === FILE_TYPES.DOCUMENT) {
       const ext = currentFile.extension;
@@ -263,7 +302,77 @@ const Viewer = forwardRef(function Viewer({
     }, 100);
   }, [getScroll, saveScroll]);
 
+  if (isUrlFile) {
+    if (!urlTarget) {
+      return (
+        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-disabled)', fontSize: '13px', fontStyle: 'italic' }}>
+          {urlError ? 'Impossibile leggere URL dal file' : 'Caricamento…'}
+        </div>
+      );
+    }
+    const computedScale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--font-size-scale') || '1');
+    const effectiveZoom = (fontSize || 15) / 15 * computedScale;
+    return (
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* URL bar */}
+        <div style={{
+          padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '6px',
+          background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0
+        }}>
+          <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+            {urlTarget}
+          </span>
+          <ExternalLink
+            size={13}
+            style={{ color: 'var(--text-tertiary)', cursor: 'pointer', flexShrink: 0, transition: 'color 0.15s' }}
+            onClick={() => window.electronAPI.openExternal(urlTarget)}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+            title="Apri nel browser"
+          />
+        </div>
+        {urlError ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'var(--text-disabled)', padding: '20px' }}>
+            <span style={{ fontSize: '13px' }}>Questo sito non permette la visualizzazione in un pannello.</span>
+            <span
+              style={{ fontSize: '12px', color: 'var(--accent)', cursor: 'pointer' }}
+              onClick={() => window.electronAPI.openExternal(urlTarget)}
+            >
+              Apri nel browser esterno
+            </span>
+          </div>
+        ) : (
+          <iframe
+            src={urlTarget}
+            onLoad={(e) => {
+              if (urlTimeoutRef.current) clearTimeout(urlTimeoutRef.current);
+              setUrlLoaded(true);
+              // Detect X-Frame-Options block: empty body after load
+              try {
+                const doc = e.target.contentDocument;
+                if (doc && doc.body && doc.body.children.length === 0 && doc.body.innerText === '') {
+                  setUrlError(true);
+                }
+              } catch (_) {
+                // Cross-origin — can't access contentDocument, but site loaded fine
+              }
+            }}
+            onError={() => { if (urlTimeoutRef.current) clearTimeout(urlTimeoutRef.current); setUrlError(true); }}
+            style={{
+              flex: 1, width: '100%', border: 'none',
+              zoom: effectiveZoom !== 1 ? effectiveZoom : undefined
+            }}
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+            referrerPolicy="no-referrer"
+          />
+        )}
+      </div>
+    );
+  }
+
   if (isHtmlFile) {
+    const computedScale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--font-size-scale') || '1');
+    const effectiveZoom = (fontSize || 15) / 15 * computedScale;
     return (
       <iframe
         ref={iframeRef}
@@ -272,7 +381,8 @@ const Viewer = forwardRef(function Viewer({
         style={{
           width: '100%',
           height: '100%',
-          border: 'none'
+          border: 'none',
+          zoom: effectiveZoom !== 1 ? effectiveZoom : undefined
         }}
         sandbox="allow-same-origin"
       />
@@ -289,7 +399,7 @@ const Viewer = forwardRef(function Viewer({
         overflowY: 'auto',
         padding: '24px 32px',
         fontFamily: "'Georgia', 'Times New Roman', serif",
-        fontSize: '15px',
+        fontSize: `calc(${fontSize || 15}px * var(--font-size-scale, 1))`,
         lineHeight: '1.7',
         color: 'var(--text-primary)'
       }}

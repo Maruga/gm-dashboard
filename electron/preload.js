@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Open folder in system explorer
   openProjectFolder: (folderPath) => ipcRenderer.invoke('open-project-folder', folderPath),
+  // Open URL in system default browser
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
   // File system
   readDirectory: (dirPath) => ipcRenderer.invoke('read-directory', dirPath),
