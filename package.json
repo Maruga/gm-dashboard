@@ -12,7 +12,7 @@
   },
   "keywords": [],
   "author": "Genkai",
-  "license": "ISC",
+  "license": "GPL-3.0-only",
   "dependencies": {
     "adm-zip": "^0.5.16",
     "electron-store": "^11.0.2",
