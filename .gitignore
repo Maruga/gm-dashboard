@@ -4,4 +4,6 @@ release/
 *.env
 *.env.*
 .claude/
+CLAUDE.md
+RELEASE-GUIDE.md
 website/
