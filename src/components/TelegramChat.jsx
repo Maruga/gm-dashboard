@@ -8,7 +8,7 @@ function formatTime(iso) {
   } catch { return '--:--'; }
 }
 
-export default function TelegramChat({ players, chatMessages, onSendReply, onMarkRead, onSelectedChange, onClearChat, onClose }) {
+export default function TelegramChat({ players, chatMessages, onSendReply, onMarkRead, onSelectedChange, onClearChat, onClose, aiEnabled, onAiReply }) {
   const [selectedChatId, setSelectedChatId] = useState(null);
   const messagesEndRef = useRef(null);
   const [replyText, setReplyText] = useState('');
@@ -292,9 +292,16 @@ export default function TelegramChat({ players, chatMessages, onSendReply, onMar
                   </div>
                   {!isGm && (
                     <span
-                      title="AI — Coming soon"
+                      title={aiEnabled ? 'Rispondi con AI' : 'AI non configurata'}
+                      onClick={() => {
+                        if (aiEnabled && onAiReply && selectedChatId) {
+                          onAiReply(msg, selectedChatId);
+                        }
+                      }}
                       style={{
-                        fontSize: '11px', color: 'var(--border-default)', cursor: 'not-allowed',
+                        fontSize: '11px',
+                        color: aiEnabled ? 'var(--accent)' : 'var(--border-default)',
+                        cursor: aiEnabled ? 'pointer' : 'not-allowed',
                         marginTop: '1px', padding: '0 4px',
                         opacity: 0, transition: 'opacity 0.2s'
                       }}

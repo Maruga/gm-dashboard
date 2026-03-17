@@ -3,7 +3,8 @@ const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 const { GmDashBot, verifyToken, htmlToImage } = require('./telegramBot');
-const github = require('./githubApi');
+const firebase = require('./firebaseApi');
+const aiApi = require('./aiApi');
 const AdmZip = require('adm-zip');
 const os = require('os');
 const Store = require('electron-store').default;
@@ -316,6 +317,7 @@ ipcMain.handle('telegram-verify-token', async (event, token) => {
 });
 
 ipcMain.handle('telegram-start-bot', async (event, token, sessionCode, players) => {
+  console.log('[MAIN] telegram-start-bot IPC ricevuto');
   // Forward bot events to renderer
   gmBot.removeAllListeners('player-joined');
   gmBot.removeAllListeners('player-left');
@@ -376,31 +378,132 @@ ipcMain.handle('telegram-get-bot-info', () => {
   return { username: gmBot.botInfo.username, firstName: gmBot.botInfo.first_name };
 });
 
-// === GitHub ===
-ipcMain.handle('github-verify-token', async (event, token) => {
-  return await github.verifyToken(token);
+// === AI ===
+
+ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => {
+  try {
+    // Read AI config from project state
+    const states = store.get('projectStates');
+    const projectState = states[projectPath];
+    const aiConfig = projectState?.aiConfig;
+
+    let provider, apiKey, model;
+
+    if (aiConfig?.apiKey && aiConfig?.provider) {
+      // Utente ha la sua key
+      provider = aiConfig.provider;
+      apiKey = aiConfig.apiKey;
+      model = aiConfig.model || (provider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-4o-mini');
+    } else {
+      // Usa key owner da Firebase
+      const user = firebase.getCurrentUser();
+      if (!user) return { error: 'Effettua il login per usare la quota gratuita AI' };
+
+      const config = await firebase.fetchAiConfig();
+      if (!config || config.error) return { error: 'Configurazione AI non disponibile' };
+
+      const usage = await firebase.getAiUsage(user.uid);
+      const allowance = config.tokenAllowance || 50000;
+      if (usage.tokensUsed >= allowance) {
+        return { error: `Quota esaurita (${usage.tokensUsed}/${allowance} token). Configura una chiave API propria nelle Impostazioni.` };
+      }
+
+      provider = config.defaultProvider || 'openai';
+      apiKey = provider === 'anthropic' ? config.ownerKeyAnthropic : config.ownerKeyOpenai;
+      model = config.defaultModel || (provider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-4o-mini');
+
+      if (!apiKey) return { error: 'Chiave AI dell\'app non configurata' };
+    }
+
+    // Build context from project files
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+    const question = lastUserMsg?.content || '';
+    const context = aiApi.buildContext(projectPath, question, options.allowedFiles || null);
+    const projectName = projectState?.settings?.projectName || projectPath.split('/').pop();
+    const systemPrompt = aiApi.buildSystemPrompt(context, projectName);
+
+    // Compose full messages: system + conversation
+    const fullMessages = [
+      { role: 'system', content: systemPrompt },
+      ...messages
+    ];
+
+    const result = await aiApi.chat({ provider, apiKey, model, maxTokens: 1024 }, fullMessages);
+
+    // Increment usage if using owner key
+    if (!aiConfig?.apiKey && result.tokensUsed) {
+      const user = firebase.getCurrentUser();
+      if (user) firebase.incrementAiUsage(user.uid, result.tokensUsed);
+    }
+
+    return result;
+  } catch (err) {
+    return { error: err.message };
+  }
 });
 
-ipcMain.handle('github-save-token', (event, token) => {
-  github.saveToken(token);
+ipcMain.handle('ai-verify-key', async (event, provider, key) => {
+  return await aiApi.verifyKey(provider, key);
 });
 
-ipcMain.handle('github-get-token', () => {
-  return github.getToken();
+ipcMain.handle('ai-get-quota', async () => {
+  try {
+    const user = firebase.getCurrentUser();
+    if (!user) return { error: 'Non autenticato' };
+
+    const config = await firebase.fetchAiConfig();
+    if (!config || config.error) return { tokensUsed: 0, tokenAllowance: 0, remaining: 0 };
+
+    const usage = await firebase.getAiUsage(user.uid);
+    const allowance = config.tokenAllowance || 50000;
+    return {
+      tokensUsed: usage.tokensUsed || 0,
+      tokenAllowance: allowance,
+      remaining: Math.max(0, allowance - (usage.tokensUsed || 0))
+    };
+  } catch (err) {
+    return { error: err.message };
+  }
 });
 
-ipcMain.handle('github-clear-token', () => {
-  github.clearToken();
+// === Firebase Auth ===
+ipcMain.handle('firebase-register', async (_, email, password, displayName) => {
+  return await firebase.register(email, password, displayName);
+});
+
+ipcMain.handle('firebase-login', async (_, email, password) => {
+  return await firebase.login(email, password);
+});
+
+ipcMain.handle('firebase-logout', async () => {
+  await firebase.logout();
+});
+
+ipcMain.handle('firebase-get-user', async () => {
+  return firebase.getCurrentUser();
+});
+
+ipcMain.handle('firebase-auto-login', async () => {
+  return await firebase.tryAutoLogin();
+});
+
+ipcMain.handle('firebase-update-visibility', async (_, adventureId, visibility) => {
+  return await firebase.updateAdventureVisibility(adventureId, visibility);
+});
+
+ipcMain.handle('firebase-fetch-my-adventures', async (_, userId) => {
+  return await firebase.fetchMyAdventures(userId);
 });
 
 // === Adventures ===
 
 ipcMain.handle('adventure-export', async (event, projectPath, metadata, forPublish) => {
   try {
-    // Write _adventure.json
+    // Write _adventure.json (exclude internal config fields)
+    const { exportExcludes, ...metaClean } = metadata;
     const adventureJson = {
       id: metadata.name.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-'),
-      ...metadata,
+      ...metaClean,
       exportedAt: new Date().toISOString().split('T')[0]
     };
     const adventureJsonPath = path.join(projectPath, '_adventure.json');
@@ -408,12 +511,58 @@ ipcMain.handle('adventure-export', async (event, projectPath, metadata, forPubli
 
     // Create zip
     const zip = new AdmZip();
-    const SKIP = new Set(['.git', 'node_modules', '.DS_Store', 'Thumbs.db']);
+
+    // Parse export exclude patterns
+    const DEFAULT_EXCLUDES = '.git/\nnode_modules/\n.DS_Store\nThumbs.db\n.claude/\nCLAUDE.md\nwebsite/\n*.bak\n*.tmp\n*.log\n*.swp';
+    const excludeSource = (metadata.exportExcludes || '').trim() || DEFAULT_EXCLUDES;
+    const excludePatterns = excludeSource.split('\n')
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith('#'));
+
+    function shouldExclude(name, isDirectory) {
+      // Dotfiles always excluded as safety fallback
+      if (name.startsWith('.')) return true;
+      for (const pattern of excludePatterns) {
+        // *.ext — extension match
+        if (pattern.startsWith('*.') && !pattern.includes('*', 1)) {
+          const ext = pattern.slice(1); // ".ext"
+          if (name.endsWith(ext)) return true;
+          continue;
+        }
+        // name/ — directory-only match
+        if (pattern.endsWith('/')) {
+          const dirName = pattern.slice(0, -1);
+          if (isDirectory && name === dirName) return true;
+          continue;
+        }
+        // *text* — contains
+        if (pattern.startsWith('*') && pattern.endsWith('*') && pattern.length > 2) {
+          const text = pattern.slice(1, -1);
+          if (name.includes(text)) return true;
+          continue;
+        }
+        // text* — starts with
+        if (pattern.endsWith('*') && !pattern.startsWith('*')) {
+          const text = pattern.slice(0, -1);
+          if (name.startsWith(text)) return true;
+          continue;
+        }
+        // *text — ends with
+        if (pattern.startsWith('*') && !pattern.endsWith('*')) {
+          const text = pattern.slice(1);
+          if (name.endsWith(text)) return true;
+          continue;
+        }
+        // Exact name match (file or directory)
+        if (name === pattern) return true;
+      }
+      return false;
+    }
 
     function addDir(dirPath, zipPath) {
       const entries = fs.readdirSync(dirPath, { withFileTypes: true });
       for (const entry of entries) {
-        if (SKIP.has(entry.name) || entry.name.startsWith('.')) continue;
+        if (shouldExclude(entry.name, entry.isDirectory())) continue;
         const fullPath = path.join(dirPath, entry.name);
         const entryZipPath = zipPath ? `${zipPath}/${entry.name}` : entry.name;
         if (entry.isDirectory()) {
@@ -422,6 +571,10 @@ ipcMain.handle('adventure-export', async (event, projectPath, metadata, forPubli
           zip.addLocalFile(fullPath, zipPath || '');
         }
       }
+    }
+
+    if (forPublish && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('adventure-progress', { phase: 'packaging' });
     }
 
     addDir(projectPath, '');
@@ -498,7 +651,7 @@ ipcMain.handle('adventure-import-from-file', async () => {
 });
 
 ipcMain.handle('adventure-fetch-catalog', async () => {
-  return await github.fetchCatalog();
+  return await firebase.fetchPublicAdventures();
 });
 
 ipcMain.handle('adventure-download', async (event, url, adventureName) => {
@@ -514,7 +667,7 @@ ipcMain.handle('adventure-download', async (event, url, adventureName) => {
     const destFolder = destResult.filePaths[0];
 
     // Download with progress
-    const buffer = await github.downloadFile(url, (downloaded, total) => {
+    const buffer = await firebase.downloadAdventureZip(url, (downloaded, total) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('adventure-progress', {
           phase: 'download',
@@ -557,74 +710,52 @@ ipcMain.handle('adventure-download', async (event, url, adventureName) => {
 
 ipcMain.handle('adventure-publish', async (event, zipPath, metadata) => {
   try {
-    const token = github.getToken();
-    if (!token) return { error: 'Token GitHub non configurato' };
+    const user = firebase.getCurrentUser();
+    if (!user) return { error: 'Non sei autenticato' };
 
     const adventureId = metadata.id;
-    const version = metadata.version || '1.0';
-    const tag = `adventure-${adventureId}-v${version}`;
-    const releaseName = `${metadata.name} v${version}`;
-
-    // Step 1: Create release
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('adventure-progress', { phase: 'creating-release' });
-    }
-    const release = await github.createRelease(tag, releaseName, metadata.description || '', token);
-
-    // Step 2: Upload zip asset
     const zipBuffer = fs.readFileSync(zipPath);
-    const fileName = `${adventureId}.zip`;
+    const sizeMB = (zipBuffer.length / (1024 * 1024)).toFixed(1) + ' MB';
 
-    const asset = await github.uploadReleaseAsset(release.id, fileName, zipBuffer, token, (sent, total) => {
+    // Step 1: Upload ZIP a Firebase Storage
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('adventure-progress', { phase: 'uploading', percent: 0 });
+    }
+
+    const uploadResult = await firebase.uploadAdventureZip(user.uid, adventureId, zipBuffer, (percent) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('adventure-progress', {
-          phase: 'uploading',
-          downloaded: sent,
-          total,
-          percent: total > 0 ? Math.round((sent / total) * 100) : 0
-        });
+        mainWindow.webContents.send('adventure-progress', { phase: 'uploading', percent });
       }
     });
+    if (uploadResult.error) return { error: uploadResult.error };
 
-    // Step 3: Update catalog
+    // Step 2: Salva metadata in Firestore
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('adventure-progress', { phase: 'updating-catalog' });
     }
 
-    const { catalog, sha, error: catError } = await github.getCatalogWithSha(token);
-    if (catError) return { error: catError };
-
-    const sizeMB = (zipBuffer.length / (1024 * 1024)).toFixed(1) + ' MB';
-    const catalogEntry = {
-      id: adventureId,
+    const firestoreData = {
       name: metadata.name,
       system: metadata.system || '',
-      author: metadata.author || '',
-      authorGithub: (await github.verifyToken(token)).username || '',
-      version,
+      authorId: user.uid,
+      authorName: user.displayName || '',
+      version: metadata.version || '1.0',
       description: metadata.description || '',
       players: metadata.players || '',
       duration: metadata.duration || '',
       language: metadata.language || 'it',
-      size: sizeMB,
-      downloadUrl: asset.browser_download_url,
-      releaseTag: tag,
       tags: metadata.tags || [],
-      publishedAt: new Date().toISOString().split('T')[0]
+      visibility: metadata.visibility || 'public',
+      size: sizeMB,
+      downloadUrl: uploadResult.downloadUrl,
+      publishedAt: new Date().toISOString().split('T')[0],
+      updatedAt: new Date().toISOString().split('T')[0]
     };
 
-    // Replace existing or add new
-    const idx = catalog.adventures.findIndex(a => a.id === adventureId);
-    if (idx >= 0) {
-      catalog.adventures[idx] = catalogEntry;
-    } else {
-      catalog.adventures.push(catalogEntry);
-    }
+    const pubResult = await firebase.publishAdventure(adventureId, firestoreData);
+    if (pubResult.error) return { error: pubResult.error };
 
-    const updateResult = await github.updateCatalog(catalog, sha, token, `Add adventure: ${metadata.name}`);
-    if (updateResult.error) return { error: updateResult.error };
-
-    return { success: true, downloadUrl: asset.browser_download_url };
+    return { success: true, downloadUrl: uploadResult.downloadUrl };
   } catch (err) {
     return { error: err.message };
   }
@@ -632,15 +763,15 @@ ipcMain.handle('adventure-publish', async (event, zipPath, metadata) => {
 
 ipcMain.handle('adventure-unpublish', async (event, adventureId) => {
   try {
-    const token = github.getToken();
-    if (!token) return { error: 'Token GitHub non configurato' };
+    const user = firebase.getCurrentUser();
+    if (!user) return { error: 'Non sei autenticato' };
 
-    const { catalog, sha, error: catError } = await github.getCatalogWithSha(token);
-    if (catError) return { error: catError };
+    // Elimina file ZIP da Storage
+    await firebase.deleteAdventureZip(user.uid, adventureId);
 
-    catalog.adventures = catalog.adventures.filter(a => a.id !== adventureId);
-    const updateResult = await github.updateCatalog(catalog, sha, token, `Remove adventure: ${adventureId}`);
-    if (updateResult.error) return { error: updateResult.error };
+    // Elimina documento da Firestore
+    const result = await firebase.unpublishAdventure(adventureId);
+    if (result.error) return { error: result.error };
 
     return { success: true };
   } catch (err) {

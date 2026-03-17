@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   ChevronLeft, ChevronRight, Bell, Calendar,
   Timer, Play, Pause, RotateCcw,
-  Users, StickyNote, CheckSquare, Highlighter, Network, MessageCircle,
+  Users, StickyNote, CheckSquare, Highlighter, Network, MessageCircle, FileText,
   BookOpen, Monitor, Eye, Search,
   Info, Settings, Globe, FolderOpen, FolderRoot,
   Minus, Square, X
@@ -532,7 +532,7 @@ function RelationsDropdown({ relationsBase, onClose, onOpenOverlay, onOpenViewer
 
 export default function TopMenu({
   onChangeProject, onOpenInfo, onOpenSettings, onOpenCalendar, onOpenNotes, onOpenChecklist,
-  onOpenAdventures, onOpenProjectFolder, onOpenRelationsOverlay,
+  onOpenAdventures, onOpenProjectFolder, onOpenRelationsOverlay, onOpenAiDocs,
   relationsHasFile, relationsBase,
   onOpenRelationsViewer, onOpenRelationsStage,
   gameDate, onPrevDay, onNextDay, onSetGameDate, hasEvents,
@@ -737,6 +737,9 @@ export default function TopMenu({
               </div>
             )}
           </div>
+
+          {/* AI Docs */}
+          <IconBtn Icon={FileText} tooltip="Documenti AI" onClick={onOpenAiDocs} />
 
           {/* Notes */}
           <span data-notes-toggle>

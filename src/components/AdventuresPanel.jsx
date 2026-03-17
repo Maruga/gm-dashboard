@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 const LANG_LABELS = { it: '🇮🇹', en: '🇬🇧', es: '🇪🇸', fr: '🇫🇷', de: '🇩🇪' };
 
@@ -84,15 +84,15 @@ function TabBtn({ label, active, onClick }) {
 
 // ── Tab SCARICA (catalogo) ──
 function DownloadTab({ onProjectOpen, onClose }) {
-  const [catalog, setCatalog] = useState(null);
+  const [adventures, setAdventures] = useState(null);
   const [error, setError] = useState(null);
-  const [downloading, setDownloading] = useState(null); // adventure id
+  const [downloading, setDownloading] = useState(null);
   const [progress, setProgress] = useState(null);
 
   useEffect(() => {
     window.electronAPI.adventureFetchCatalog().then(res => {
       if (res.error) setError(res.error);
-      else setCatalog(res);
+      else setAdventures(Array.isArray(res) ? res : (res.adventures || []));
     });
   }, []);
 
@@ -109,7 +109,6 @@ function DownloadTab({ onProjectOpen, onClose }) {
     setDownloading(null);
     setProgress(null);
     if (result && !result.error && !result.canceled && result.path) {
-      // Add to recent projects
       await window.electronAPI.addRecentProject({
         path: result.path,
         name: result.name,
@@ -132,15 +131,13 @@ function DownloadTab({ onProjectOpen, onClose }) {
     );
   }
 
-  if (!catalog) {
+  if (!adventures) {
     return (
       <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
         Caricamento catalogo...
       </div>
     );
   }
-
-  const adventures = catalog.adventures || [];
 
   if (adventures.length === 0) {
     return (
@@ -178,8 +175,8 @@ function DownloadTab({ onProjectOpen, onClose }) {
             {/* System + author */}
             <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
               {a.system && <span style={{ color: 'var(--accent)' }}>{a.system}</span>}
-              {a.system && a.author && ' · '}
-              {a.author}
+              {a.system && (a.authorName || a.author) && ' · '}
+              {a.authorName || a.author}
             </div>
 
             {/* Description */}
@@ -243,39 +240,172 @@ function DownloadTab({ onProjectOpen, onClose }) {
   );
 }
 
+// ── Auth Section (Login / Registrazione) ──
+function AuthSection({ onLogin }) {
+  const [mode, setMode] = useState('login'); // 'login' | 'register'
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const inputStyle = {
+    width: '100%', padding: '8px 12px',
+    background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+    borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px',
+    outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box'
+  };
+
+  const handleSubmit = async () => {
+    setError(null);
+    if (mode === 'register') {
+      if (!email || !password || !displayName) { setError('Compila tutti i campi'); return; }
+      if (password !== confirmPassword) { setError('Le password non corrispondono'); return; }
+      if (password.length < 6) { setError('La password deve avere almeno 6 caratteri'); return; }
+    } else {
+      if (!email || !password) { setError('Compila email e password'); return; }
+    }
+
+    setLoading(true);
+    let result;
+    if (mode === 'register') {
+      result = await window.electronAPI.firebaseRegister(email, password, displayName);
+    } else {
+      result = await window.electronAPI.firebaseLogin(email, password);
+    }
+    setLoading(false);
+
+    if (result.error) {
+      setError(result.error);
+    } else {
+      onLogin(result);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') handleSubmit();
+  };
+
+  return (
+    <div style={{ padding: '40px', maxWidth: '360px', margin: '0 auto' }}>
+      <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+        <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '6px' }}>
+          {mode === 'login' ? 'Accedi per pubblicare' : 'Crea un account'}
+        </div>
+        <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+          {mode === 'login'
+            ? 'Accedi con il tuo account per pubblicare e gestire avventure.'
+            : 'Registrati per iniziare a pubblicare avventure.'}
+        </div>
+      </div>
+
+      {mode === 'register' && (
+        <div style={{ marginBottom: '10px' }}>
+          <input
+            value={displayName} onChange={e => setDisplayName(e.target.value)}
+            placeholder="Nome autore" style={inputStyle} onKeyDown={handleKeyDown}
+          />
+        </div>
+      )}
+      <div style={{ marginBottom: '10px' }}>
+        <input
+          type="email" value={email} onChange={e => setEmail(e.target.value)}
+          placeholder="Email" style={inputStyle} onKeyDown={handleKeyDown}
+        />
+      </div>
+      <div style={{ marginBottom: '10px' }}>
+        <input
+          type="password" value={password} onChange={e => setPassword(e.target.value)}
+          placeholder="Password" style={inputStyle} onKeyDown={handleKeyDown}
+        />
+      </div>
+      {mode === 'register' && (
+        <div style={{ marginBottom: '10px' }}>
+          <input
+            type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+            placeholder="Conferma password" style={inputStyle} onKeyDown={handleKeyDown}
+          />
+        </div>
+      )}
+
+      {error && (
+        <div style={{ fontSize: '12px', color: 'var(--color-danger)', marginBottom: '10px' }}>
+          {error}
+        </div>
+      )}
+
+      <button
+        onClick={handleSubmit}
+        disabled={loading}
+        style={{
+          width: '100%', padding: '10px', background: 'none',
+          border: '1px solid var(--accent)', borderRadius: '4px',
+          color: loading ? 'var(--text-disabled)' : 'var(--accent)',
+          fontSize: '13px', fontWeight: '600',
+          cursor: loading ? 'not-allowed' : 'pointer',
+          transition: 'all 0.2s', marginBottom: '12px'
+        }}
+        onMouseEnter={e => { if (!loading) e.currentTarget.style.background = 'var(--accent-a10)'; }}
+        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+      >
+        {loading ? '⏳ Attendere...' : (mode === 'login' ? 'Accedi' : 'Crea account')}
+      </button>
+
+      <div style={{ textAlign: 'center' }}>
+        <span
+          onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); }}
+          style={{ fontSize: '12px', color: 'var(--accent)', cursor: 'pointer' }}
+        >
+          {mode === 'login' ? 'Non hai un account? Registrati' : 'Hai già un account? Accedi'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ── Tab LE MIE PUBBLICAZIONI ──
 function PublishTab({ projectPath, projectSettings }) {
-  const [ghToken, setGhToken] = useState('');
-  const [ghUser, setGhUser] = useState(null);
-  const [catalog, setCatalog] = useState(null);
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [myAdventures, setMyAdventures] = useState([]);
   const [publishing, setPublishing] = useState(false);
-  const [progress, setProgress] = useState(null);
-  const [publishResult, setPublishResult] = useState(null);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [updateTarget, setUpdateTarget] = useState(null);
   const [unpublishing, setUnpublishing] = useState(null);
+  const [togglingVisibility, setTogglingVisibility] = useState(null);
 
-  // Load token + verify + fetch catalog
+  // Auto-login on mount
   useEffect(() => {
     (async () => {
-      const token = await window.electronAPI.githubGetToken?.();
-      if (!token) return;
-      setGhToken(token);
-      const verify = await window.electronAPI.githubVerifyToken(token);
-      if (verify.valid) {
-        setGhUser(verify.username);
-        const cat = await window.electronAPI.adventureFetchCatalog();
-        if (!cat.error) setCatalog(cat);
+      let u = await window.electronAPI.firebaseGetUser();
+      if (!u) u = await window.electronAPI.firebaseAutoLogin();
+      if (u) {
+        setUser(u);
+        const adventures = await window.electronAPI.firebaseFetchMyAdventures(u.uid);
+        if (!adventures.error) setMyAdventures(adventures);
       }
+      setAuthLoading(false);
     })();
   }, []);
 
-  useEffect(() => {
-    const handler = (data) => setProgress(data);
-    window.electronAPI.onAdventureProgress?.(handler);
-    return () => window.electronAPI.removeAdventureListeners?.();
-  }, []);
+  const refreshMyAdventures = async () => {
+    if (!user) return;
+    const adventures = await window.electronAPI.firebaseFetchMyAdventures(user.uid);
+    if (!adventures.error) setMyAdventures(adventures);
+  };
 
-  const myAdventures = catalog?.adventures?.filter(a => a.authorGithub === ghUser) || [];
+  const handleLogin = async (u) => {
+    setUser(u);
+    const adventures = await window.electronAPI.firebaseFetchMyAdventures(u.uid);
+    if (!adventures.error) setMyAdventures(adventures);
+  };
+
+  const handleLogout = async () => {
+    await window.electronAPI.firebaseLogout();
+    setUser(null);
+    setMyAdventures([]);
+  };
 
   const handleUnpublish = async (adventure) => {
     if (!window.confirm(`Rimuovere "${adventure.name}" dal catalogo?`)) return;
@@ -283,41 +413,64 @@ function PublishTab({ projectPath, projectSettings }) {
     const result = await window.electronAPI.adventureUnpublish(adventure.id);
     setUnpublishing(null);
     if (result.success) {
-      setCatalog(prev => ({
-        ...prev,
-        adventures: prev.adventures.filter(a => a.id !== adventure.id)
-      }));
+      setMyAdventures(prev => prev.filter(a => a.id !== adventure.id));
     }
   };
 
-  if (!ghToken) {
+  const handleToggleVisibility = async (adventure) => {
+    const newVisibility = adventure.visibility === 'public' ? 'private' : 'public';
+    setTogglingVisibility(adventure.id);
+    const result = await window.electronAPI.firebaseUpdateVisibility(adventure.id, newVisibility);
+    setTogglingVisibility(null);
+    if (!result.error) {
+      setMyAdventures(prev => prev.map(a =>
+        a.id === adventure.id ? { ...a, visibility: newVisibility } : a
+      ));
+    }
+  };
+
+  if (authLoading) {
     return (
-      <div style={{ padding: '40px', textAlign: 'center' }}>
-        <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-          Per pubblicare avventure serve un account GitHub.
-        </div>
-        <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
-          Configura il token in ⚙️ Impostazioni → sezione GitHub.
-        </div>
+      <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
+        Caricamento...
       </div>
     );
   }
 
-  if (!ghUser) {
-    return (
-      <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-        Verifica token in corso...
-      </div>
-    );
+  if (!user) {
+    return <AuthSection onLogin={handleLogin} />;
   }
 
   return (
     <div style={{ padding: '20px', overflowY: 'auto', height: '100%' }}>
+      {/* User info bar */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '10px 16px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
+        borderRadius: '6px', marginBottom: '20px'
+      }}>
+        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+          Connesso come <strong style={{ color: 'var(--text-primary)' }}>{user.displayName || user.email}</strong>
+          <span style={{ color: 'var(--text-disabled)', marginLeft: '8px' }}>{user.email}</span>
+        </div>
+        <button
+          onClick={handleLogout}
+          style={{
+            background: 'none', border: 'none', padding: '4px 8px',
+            color: 'var(--text-disabled)', fontSize: '11px', cursor: 'pointer'
+          }}
+          onMouseEnter={e => e.currentTarget.style.color = 'var(--color-danger)'}
+          onMouseLeave={e => e.currentTarget.style.color = 'var(--text-disabled)'}
+        >
+          Esci
+        </button>
+      </div>
+
       {/* Publish new button */}
       {projectPath && (
         <div style={{ marginBottom: '20px' }}>
           <button
-            onClick={() => setWizardOpen(true)}
+            onClick={() => { setUpdateTarget(null); setWizardOpen(true); }}
             disabled={publishing}
             style={{
               background: 'none', border: '1px solid var(--accent)', borderRadius: '6px',
@@ -343,7 +496,7 @@ function PublishTab({ projectPath, projectSettings }) {
 
       {/* My published adventures */}
       <div style={{ fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--accent)', marginBottom: '12px' }}>
-        Le mie avventure pubblicate ({myAdventures.length})
+        Le mie avventure ({myAdventures.length})
       </div>
 
       {myAdventures.length === 0 && (
@@ -359,24 +512,68 @@ function PublishTab({ projectPath, projectSettings }) {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between'
         }}>
           <div>
-            <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>{a.name}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>{a.name}</span>
+              <span style={{
+                fontSize: '10px', padding: '1px 8px', borderRadius: '10px', fontWeight: '500',
+                background: a.visibility === 'public' ? 'var(--accent-a10)' : 'var(--bg-elevated)',
+                color: a.visibility === 'public' ? 'var(--accent)' : 'var(--text-disabled)',
+                border: `1px solid ${a.visibility === 'public' ? 'var(--accent-a15)' : 'var(--border-default)'}`
+              }}>
+                {a.visibility === 'public' ? 'Pubblica' : 'Privata'}
+              </span>
+            </div>
             <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
               v{a.version} · {a.size} · {a.publishedAt}
             </div>
           </div>
-          <button
-            onClick={() => handleUnpublish(a)}
-            disabled={unpublishing === a.id}
-            style={{
-              background: 'none', border: '1px solid var(--color-danger-bg)', borderRadius: '4px',
-              padding: '4px 12px', color: 'var(--color-danger)', fontSize: '11px',
-              cursor: unpublishing === a.id ? 'not-allowed' : 'pointer', transition: 'all 0.2s'
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--color-danger-bg)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'none'}
-          >
-            {unpublishing === a.id ? '...' : '🗑️ Rimuovi'}
-          </button>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            {/* Update */}
+            {projectPath && (
+              <button
+                onClick={() => { setUpdateTarget(a); setWizardOpen(true); }}
+                title="Aggiorna con il progetto corrente"
+                style={{
+                  background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                  padding: '4px 10px', color: 'var(--text-secondary)', fontSize: '11px',
+                  cursor: 'pointer', transition: 'all 0.2s'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+              >
+                🔄 Aggiorna
+              </button>
+            )}
+            {/* Toggle visibility */}
+            <button
+              onClick={() => handleToggleVisibility(a)}
+              disabled={togglingVisibility === a.id}
+              title={a.visibility === 'public' ? 'Rendi privata' : 'Rendi pubblica'}
+              style={{
+                background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                padding: '4px 10px', color: 'var(--text-secondary)', fontSize: '11px',
+                cursor: togglingVisibility === a.id ? 'not-allowed' : 'pointer', transition: 'all 0.2s'
+              }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+            >
+              {togglingVisibility === a.id ? '...' : (a.visibility === 'public' ? '🔒' : '🌐')}
+            </button>
+            {/* Delete */}
+            <button
+              onClick={() => handleUnpublish(a)}
+              disabled={unpublishing === a.id}
+              style={{
+                background: 'none', border: '1px solid var(--color-danger-bg)', borderRadius: '4px',
+                padding: '4px 10px', color: 'var(--color-danger)', fontSize: '11px',
+                cursor: unpublishing === a.id ? 'not-allowed' : 'pointer', transition: 'all 0.2s'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--color-danger-bg)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            >
+              {unpublishing === a.id ? '...' : '🗑️'}
+            </button>
+          </div>
         </div>
       ))}
 
@@ -385,13 +582,10 @@ function PublishTab({ projectPath, projectSettings }) {
         <PublishWizard
           projectPath={projectPath}
           projectSettings={projectSettings}
-          onClose={() => { setWizardOpen(false); setPublishResult(null); }}
-          onPublished={() => {
-            // Refresh catalog
-            window.electronAPI.adventureFetchCatalog().then(cat => {
-              if (!cat.error) setCatalog(cat);
-            });
-          }}
+          user={user}
+          updateAdventure={updateTarget}
+          onClose={() => { setWizardOpen(false); setUpdateTarget(null); }}
+          onPublished={refreshMyAdventures}
         />
       )}
     </div>
@@ -399,18 +593,20 @@ function PublishTab({ projectPath, projectSettings }) {
 }
 
 // ── Publish Wizard ──
-function PublishWizard({ projectPath, projectSettings, onClose, onPublished }) {
+function PublishWizard({ projectPath, projectSettings, user, onClose, onPublished, updateAdventure }) {
+  const isUpdate = !!updateAdventure;
   const [step, setStep] = useState(1);
   const [meta, setMeta] = useState({
-    name: projectSettings?.projectName || '',
-    system: projectSettings?.system || '',
-    author: projectSettings?.author || '',
-    version: projectSettings?.adventureVersion || '1.0',
-    description: projectSettings?.description || '',
-    players: projectSettings?.players || '',
-    duration: projectSettings?.duration || '',
-    language: projectSettings?.language || 'it',
-    tags: projectSettings?.tags || ''
+    name: updateAdventure?.name || projectSettings?.projectName || '',
+    system: updateAdventure?.system || projectSettings?.system || '',
+    author: user?.displayName || updateAdventure?.authorName || projectSettings?.author || '',
+    version: updateAdventure?.version || projectSettings?.adventureVersion || '1.0',
+    description: updateAdventure?.description || projectSettings?.description || '',
+    players: updateAdventure?.players || projectSettings?.players || '',
+    duration: updateAdventure?.duration || projectSettings?.duration || '',
+    language: updateAdventure?.language || projectSettings?.language || 'it',
+    tags: updateAdventure ? (Array.isArray(updateAdventure.tags) ? updateAdventure.tags.join(', ') : (updateAdventure.tags || '')) : (projectSettings?.tags || ''),
+    visibility: updateAdventure?.visibility || 'public'
   });
   const [exportResult, setExportResult] = useState(null);
   const [progress, setProgress] = useState(null);
@@ -426,7 +622,9 @@ function PublishWizard({ projectPath, projectSettings, onClose, onPublished }) {
   const handleExport = async () => {
     const metadata = {
       ...meta,
-      tags: typeof meta.tags === 'string' ? meta.tags.split(',').map(t => t.trim()).filter(Boolean) : meta.tags
+      ...(isUpdate ? { id: updateAdventure.id } : {}),
+      tags: typeof meta.tags === 'string' ? meta.tags.split(',').map(t => t.trim()).filter(Boolean) : meta.tags,
+      exportExcludes: projectSettings?.exportExcludes || ''
     };
     const result = await window.electronAPI.adventureExport(projectPath, metadata, true);
     if (result.error) {
@@ -440,7 +638,11 @@ function PublishWizard({ projectPath, projectSettings, onClose, onPublished }) {
   const handlePublish = async () => {
     setPublishError(null);
     setProgress(null);
-    const result = await window.electronAPI.adventurePublish(exportResult.zipPath, exportResult.metadata);
+    const publishMeta = {
+      ...exportResult.metadata,
+      visibility: meta.visibility
+    };
+    const result = await window.electronAPI.adventurePublish(exportResult.zipPath, publishMeta);
     if (result.error) {
       setPublishError(result.error);
       return;
@@ -478,7 +680,7 @@ function PublishWizard({ projectPath, projectSettings, onClose, onPublished }) {
           flexShrink: 0, background: 'var(--bg-elevated)'
         }}>
           <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--accent)' }}>
-            Pubblica avventura — Step {step}/3
+            {isUpdate ? 'Aggiorna avventura' : 'Pubblica avventura'} — Step {step}/3
           </span>
           <span className="close-btn" onClick={onClose} style={{ fontSize: '16px' }}>✕</span>
         </div>
@@ -528,10 +730,17 @@ function PublishWizard({ projectPath, projectSettings, onClose, onPublished }) {
                     <option value="de">Deutsch</option>
                   </select>
                 </div>
-                <div style={{ flex: 2 }}>
-                  <label style={labelStyle}>Tag (virgola)</label>
-                  <input value={meta.tags} onChange={e => setMeta(p => ({ ...p, tags: e.target.value }))} style={inputStyle} placeholder="investigativo, giappone" />
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Visibilità</label>
+                  <select value={meta.visibility} onChange={e => setMeta(p => ({ ...p, visibility: e.target.value }))} style={{ ...inputStyle, cursor: 'pointer', appearance: 'auto' }}>
+                    <option value="public">Pubblica</option>
+                    <option value="private">Privata</option>
+                  </select>
                 </div>
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={labelStyle}>Tag (virgola)</label>
+                <input value={meta.tags} onChange={e => setMeta(p => ({ ...p, tags: e.target.value }))} style={inputStyle} placeholder="investigativo, giappone" />
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
                 <button
@@ -559,7 +768,6 @@ function PublishWizard({ projectPath, projectSettings, onClose, onPublished }) {
                     <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
                       Creazione pacchetto in corso...
                     </div>
-                    {/* Auto-start export */}
                     <AutoExport onExport={handleExport} />
                   </>
                 )}
@@ -597,7 +805,7 @@ function PublishWizard({ projectPath, projectSettings, onClose, onPublished }) {
                   <>
                     <div style={{ fontSize: '24px', marginBottom: '8px' }}>✅</div>
                     <div style={{ fontSize: '14px', color: 'var(--color-success)' }}>
-                      Avventura pubblicata! Ora è disponibile nel catalogo.
+                      {isUpdate ? 'Avventura aggiornata!' : 'Avventura pubblicata!'} Ora è disponibile nel catalogo.
                     </div>
                     <div style={{ marginTop: '20px' }}>
                       <button onClick={onClose} style={{
@@ -613,10 +821,10 @@ function PublishWizard({ projectPath, projectSettings, onClose, onPublished }) {
                 ) : (
                   <>
                     <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                      {progress?.phase === 'creating-release' && 'Creazione release...'}
+                      {progress?.phase === 'packaging' && 'Creazione pacchetto...'}
                       {progress?.phase === 'uploading' && `Upload... ${progress.percent || 0}%`}
-                      {progress?.phase === 'updating-catalog' && 'Aggiornamento catalogo...'}
-                      {!progress && 'Pubblicazione in corso...'}
+                      {progress?.phase === 'updating-catalog' && 'Salvataggio catalogo...'}
+                      {!progress && 'Preparazione...'}
                     </div>
                     {progress?.phase === 'uploading' && (
                       <div style={{
@@ -625,7 +833,7 @@ function PublishWizard({ projectPath, projectSettings, onClose, onPublished }) {
                       }}>
                         <div style={{
                           height: '100%', width: `${progress.percent || 0}%`,
-                          background: 'var(--accent)', transition: 'width 0.2s'
+                          background: 'var(--accent)', transition: 'width 0.3s'
                         }} />
                       </div>
                     )}

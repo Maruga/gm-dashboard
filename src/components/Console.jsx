@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { renderMarkdown } from '../utils/markdownRenderer';
 
 // ─── Dice Panel ───
 const DICE = [4, 6, 8, 10, 12, 20, 100];
@@ -114,7 +115,7 @@ function DicePanel() {
 }
 
 // ─── Search Panel (main Console content) ───
-export default function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, telegramLog = [], onClearLog }) {
+export default function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, telegramLog = [], onClearLog, aiConfig, aiChatHistory = [], onAiChatHistoryChange }) {
   const [activeTab, setActiveTab] = useState('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
@@ -124,6 +125,10 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
   const debounceRef = useRef(null);
   const inputRef = useRef(null);
   const logEndRef = useRef(null);
+  const [aiInput, setAiInput] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const aiEndRef = useRef(null);
+  const aiInputRef = useRef(null);
 
   // Load search history from localStorage
   useEffect(() => {
@@ -250,6 +255,39 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
     }
   }, [telegramLog, activeTab]);
 
+  // Auto-scroll AI chat
+  useEffect(() => {
+    if (activeTab === 'ai' && aiEndRef.current) {
+      aiEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [aiChatHistory, aiLoading, activeTab]);
+
+  const handleAiSend = useCallback(async () => {
+    const text = aiInput.trim();
+    if (!text || aiLoading) return;
+    const userMsg = { role: 'user', content: text, timestamp: new Date().toISOString() };
+    const newHistory = [...aiChatHistory, userMsg];
+    onAiChatHistoryChange(newHistory);
+    setAiInput('');
+    setAiLoading(true);
+    try {
+      // Send last 10 messages for context
+      const contextMessages = newHistory.slice(-10).map(m => ({ role: m.role, content: m.content }));
+      const result = await window.electronAPI.aiChat(contextMessages, projectFolder);
+      const aiMsg = {
+        role: 'assistant',
+        content: result.error ? `❌ ${result.error}` : result.response,
+        timestamp: new Date().toISOString(),
+        isError: !!result.error
+      };
+      onAiChatHistoryChange([...newHistory, aiMsg]);
+    } catch (err) {
+      onAiChatHistoryChange([...newHistory, { role: 'assistant', content: `❌ ${err.message}`, timestamp: new Date().toISOString(), isError: true }]);
+    }
+    setAiLoading(false);
+    aiInputRef.current?.focus();
+  }, [aiInput, aiLoading, aiChatHistory, onAiChatHistoryChange, projectFolder]);
+
   return (
     <div style={{ height: '100%', display: 'flex', overflow: 'hidden' }}>
       {/* Left: Search + Log */}
@@ -259,8 +297,9 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
           display: 'flex', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0
         }}>
           {[
-            { key: 'search', label: 'Ricerca' },
-            { key: 'log', label: `Log Telegram${telegramLog.length > 0 ? ` (${telegramLog.length})` : ''}` }
+            { key: 'search', label: 'Ricerca', icon: '🔍' },
+            { key: 'ai', label: 'AI', icon: '🤖' },
+            { key: 'log', label: `Log Telegram${telegramLog.length > 0 ? ` (${telegramLog.length})` : ''}`, icon: '📨' }
           ].map(tab => (
             <div
               key={tab.key}
@@ -275,7 +314,7 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
               onMouseEnter={e => { if (activeTab !== tab.key) e.currentTarget.style.color = 'var(--text-secondary-light)'; }}
               onMouseLeave={e => { if (activeTab !== tab.key) e.currentTarget.style.color = 'var(--text-tertiary)'; }}
             >
-              {tab.key === 'log' ? '📨 ' : '🔍 '}{tab.label}
+              {tab.icon} {tab.label}
             </div>
           ))}
         </div>
@@ -448,6 +487,135 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
               )}
               <div ref={logEndRef} />
             </div>
+          </div>
+        )}
+
+        {/* AI tab content */}
+        {activeTab === 'ai' && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {!(aiConfig?.provider || aiConfig?.apiKey) ? (
+              <div style={{ padding: '20px 12px', textAlign: 'center', fontSize: '12px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
+                Configura l'AI nelle Impostazioni → Assistente AI<br />
+                <span style={{ fontSize: '10px' }}>Oppure effettua il login per usare la quota gratuita</span>
+              </div>
+            ) : (
+              <>
+                {/* Header with clear */}
+                {aiChatHistory.length > 0 && (
+                  <div style={{ padding: '4px 12px', flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={() => onAiChatHistoryChange([])}
+                      style={{
+                        background: 'none', border: '1px solid var(--border-default)', borderRadius: '3px',
+                        padding: '2px 8px', color: 'var(--text-secondary)', fontSize: '10px', cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                    >
+                      🗑️ Svuota
+                    </button>
+                  </div>
+                )}
+
+                {/* Messages */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '4px 12px 8px' }}>
+                  {aiChatHistory.length === 0 && !aiLoading && (
+                    <div style={{ padding: '12px 0', textAlign: 'center', fontSize: '11px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
+                      Fai una domanda sull'avventura...
+                    </div>
+                  )}
+                  {aiChatHistory.map((msg, i) => {
+                    const isUser = msg.role === 'user';
+                    const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
+                    return (
+                      <div key={i} style={{
+                        marginBottom: '6px',
+                        display: 'flex',
+                        justifyContent: isUser ? 'flex-end' : 'flex-start'
+                      }}>
+                        <div style={{
+                          maxWidth: '85%',
+                          padding: '6px 10px',
+                          borderRadius: isUser ? '8px 8px 2px 8px' : '8px 8px 8px 2px',
+                          background: isUser ? 'var(--chat-gm-bg)' : 'var(--bg-main)',
+                          border: isUser ? '1px solid var(--chat-gm-border)' : '1px solid var(--border-subtle)'
+                        }}>
+                          <div style={{ fontSize: '9px', color: 'var(--text-tertiary)', marginBottom: '2px', display: 'flex', gap: '4px' }}>
+                            <span>{time}</span>
+                            <span style={{ fontWeight: '600' }}>{isUser ? 'Tu' : '🤖 AI'}</span>
+                          </div>
+                          {isUser || msg.isError ? (
+                            <div style={{
+                              fontSize: '12px',
+                              color: msg.isError ? 'var(--color-danger)' : 'var(--text-primary)',
+                              lineHeight: '1.5',
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word'
+                            }}>
+                              {msg.content}
+                            </div>
+                          ) : (
+                            <div
+                              className="ai-response-md"
+                              style={{
+                                fontSize: '12px',
+                                color: 'var(--text-primary)',
+                                lineHeight: '1.6',
+                                wordBreak: 'break-word'
+                              }}
+                              dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {aiLoading && (
+                    <div style={{ padding: '6px 0', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      🤖 Sto pensando...
+                    </div>
+                  )}
+                  <div ref={aiEndRef} />
+                </div>
+
+                {/* Input */}
+                <form
+                  onSubmit={e => { e.preventDefault(); handleAiSend(); }}
+                  style={{ padding: '6px 12px', flexShrink: 0, display: 'flex', gap: '6px' }}
+                >
+                  <input
+                    ref={aiInputRef}
+                    type="text"
+                    value={aiInput}
+                    onChange={e => setAiInput(e.target.value)}
+                    placeholder="Chiedi qualcosa sull'avventura..."
+                    disabled={aiLoading}
+                    style={{
+                      flex: 1, background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+                      borderRadius: '4px', padding: '6px 10px', color: 'var(--text-primary)',
+                      fontSize: '12px', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box'
+                    }}
+                    onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                    onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!aiInput.trim() || aiLoading}
+                    style={{
+                      background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                      padding: '0 12px', color: aiInput.trim() && !aiLoading ? 'var(--accent)' : 'var(--text-disabled)',
+                      cursor: aiInput.trim() && !aiLoading ? 'pointer' : 'not-allowed',
+                      fontSize: '12px', transition: 'all 0.15s', flexShrink: 0
+                    }}
+                    onMouseEnter={e => { if (aiInput.trim() && !aiLoading) e.currentTarget.style.borderColor = 'var(--accent)'; }}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+                  >
+                    Invia
+                  </button>
+                </form>
+              </>
+            )}
           </div>
         )}
       </div>

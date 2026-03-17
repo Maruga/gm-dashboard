@@ -86,19 +86,23 @@ export default function SettingsPanel({
   highlightKeywords, onHighlightChange,
   onOpenInfo,
   onExportAdventure, onOpenAdventures,
-  onResetAllRelations
+  onResetAllRelations,
+  aiConfig, onAiConfigChange, onClearAiHistory,
+  initialSection
 }) {
   const [showToken, setShowToken] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState(null);
   const [wizardToken, setWizardToken] = useState('');
-  // GitHub token state
-  const [ghToken, setGhToken] = useState('');
-  const [ghShowToken, setGhShowToken] = useState(false);
-  const [ghVerifying, setGhVerifying] = useState(false);
-  const [ghVerified, setGhVerified] = useState(null); // { username } or null
-  const [ghError, setGhError] = useState(null);
-  const ghLoaded = useRef(false);
+  const [aiVerifying, setAiVerifying] = useState(false);
+  const [aiVerifyResult, setAiVerifyResult] = useState(null);
+  const [aiQuota, setAiQuota] = useState(null);
+  const [showAiKey, setShowAiKey] = useState(false);
+  const [confirmClearAi, setConfirmClearAi] = useState(false);
+  const confirmClearAiTimer = useRef(null);
+  // Firebase auth state
+  const [fbUser, setFbUser] = useState(null);
+  const fbLoaded = useRef(false);
   const [currentTheme, setCurrentTheme] = useState(getStoredThemeId);
   const [fontScale, setFontScale] = useState(getStoredFontScale);
   const [newWord, setNewWord] = useState('');
@@ -107,42 +111,22 @@ export default function SettingsPanel({
   const confirmWordsTimer = useRef(null);
   const [confirmResetRelations, setConfirmResetRelations] = useState(false);
   const confirmRelationsTimer = useRef(null);
-  const [section, setSection] = useState('aspetto');
+  const [section, setSection] = useState(initialSection || 'aspetto');
 
-  // Load GitHub token on mount
+  // Load Firebase user on mount
   useEffect(() => {
-    if (ghLoaded.current) return;
-    ghLoaded.current = true;
-    window.electronAPI?.githubGetToken?.().then(token => {
-      if (token) {
-        setGhToken(token);
-        window.electronAPI.githubVerifyToken(token).then(res => {
-          if (res.valid) setGhVerified({ username: res.username });
-        });
-      }
-    });
+    if (fbLoaded.current) return;
+    fbLoaded.current = true;
+    (async () => {
+      let u = await window.electronAPI?.firebaseGetUser?.();
+      if (!u) u = await window.electronAPI?.firebaseAutoLogin?.();
+      if (u) setFbUser(u);
+    })();
   }, []);
 
-  const handleGhVerify = async () => {
-    if (!ghToken.trim()) return;
-    setGhVerifying(true);
-    setGhError(null);
-    setGhVerified(null);
-    const res = await window.electronAPI.githubVerifyToken(ghToken.trim());
-    setGhVerifying(false);
-    if (res.valid) {
-      setGhVerified({ username: res.username });
-      await window.electronAPI.githubSaveToken(ghToken.trim());
-    } else {
-      setGhError(res.error || 'Token non valido');
-    }
-  };
-
-  const handleGhRemove = async () => {
-    setGhToken('');
-    setGhVerified(null);
-    setGhError(null);
-    await window.electronAPI?.githubClearToken?.();
+  const handleFbLogout = async () => {
+    await window.electronAPI?.firebaseLogout?.();
+    setFbUser(null);
   };
 
   const updateSetting = (key, value) => {
@@ -163,7 +147,8 @@ export default function SettingsPanel({
       playerName: '',
       note: '',
       characterSheet: '',
-      telegramChatId: ''
+      telegramChatId: '',
+      aiDocuments: []
     }]);
   };
 
@@ -232,7 +217,9 @@ export default function SettingsPanel({
               { id: 'progetto', icon: '📋', label: 'Progetto' },
               { id: 'pg', icon: '👥', label: 'Personaggi' },
               { id: 'telegram', icon: '📱', label: 'Telegram' },
-              { id: 'github', icon: '🔑', label: 'GitHub' },
+              { id: 'ai', icon: '🤖', label: 'Assistente AI' },
+              { id: 'aidocs', icon: '📄', label: 'Documenti AI' },
+              { id: 'account', icon: '👤', label: 'Account' },
               { id: 'parole', icon: '🔆', label: 'Parole evidenziate' },
               { id: 'manuali', icon: '📖', label: 'Manuali' },
             ].map(item => (
@@ -821,6 +808,37 @@ export default function SettingsPanel({
             </div>
           </div>
 
+          {/* Export excludes */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={labelStyle}>Escludi dall'export</label>
+            <textarea
+              value={settings.exportExcludes || ''}
+              placeholder={".git/\nnode_modules/\n.DS_Store\nThumbs.db\n.claude/\nCLAUDE.md\n*.bak\n*.tmp\n*.log\n*.swp"}
+              onChange={e => updateSetting('exportExcludes', e.target.value)}
+              rows={6}
+              style={{ ...inputStyle, resize: 'vertical', minHeight: '80px', lineHeight: '1.5' }}
+              onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+              onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text-disabled)' }}>
+                Un pattern per riga. Usa *.ext per estensioni, nome/ per cartelle.
+              </div>
+              <button
+                onClick={() => updateSetting('exportExcludes', '.git/\nnode_modules/\n.DS_Store\nThumbs.db\n.claude/\nCLAUDE.md\n*.bak\n*.tmp\n*.log\n*.swp')}
+                style={{
+                  background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                  padding: '2px 8px', color: 'var(--text-disabled)', fontSize: '10px',
+                  cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-disabled)'; }}
+              >
+                Ripristina default
+              </button>
+            </div>
+          </div>
+
           {/* Adventure action buttons */}
           <div style={{ display: 'flex', gap: '10px', marginBottom: '32px' }}>
             {onExportAdventure && (
@@ -1217,6 +1235,319 @@ export default function SettingsPanel({
 
           </>)}
 
+          {section === 'ai' && (<>
+          {/* === ASSISTENTE AI === */}
+          <div style={sectionStyle}>Assistente AI</div>
+
+          {/* Provider */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={labelStyle}>Provider</label>
+            <select
+              value={aiConfig?.provider || ''}
+              onChange={e => {
+                const prov = e.target.value;
+                const defaultModel = prov === 'anthropic' ? 'claude-sonnet-4-20250514' : prov === 'openai' ? 'gpt-4o-mini' : '';
+                onAiConfigChange(prev => ({ ...prev, provider: prov, model: defaultModel }));
+                setAiVerifyResult(null);
+              }}
+              style={{ ...inputStyle, cursor: 'pointer' }}
+            >
+              <option value="">— Seleziona provider —</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+            </select>
+          </div>
+
+          {/* API Key */}
+          {aiConfig?.provider && (
+            <div style={{ marginBottom: '16px' }}>
+              <label style={labelStyle}>API Key (opzionale)</label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <input
+                  type={showAiKey ? 'text' : 'password'}
+                  value={aiConfig?.apiKey || ''}
+                  onChange={e => { onAiConfigChange(prev => ({ ...prev, apiKey: e.target.value })); setAiVerifyResult(null); }}
+                  placeholder={`Inserisci la tua ${aiConfig.provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API key`}
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                <button
+                  onClick={() => setShowAiKey(v => !v)}
+                  style={{
+                    background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                    padding: '0 10px', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer'
+                  }}
+                >{showAiKey ? '🙈' : '👁️'}</button>
+                <button
+                  onClick={async () => {
+                    if (!aiConfig.apiKey) return;
+                    setAiVerifying(true);
+                    setAiVerifyResult(null);
+                    const result = await window.electronAPI.aiVerifyKey(aiConfig.provider, aiConfig.apiKey);
+                    setAiVerifying(false);
+                    if (result.success) {
+                      setAiVerifyResult({ ok: true });
+                      onAiConfigChange(prev => ({ ...prev, configured: true }));
+                    } else {
+                      setAiVerifyResult({ ok: false, error: result.error });
+                    }
+                  }}
+                  disabled={!aiConfig.apiKey || aiVerifying}
+                  style={{
+                    background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                    padding: '0 12px', color: aiConfig.apiKey && !aiVerifying ? 'var(--accent)' : 'var(--text-disabled)',
+                    fontSize: '11px', cursor: aiConfig.apiKey && !aiVerifying ? 'pointer' : 'not-allowed',
+                    transition: 'all 0.2s', flexShrink: 0
+                  }}
+                >{aiVerifying ? '...' : 'Verifica'}</button>
+              </div>
+              {aiVerifyResult && (
+                <div style={{ marginTop: '6px', fontSize: '12px', color: aiVerifyResult.ok ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                  {aiVerifyResult.ok ? '✅ Chiave valida' : `❌ ${aiVerifyResult.error}`}
+                </div>
+              )}
+              <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                Senza chiave API usi la quota gratuita dell'app (richiede login).
+                {!aiConfig.apiKey && (
+                  <button
+                    onClick={async () => {
+                      const q = await window.electronAPI.aiGetQuota();
+                      if (q && !q.error) setAiQuota(q);
+                    }}
+                    style={{
+                      background: 'none', border: 'none', color: 'var(--accent)', fontSize: '11px',
+                      cursor: 'pointer', textDecoration: 'underline', marginLeft: '4px'
+                    }}
+                  >Verifica quota</button>
+                )}
+                {aiQuota && !aiConfig.apiKey && (
+                  <span style={{ marginLeft: '6px', color: 'var(--text-secondary)' }}>
+                    — {aiQuota.remaining?.toLocaleString()} token rimasti su {aiQuota.tokenAllowance?.toLocaleString()}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Modello */}
+          {aiConfig?.provider && (
+            <div style={{ marginBottom: '16px' }}>
+              <label style={labelStyle}>Modello</label>
+              <select
+                value={aiConfig?.model || ''}
+                onChange={e => onAiConfigChange(prev => ({ ...prev, model: e.target.value }))}
+                style={{ ...inputStyle, cursor: 'pointer' }}
+              >
+                {aiConfig.provider === 'openai' ? (
+                  <>
+                    <option value="gpt-4o-mini">gpt-4o-mini (consigliato)</option>
+                    <option value="gpt-4o">gpt-4o</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="claude-sonnet-4-20250514">claude-sonnet-4-20250514 (consigliato)</option>
+                    <option value="claude-haiku-4-5-20251001">claude-haiku-4-5-20251001</option>
+                  </>
+                )}
+              </select>
+            </div>
+          )}
+
+          {/* Telegram AI */}
+          <div style={{ ...sectionStyle, marginTop: '24px' }}>Telegram AI</div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={aiConfig?.telegramAiEnabled ?? true}
+                onChange={e => onAiConfigChange(prev => ({ ...prev, telegramAiEnabled: e.target.checked }))}
+                style={{ accentColor: 'var(--accent)' }}
+              />
+              Abilita risposte AI su Telegram
+            </label>
+          </div>
+
+          {aiConfig?.telegramAiEnabled && (
+            <div style={{ marginBottom: '16px' }}>
+              <label style={labelStyle}>Modalità</label>
+              <select
+                value={aiConfig?.telegramAiMode || 'manual'}
+                onChange={e => onAiConfigChange(prev => ({ ...prev, telegramAiMode: e.target.value }))}
+                style={{ ...inputStyle, cursor: 'pointer' }}
+              >
+                <option value="manual">Manuale — solo con /ai domanda</option>
+                <option value="auto">Automatico — risponde a tutti i messaggi</option>
+              </select>
+            </div>
+          )}
+
+          {/* Clear history */}
+          <div style={{ marginTop: '24px' }}>
+            {confirmClearAi ? (
+              <button
+                onClick={() => {
+                  onClearAiHistory();
+                  setConfirmClearAi(false);
+                  clearTimeout(confirmClearAiTimer.current);
+                }}
+                style={{
+                  background: 'none', border: '1px solid var(--color-danger)', borderRadius: '4px',
+                  padding: '6px 16px', color: 'var(--color-danger)', fontSize: '12px',
+                  cursor: 'pointer', transition: 'all 0.2s'
+                }}
+              >
+                Sicuro?
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setConfirmClearAi(true);
+                  clearTimeout(confirmClearAiTimer.current);
+                  confirmClearAiTimer.current = setTimeout(() => setConfirmClearAi(false), 3000);
+                }}
+                style={{
+                  background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                  padding: '6px 16px', color: 'var(--text-secondary)', fontSize: '12px',
+                  cursor: 'pointer', transition: 'all 0.2s'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--color-danger)'; e.currentTarget.style.color = 'var(--color-danger)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+              >
+                🗑️ Svuota conversazione AI
+              </button>
+            )}
+          </div>
+
+          </>)}
+
+          {section === 'aidocs' && (<>
+          {/* === DOCUMENTI AI === */}
+          <div style={sectionStyle}>Documenti AI per Telegram</div>
+          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '16px', lineHeight: '1.6' }}>
+            Quando un giocatore usa <span style={{ color: 'var(--accent)' }}>/ai</span> su Telegram, l'AI risponde basandosi solo sui documenti attivi qui sotto.<br />
+            I documenti <b>comuni</b> sono visibili a tutti. Quelli <b>per personaggio</b> sono visibili solo al giocatore associato.
+          </div>
+
+          {/* Documenti comuni */}
+          <div style={{
+            border: '1px solid var(--border-default)', borderRadius: '6px',
+            padding: '12px 16px', marginBottom: '16px', background: 'var(--bg-main)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)' }}>📋 Comuni (tutti i giocatori)</span>
+              <button
+                onClick={async () => {
+                  const file = await window.electronAPI.selectProjectFile(projectPath, [
+                    { name: 'Documenti', extensions: ['md', 'html', 'htm', 'txt'] }
+                  ]);
+                  if (!file) return;
+                  const name = file.split('/').pop().replace(/\.[^.]+$/, '');
+                  onAiConfigChange(prev => ({
+                    ...prev,
+                    commonDocs: [...(prev.commonDocs || []), { id: crypto.randomUUID(), name, file, active: true, activeFromDate: '' }]
+                  }));
+                }}
+                style={{
+                  background: 'none', border: '1px solid var(--border-default)', borderRadius: '3px',
+                  padding: '2px 10px', color: 'var(--accent)', fontSize: '11px', cursor: 'pointer'
+                }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+              >➕ Aggiungi</button>
+            </div>
+            {(aiConfig.commonDocs || []).length === 0 && (
+              <div style={{ fontSize: '11px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>Nessun documento comune</div>
+            )}
+            {(aiConfig.commonDocs || []).map(doc => (
+              <div key={doc.id} style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                padding: '4px 6px', marginBottom: '2px',
+                background: 'var(--bg-elevated)', borderRadius: '3px'
+              }}>
+                <input
+                  type="checkbox" checked={doc.active}
+                  onChange={e => onAiConfigChange(prev => ({
+                    ...prev,
+                    commonDocs: (prev.commonDocs || []).map(d => d.id === doc.id ? { ...d, active: e.target.checked } : d)
+                  }))}
+                  style={{ accentColor: 'var(--accent)', flexShrink: 0 }}
+                />
+                <span style={{ fontSize: '12px', color: doc.active ? 'var(--text-primary)' : 'var(--text-disabled)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  title={doc.file}>{doc.name}</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', flexShrink: 0, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  title={doc.file}>{doc.file}</span>
+                <span className="close-btn" onClick={() => onAiConfigChange(prev => ({
+                  ...prev, commonDocs: (prev.commonDocs || []).filter(d => d.id !== doc.id)
+                }))} style={{ fontSize: '12px', flexShrink: 0 }}>✕</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Documenti per personaggio */}
+          {players.length === 0 ? (
+            <div style={{ fontSize: '12px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
+              Configura i personaggi nella sezione Personaggi per aggiungere documenti specifici.
+            </div>
+          ) : players.map(pg => (
+            <div key={pg.id} style={{
+              border: '1px solid var(--border-default)', borderRadius: '6px',
+              padding: '12px 16px', marginBottom: '10px', background: 'var(--bg-main)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                  🎭 {pg.characterName || 'Senza nome'}{pg.playerName ? ` (${pg.playerName})` : ''}
+                </span>
+                <button
+                  onClick={async () => {
+                    const file = await window.electronAPI.selectProjectFile(projectPath, [
+                      { name: 'Documenti', extensions: ['md', 'html', 'htm', 'txt'] }
+                    ]);
+                    if (!file) return;
+                    const name = file.split('/').pop().replace(/\.[^.]+$/, '');
+                    onPlayersChange(prev => prev.map(p => p.id === pg.id ? {
+                      ...p,
+                      aiDocuments: [...(p.aiDocuments || []), { id: crypto.randomUUID(), name, file, active: true, activeFromDate: '' }]
+                    } : p));
+                  }}
+                  style={{
+                    background: 'none', border: '1px solid var(--border-default)', borderRadius: '3px',
+                    padding: '2px 10px', color: 'var(--accent)', fontSize: '11px', cursor: 'pointer'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+                >➕ Aggiungi</button>
+              </div>
+              {(pg.aiDocuments || []).length === 0 && (
+                <div style={{ fontSize: '11px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>Nessun documento</div>
+              )}
+              {(pg.aiDocuments || []).map(doc => (
+                <div key={doc.id} style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '4px 6px', marginBottom: '2px',
+                  background: 'var(--bg-elevated)', borderRadius: '3px'
+                }}>
+                  <input
+                    type="checkbox" checked={doc.active}
+                    onChange={e => onPlayersChange(prev => prev.map(p => p.id === pg.id ? {
+                      ...p,
+                      aiDocuments: (p.aiDocuments || []).map(d => d.id === doc.id ? { ...d, active: e.target.checked } : d)
+                    } : p))}
+                    style={{ accentColor: 'var(--accent)', flexShrink: 0 }}
+                  />
+                  <span style={{ fontSize: '12px', color: doc.active ? 'var(--text-primary)' : 'var(--text-disabled)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={doc.file}>{doc.name}</span>
+                  <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', flexShrink: 0, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={doc.file}>{doc.file}</span>
+                  <span className="close-btn" onClick={() => onPlayersChange(prev => prev.map(p => p.id === pg.id ? {
+                    ...p, aiDocuments: (p.aiDocuments || []).filter(d => d.id !== doc.id)
+                  } : p))} style={{ fontSize: '12px', flexShrink: 0 }}>✕</span>
+                </div>
+              ))}
+            </div>
+          ))}
+
+          </>)}
+
           {section === 'manuali' && (<>
           {/* === MANUALI DI RIFERIMENTO === */}
           <div style={sectionStyle}>Manuali di Riferimento</div>
@@ -1327,84 +1658,47 @@ export default function SettingsPanel({
 
           </>)}
 
-          {section === 'github' && (<>
-          {/* === GITHUB === */}
-          <div style={sectionStyle}>GitHub</div>
+          {section === 'account' && (<>
+          {/* === ACCOUNT AVVENTURE === */}
+          <div style={sectionStyle}>Account Avventure</div>
 
           <div style={{
             padding: '12px 16px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
             borderRadius: '6px', fontSize: '11px', color: 'var(--text-tertiary)', lineHeight: '1.6', marginBottom: '16px'
           }}>
-            Per pubblicare avventure serve un Personal Access Token GitHub.<br />
-            <span style={{ color: 'var(--text-secondary)' }}>
-              github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new → scope: <strong>repo</strong>
-            </span>
+            Per pubblicare avventure è necessario un account. Puoi accedere o registrarti dalla sezione Avventure.
           </div>
 
-          <div style={{ marginBottom: '12px' }}>
-            <label style={labelStyle}>Token</label>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <div style={{ flex: 1, position: 'relative' }}>
-                <input
-                  type={ghShowToken ? 'text' : 'password'}
-                  value={ghToken}
-                  placeholder="ghp_..."
-                  onChange={e => { setGhToken(e.target.value); setGhVerified(null); setGhError(null); }}
-                  style={inputStyle}
-                  onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-                  onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
-                />
-                <span
-                  onClick={() => setGhShowToken(v => !v)}
-                  style={{
-                    position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
-                    cursor: 'pointer', fontSize: '14px', opacity: 0.6
-                  }}
-                  title={ghShowToken ? 'Nascondi' : 'Mostra'}
-                >
-                  {ghShowToken ? '🙈' : '👁'}
-                </span>
+          {fbUser ? (
+            <>
+              <div style={{ fontSize: '12px', color: 'var(--color-success)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>✅ Connesso come <strong>{fbUser.displayName || fbUser.email}</strong></span>
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '12px' }}>
+                {fbUser.email}
               </div>
               <button
-                onClick={handleGhVerify}
-                disabled={!ghToken.trim() || ghVerifying}
+                onClick={handleFbLogout}
                 style={{
-                  background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
-                  padding: '6px 14px', fontSize: '12px', cursor: !ghToken.trim() || ghVerifying ? 'not-allowed' : 'pointer',
-                  color: !ghToken.trim() || ghVerifying ? 'var(--text-disabled)' : 'var(--accent)',
-                  transition: 'all 0.2s', whiteSpace: 'nowrap'
+                  background: 'none', border: 'none', padding: '4px 0',
+                  color: 'var(--text-disabled)', fontSize: '11px', cursor: 'pointer', marginBottom: '8px'
                 }}
-                onMouseEnter={e => { if (ghToken.trim() && !ghVerifying) e.currentTarget.style.borderColor = 'var(--accent)'; }}
-                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--color-danger)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'var(--text-disabled)'}
               >
-                {ghVerifying ? '⏳ Verifica...' : 'Verifica'}
+                Esci dall'account
               </button>
+            </>
+          ) : (
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+              Non sei connesso.
+              <span
+                onClick={onOpenAdventures}
+                style={{ color: 'var(--accent)', cursor: 'pointer', marginLeft: '6px' }}
+              >
+                Accedi dalla sezione Avventure →
+              </span>
             </div>
-          </div>
-
-          {ghVerified && (
-            <div style={{ fontSize: '12px', color: 'var(--color-success)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>✅ Verificato — account: <strong>{ghVerified.username}</strong></span>
-            </div>
-          )}
-          {ghError && (
-            <div style={{ fontSize: '12px', color: 'var(--color-danger)', marginBottom: '12px' }}>
-              ❌ {ghError}
-            </div>
-          )}
-
-          {ghToken && (
-            <button
-              onClick={handleGhRemove}
-              style={{
-                background: 'none', border: 'none', padding: '4px 0',
-                color: 'var(--text-disabled)', fontSize: '11px', cursor: 'pointer', marginBottom: '8px'
-              }}
-              onMouseEnter={e => e.currentTarget.style.color = 'var(--color-danger)'}
-              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-disabled)'}
-            >
-              🗑️ Rimuovi token
-            </button>
           )}
 
           </>)}

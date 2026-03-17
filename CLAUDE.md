@@ -20,6 +20,7 @@ File disponibili:
 3. **Build**: dopo ogni modifica, verificare con `npx vite build`
 4. **Lingua UI**: italiano per label, commenti, messaggi
 5. **Release**: seguire `RELEASE-GUIDE.md` nella root del progetto
+6. **Conferme distruttive**: MAI usare `window.confirm()` o messagebox nativi. Usare sempre il pattern inline "Sicuro?" con auto-reset dopo 3 secondi: primo click mostra "Sicuro?", secondo click esegue l'azione. Vedi `TelegramChat.jsx` `confirmClear` come riferimento
 
 ## Pannelli UI (nomi nel codice)
 | Pannello | Componente | Posizione |

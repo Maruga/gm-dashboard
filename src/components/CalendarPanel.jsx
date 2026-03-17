@@ -41,7 +41,7 @@ const inputStyle = {
 
 export default function CalendarPanel({
   calendarData, onCalendarChange,
-  gameDate, onSetGameDate,
+  gameDate,
   projectPath, players,
   onOpenCalDoc,
   onClose,
@@ -87,7 +87,6 @@ export default function CalendarPanel({
     if (!day) return;
     const iso = toISO(viewYear, viewMonth, day);
     setSelectedDay(iso);
-    onSetGameDate(iso);
   };
 
   // Events for selected day
@@ -136,7 +135,9 @@ export default function CalendarPanel({
   };
 
   const selectLinkedDoc = async (eventId) => {
-    const result = await window.electronAPI.selectProjectFile(projectPath);
+    const result = await window.electronAPI.selectProjectFile(projectPath, [
+      { name: 'Tutti i file supportati', extensions: ['md', 'html', 'htm', 'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'mp3', 'ogg', 'wav', 'flac', 'm4a'] }
+    ]);
     if (result) updateEvent(eventId, 'linkedDocument', result);
   };
 
@@ -170,14 +171,30 @@ export default function CalendarPanel({
 
     const text = `📅 *${ev.title}*\n${ev.note || ''}`.trim();
     const now = new Date().toLocaleString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+    const linkedFile = ev.linkedDocument ? `${projectPath}/${ev.linkedDocument}` : null;
+    const linkedExt = ev.linkedDocument ? ev.linkedDocument.substring(ev.linkedDocument.lastIndexOf('.')).toLowerCase() : '';
+    const isImage = IMAGE_EXTS.includes(linkedExt);
+    const isHtml = ['.html', '.htm'].includes(linkedExt);
 
     for (const p of recipients) {
       try {
+        // Invia testo
         await window.electronAPI.telegramSendMessage(p.telegramChatId, text);
+        // Invia allegato se presente
+        if (linkedFile) {
+          if (isImage) {
+            await window.electronAPI.telegramSendPhoto(p.telegramChatId, linkedFile, ev.linkedDocument.split('/').pop());
+          } else if (isHtml) {
+            await window.electronAPI.telegramSendHtmlAsPhoto(p.telegramChatId, linkedFile, ev.linkedDocument.split('/').pop());
+          } else {
+            await window.electronAPI.telegramSendDocument(p.telegramChatId, linkedFile, ev.linkedDocument.split('/').pop());
+          }
+        }
         if (onLog) onLog({
           date: now,
           success: true,
-          description: `Evento "${ev.title}" inviato`,
+          description: `Evento "${ev.title}" inviato${linkedFile ? ' + allegato' : ''}`,
           recipient: p.characterName || p.playerName
         });
       } catch (err) {
@@ -191,8 +208,23 @@ export default function CalendarPanel({
       }
     }
 
+    // Marca come inviato
+    onCalendarChange(prev => {
+      const dayKey = Object.keys(prev.events || {}).find(k =>
+        (prev.events[k] || []).some(e => e.id === ev.id)
+      );
+      if (!dayKey) return prev;
+      return {
+        ...prev,
+        events: {
+          ...prev.events,
+          [dayKey]: prev.events[dayKey].map(e => e.id === ev.id ? { ...e, sent: true } : e)
+        }
+      };
+    });
+
     setSending(prev => ({ ...prev, [ev.id]: false }));
-  }, [players, onLog]);
+  }, [players, onLog, onCalendarChange]);
 
   const { day: gameDayNum, month: gameMonthNum, year: gameYearNum } = parseISO(currentDate);
   const selectedParsed = parseISO(selectedDay);
@@ -471,8 +503,24 @@ export default function CalendarPanel({
                         </label>
                       </div>
 
+                      {/* Stato invio */}
+                      {ev.sent && (
+                        <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--color-success)' }}>✅ Inviato</span>
+                          <button
+                            onClick={() => updateEvent(ev.id, 'sent', false)}
+                            style={{
+                              background: 'none', border: '1px solid var(--border-default)', borderRadius: '3px',
+                              padding: '2px 8px', color: 'var(--text-secondary)', fontSize: '10px', cursor: 'pointer'
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                          >🔄 Reset invio</button>
+                        </div>
+                      )}
+
                       {/* Manual send button */}
-                      {!ev.telegram?.autoSend && (
+                      {!ev.telegram?.autoSend && !ev.sent && (
                         <button
                           onClick={() => handleSendEvent(ev)}
                           disabled={!botRunning || (ev.telegram?.recipients || []).length === 0 || sending[ev.id]}
@@ -492,7 +540,14 @@ export default function CalendarPanel({
                         </button>
                       )}
 
-                      {!botRunning && (
+                      {/* Auto-send info */}
+                      {ev.telegram?.autoSend && !ev.sent && (
+                        <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                          Verrà inviato automaticamente quando la data di gioco raggiunge questo giorno
+                        </div>
+                      )}
+
+                      {!botRunning && !ev.sent && (
                         <div style={{ fontSize: '10px', color: 'var(--color-danger)', marginTop: '4px' }}>
                           Bot non attivo
                         </div>

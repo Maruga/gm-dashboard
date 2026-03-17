@@ -111,11 +111,11 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
   const [slotSelectedIndices, setSlotSelectedIndices] = useState({ A: 0, B: 0, C: 0 });
   const [mediaItems, setMediaItems] = useState([]);
   const [mediaFilter, setMediaFilter] = useState('all');
-  const [projectSettings, setProjectSettings] = useState({ projectName: '', startDate: '', calendarType: 'gregoriano' });
+  const [projectSettings, setProjectSettings] = useState({ projectName: '', startDate: '', calendarType: 'gregoriano', exportExcludes: '' });
   const [players, setPlayers] = useState([]);
   const [telegramConfig, setTelegramConfig] = useState({ botToken: '', configured: false });
   const [calendarData, setCalendarData] = useState({ currentDate: '', events: {} });
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(null); // null=chiuso, stringa=sezione iniziale
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calFile, setCalFile] = useState(null);
   const [viewerTabs, setViewerTabs] = useState([{ type: 'document' }]);
@@ -159,6 +159,21 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
   const [fullscreenPanel, setFullscreenPanel] = useState(null);
   const [viewerSearchOpen, setViewerSearchOpen] = useState(false);
   const [stateLoaded, setStateLoaded] = useState(false);
+  const [aiConfig, setAiConfig] = useState({
+    provider: '',
+    apiKey: '',
+    model: '',
+    configured: false,
+    telegramAiEnabled: true,
+    telegramAiMode: 'manual',
+    commonDocs: []
+  });
+  const [aiChatHistory, setAiChatHistory] = useState([]);
+
+  const aiConfigRef = useRef(aiConfig);
+  useEffect(() => { aiConfigRef.current = aiConfig; }, [aiConfig]);
+  const playersRef = useRef(players);
+  useEffect(() => { playersRef.current = players; }, [players]);
 
   const mainViewerRef = useRef(null);
   const leftColRef = useRef(null);
@@ -229,6 +244,8 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
         setViewerFontSize(saved.viewerFontSize ?? 15);
         setStageFontSize(saved.stageFontSize ?? 15);
         setMediaFilter(saved.mediaFilter ?? 'all');
+        setAiConfig(saved.aiConfig ?? { provider: '', apiKey: '', model: '', configured: false, telegramAiEnabled: true, telegramAiMode: 'manual' });
+        setAiChatHistory(saved.aiChatHistory ?? []);
         // Restore media items (audio paused, re-resolve URLs)
         const savedMedia = saved.savedMediaItems || saved.savedAudioTracks;
         if (savedMedia && savedMedia.length > 0) {
@@ -298,7 +315,9 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       savedMediaItems: mediaItems.map(item => ({
         id: item.id, type: item.type, path: item.path, name: item.name,
         ...(item.type === 'audio' ? { volume: item.volume, loop: item.loop, rate: item.rate } : {})
-      }))
+      })),
+      aiConfig: aiConfig,
+      aiChatHistory: aiChatHistory
     };
   });
 
@@ -308,7 +327,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
     saveTimer.current = setTimeout(() => {
       window.electronAPI.saveProjectState(projectPath, latestState.current);
     }, 400);
-  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, viewerFontSize, stageFontSize, scrollVersion]);
+  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, viewerFontSize, stageFontSize, scrollVersion, aiConfig, aiChatHistory]);
 
   // Save immediately on unmount (project switch)
   useEffect(() => {
@@ -593,6 +612,71 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
 
   const gameDateHasEvents = (calendarData.events[calendarData.currentDate] || []).length > 0;
 
+  // Auto-send eventi Telegram quando la data di gioco cambia
+  useEffect(() => {
+    if (!botStatus.running || !calendarData.currentDate) return;
+    const dayEvents = calendarData.events[calendarData.currentDate] || [];
+    const toSend = dayEvents.filter(ev =>
+      ev.telegram?.enabled && ev.telegram?.autoSend && !ev.sent &&
+      (ev.telegram?.recipients || []).length > 0
+    );
+    if (toSend.length === 0) return;
+
+    const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+    (async () => {
+      const now = new Date().toLocaleString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      for (const ev of toSend) {
+        const recipients = (ev.telegram.recipients || [])
+          .map(pid => players.find(p => p.id === pid))
+          .filter(p => p && p.telegramChatId);
+        if (recipients.length === 0) continue;
+
+        const text = `📅 *${ev.title}*\n${ev.note || ''}`.trim();
+        const linkedFile = ev.linkedDocument ? `${projectPath}/${ev.linkedDocument}` : null;
+        const linkedExt = ev.linkedDocument ? ev.linkedDocument.substring(ev.linkedDocument.lastIndexOf('.')).toLowerCase() : '';
+        const isImage = IMAGE_EXTS.includes(linkedExt);
+        const isHtml = ['.html', '.htm'].includes(linkedExt);
+
+        for (const p of recipients) {
+          try {
+            await window.electronAPI.telegramSendMessage(p.telegramChatId, text);
+            if (linkedFile) {
+              if (isImage) {
+                await window.electronAPI.telegramSendPhoto(p.telegramChatId, linkedFile, ev.linkedDocument.split('/').pop());
+              } else if (isHtml) {
+                await window.electronAPI.telegramSendHtmlAsPhoto(p.telegramChatId, linkedFile, ev.linkedDocument.split('/').pop());
+              } else {
+                await window.electronAPI.telegramSendDocument(p.telegramChatId, linkedFile, ev.linkedDocument.split('/').pop());
+              }
+            }
+            handleTelegramLog({
+              date: now, success: true,
+              description: `Evento "${ev.title}" auto-inviato${linkedFile ? ' + allegato' : ''}`,
+              recipient: p.characterName || p.playerName
+            });
+          } catch (err) {
+            handleTelegramLog({
+              date: now, success: false,
+              description: `Evento "${ev.title}" — errore auto-invio`,
+              recipient: p.characterName || p.playerName,
+              error: err.message
+            });
+          }
+        }
+        // Marca come inviato
+        setCalendarData(prev => ({
+          ...prev,
+          events: {
+            ...prev.events,
+            [prev.currentDate]: (prev.events[prev.currentDate] || []).map(e =>
+              e.id === ev.id ? { ...e, sent: true } : e
+            )
+          }
+        }));
+      }
+    })();
+  }, [calendarData.currentDate, botStatus.running]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const stageActiveItem = useMemo(() => {
     if (activeStageSlot === 'Cal') return calFile || null;
     const items = slotFiles[activeStageSlot] || [];
@@ -637,7 +721,12 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
   // Listen for bot events
   useEffect(() => {
     window.electronAPI.onTelegramPlayerJoined((data) => {
-      setPlayers(prev => prev.map(p => p.id === data.playerId ? { ...p, telegramChatId: data.chatId } : p));
+      setPlayers(prev => prev.map(p => {
+        if (p.id !== data.playerId) return p;
+        const update = { ...p, telegramChatId: data.chatId };
+        if (data.playerName && !p.playerName) update.playerName = data.playerName;
+        return update;
+      }));
     });
     window.electronAPI.onTelegramPlayerLeft((data) => {
       setPlayers(prev => prev.map(p => p.id === data.playerId ? { ...p, telegramChatId: '' } : p));
@@ -685,6 +774,37 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           ...prev,
           [data.chatId]: (prev[data.chatId] || []).map(m => m.from === 'player' && !m.read ? { ...m, read: true } : m)
         }));
+      }
+      // AI auto-reply for Telegram
+      const ai = aiConfigRef.current;
+      if (ai.telegramAiEnabled) {
+        const isAiCommand = /^\/(ai|ia)\s/.test(data.text);
+        const shouldReply = ai.telegramAiMode === 'auto' || isAiCommand;
+        if (shouldReply) {
+          const question = isAiCommand ? data.text.replace(/^\/(ai|ia)\s+/, '') : data.text;
+          // Raccogliere documenti autorizzati per questo player
+          const player = playersRef.current.find(p => p.id === data.playerId);
+          const commonDocs = (ai.commonDocs || []).filter(d => d.active).map(d => d.file);
+          const playerDocs = (player?.aiDocuments || []).filter(d => d.active).map(d => d.file);
+          const allowedFiles = [...commonDocs, ...playerDocs];
+          const aiMessages = [{ role: 'user', content: question }];
+          window.electronAPI.aiChat(aiMessages, projectPath, { allowedFiles }).then(result => {
+            if (result.response) {
+              window.electronAPI.telegramSendReply(data.chatId, result.response);
+              setChatMessages(prev => ({
+                ...prev,
+                [data.chatId]: [...(prev[data.chatId] || []), {
+                  id: crypto.randomUUID(),
+                  from: 'gm',
+                  text: `🤖 ${result.response}`,
+                  timestamp: new Date().toISOString(),
+                  read: true,
+                  isAi: true
+                }]
+              }));
+            }
+          }).catch(() => {});
+        }
       }
     });
     return () => window.electronAPI.removeTelegramListeners();
@@ -938,7 +1058,8 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       <TopMenu
         onChangeProject={onChangeProject}
         onOpenInfo={() => setInfoOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => setSettingsOpen('aspetto')}
+        onOpenAiDocs={() => setSettingsOpen('aidocs')}
         onOpenCalendar={() => setCalendarOpen(true)}
         onOpenNotes={() => setNotesOpen(v => !v)}
         onOpenChecklist={() => setChecklistOpen(v => !v)}
@@ -1161,7 +1282,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
 
         {/* CONSOLE — full width */}
         <div style={{ height: `${consoleHeight}px`, overflow: 'hidden', flexShrink: 0 }}>
-          <Console projectFolder={projectPath} onOpenFile={handleFileOpen} onSearchNavigate={handleSearchNavigate} externalQuery={externalSearchQuery} telegramLog={telegramLog} onClearLog={() => setTelegramLog([])} />
+          <Console projectFolder={projectPath} onOpenFile={handleFileOpen} onSearchNavigate={handleSearchNavigate} externalQuery={externalSearchQuery} telegramLog={telegramLog} onClearLog={() => setTelegramLog([])} aiConfig={aiConfig} aiChatHistory={aiChatHistory} onAiChatHistoryChange={setAiChatHistory} />
         </div>
       </div>
 
@@ -1187,8 +1308,10 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       {/* === SETTINGS PANEL === */}
       {settingsOpen && (
         <SettingsPanel
+          key={settingsOpen}
           projectPath={projectPath}
           defaultProjectName={projectName}
+          initialSection={settingsOpen}
           settings={projectSettings}
           onSettingsChange={setProjectSettings}
           players={players}
@@ -1201,12 +1324,12 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           onDisconnectAllPlayers={handleDisconnectAllPlayers}
           referenceManuals={referenceManuals}
           onReferenceChange={setReferenceManuals}
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => setSettingsOpen(null)}
           onResetGameDate={handleResetGameDate}
           highlightKeywords={highlightKeywords}
           onHighlightChange={setHighlightKeywords}
           onResetAllRelations={() => setRelationsSession({})}
-          onOpenInfo={() => { setSettingsOpen(false); setInfoOpen(true); }}
+          onOpenInfo={() => { setSettingsOpen(null); setInfoOpen(true); }}
           onExportAdventure={async () => {
             const metadata = {
               name: projectSettings.projectName || projectName,
@@ -1217,7 +1340,8 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
               players: projectSettings.players || '',
               duration: projectSettings.duration || '',
               language: projectSettings.language || 'it',
-              tags: (projectSettings.tags || '').split(',').map(t => t.trim()).filter(Boolean)
+              tags: (projectSettings.tags || '').split(',').map(t => t.trim()).filter(Boolean),
+              exportExcludes: projectSettings.exportExcludes || ''
             };
             const result = await window.electronAPI.adventureExport(projectPath, metadata);
             if (result.canceled) return;
@@ -1228,7 +1352,10 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
             }
             setTimeout(() => setExportStatus(null), 4000);
           }}
-          onOpenAdventures={() => { setSettingsOpen(false); setAdventuresOpen(true); }}
+          onOpenAdventures={() => { setSettingsOpen(null); setAdventuresOpen(true); }}
+          aiConfig={aiConfig}
+          onAiConfigChange={setAiConfig}
+          onClearAiHistory={() => setAiChatHistory([])}
         />
       )}
 
@@ -1238,7 +1365,6 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           calendarData={calendarData}
           onCalendarChange={setCalendarData}
           gameDate={calendarData.currentDate}
-          onSetGameDate={(iso) => setCalendarData(prev => ({ ...prev, currentDate: iso }))}
           projectPath={projectPath}
           players={players}
           onOpenCalDoc={handleOpenCalDoc}
@@ -1284,7 +1410,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       {infoOpen && (
         <InfoPanel
           onClose={() => setInfoOpen(false)}
-          onOpenSettings={() => { setInfoOpen(false); setSettingsOpen(true); }}
+          onOpenSettings={() => { setInfoOpen(false); setSettingsOpen('aspetto'); }}
         />
       )}
 
@@ -1477,6 +1603,30 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
             return next;
           })}
           onClose={() => setChatOpen(false)}
+          aiEnabled={aiConfig.telegramAiEnabled && (!!aiConfig.apiKey || !!aiConfig.provider)}
+          onAiReply={async (msg, chatId) => {
+            // Raccogliere documenti autorizzati per il player di questa chat
+            const player = players.find(p => p.telegramChatId === chatId);
+            const commonDocs = (aiConfig.commonDocs || []).filter(d => d.active).map(d => d.file);
+            const playerDocs = (player?.aiDocuments || []).filter(d => d.active).map(d => d.file);
+            const allowedFiles = [...commonDocs, ...playerDocs];
+            const aiMessages = [{ role: 'user', content: msg.text }];
+            const result = await window.electronAPI.aiChat(aiMessages, projectPath, { allowedFiles });
+            if (result.response) {
+              await window.electronAPI.telegramSendReply(chatId, result.response);
+              setChatMessages(prev => ({
+                ...prev,
+                [chatId]: [...(prev[chatId] || []), {
+                  id: crypto.randomUUID(),
+                  from: 'gm',
+                  text: `🤖 ${result.response}`,
+                  timestamp: new Date().toISOString(),
+                  read: true,
+                  isAi: true
+                }]
+              }));
+            }
+          }}
         />
       )}
     </div>
@@ -1593,6 +1743,28 @@ function GlobalStyles() {
       .viewer-content th, .viewer-content td { border: 1px solid var(--border-default); padding: 6px 10px; text-align: left; }
       .viewer-content th { background: var(--bg-elevated); color: var(--accent); }
       .viewer-content img { max-width: 100%; border-radius: 4px; }
+      .ai-response-md p { margin: 0.3em 0; }
+      .ai-response-md strong { color: var(--accent); }
+      .ai-response-md em { color: var(--accent-dim); }
+      .ai-response-md ul, .ai-response-md ol { padding-left: 1.3em; margin: 0.3em 0; }
+      .ai-response-md li { margin: 0.15em 0; }
+      .ai-response-md code {
+        background: var(--bg-elevated); padding: 1px 4px; border-radius: 2px;
+        font-family: 'Courier New', monospace; font-size: 0.9em; color: var(--text-code);
+      }
+      .ai-response-md pre {
+        background: var(--bg-input); padding: 6px 10px; border-radius: 4px;
+        border: 1px solid var(--border-subtle); overflow-x: auto; margin: 0.4em 0;
+      }
+      .ai-response-md pre code { background: none; padding: 0; }
+      .ai-response-md h1, .ai-response-md h2, .ai-response-md h3 {
+        color: var(--accent); margin: 0.5em 0 0.2em; font-size: 1.1em;
+      }
+      .ai-response-md blockquote {
+        border-left: 2px solid var(--accent); padding-left: 8px;
+        margin: 0.3em 0; color: var(--accent-dim); font-style: italic;
+      }
+      .ai-response-md hr { border: none; border-top: 1px solid var(--border-subtle); margin: 0.5em 0; }
       @keyframes bellPulse {
         0%, 100% { transform: scale(1); opacity: 1; }
         50% { transform: scale(1.3); opacity: 0.7; }

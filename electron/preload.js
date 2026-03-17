@@ -55,11 +55,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('telegram-message-received');
   },
 
-  // GitHub
-  githubVerifyToken: (token) => ipcRenderer.invoke('github-verify-token', token),
-  githubSaveToken: (token) => ipcRenderer.invoke('github-save-token', token),
-  githubGetToken: () => ipcRenderer.invoke('github-get-token'),
-  githubClearToken: () => ipcRenderer.invoke('github-clear-token'),
+  // Firebase Auth
+  firebaseRegister: (email, password, displayName) => ipcRenderer.invoke('firebase-register', email, password, displayName),
+  firebaseLogin: (email, password) => ipcRenderer.invoke('firebase-login', email, password),
+  firebaseLogout: () => ipcRenderer.invoke('firebase-logout'),
+  firebaseGetUser: () => ipcRenderer.invoke('firebase-get-user'),
+  firebaseAutoLogin: () => ipcRenderer.invoke('firebase-auto-login'),
+  firebaseUpdateVisibility: (adventureId, visibility) => ipcRenderer.invoke('firebase-update-visibility', adventureId, visibility),
+  firebaseFetchMyAdventures: (userId) => ipcRenderer.invoke('firebase-fetch-my-adventures', userId),
+
+  // AI
+  aiChat: (messages, projectPath, options) => ipcRenderer.invoke('ai-chat', messages, projectPath, options),
+  aiVerifyKey: (provider, key) => ipcRenderer.invoke('ai-verify-key', provider, key),
+  aiGetQuota: () => ipcRenderer.invoke('ai-get-quota'),
 
   // Adventures
   adventureExport: (projectPath, metadata, forPublish) => ipcRenderer.invoke('adventure-export', projectPath, metadata, forPublish),
