@@ -1658,20 +1658,21 @@ function UpdateToast() {
     return (
       <div style={{
         position: 'fixed', bottom: '0', left: '0', right: '0',
-        height: '36px', background: 'var(--bg-elevated)',
-        borderTop: '1px solid var(--accent)',
+        height: '44px', background: 'var(--bg-panel)',
+        borderTop: '2px solid var(--accent)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        gap: '12px', zIndex: 9999, fontSize: '12px', color: 'var(--text-primary)'
+        gap: '12px', zIndex: 9999, fontSize: '13px', fontWeight: 'bold',
+        color: 'var(--text-primary)', animation: 'slideUp 0.4s ease-out'
       }}>
         <span style={{ color: 'var(--accent)' }}>
           Scaricando v{downloading.version}… {downloading.percent}%
         </span>
         <div style={{
-          width: '120px', height: '4px', borderRadius: '2px',
+          width: '200px', height: '6px', borderRadius: '3px',
           background: 'var(--border-subtle)', overflow: 'hidden'
         }}>
           <div style={{
-            height: '100%', borderRadius: '2px', background: 'var(--accent)',
+            height: '100%', borderRadius: '3px', background: 'var(--accent)',
             width: `${downloading.percent}%`, transition: 'width 0.3s ease'
           }} />
         </div>
@@ -1687,34 +1688,35 @@ function UpdateToast() {
       bottom: '0',
       left: '0',
       right: '0',
-      height: '36px',
-      background: 'var(--bg-elevated)',
-      borderTop: '1px solid var(--accent)',
+      height: '44px',
+      background: 'var(--accent)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       gap: '12px',
       zIndex: 9999,
-      fontSize: '12px',
-      color: 'var(--text-primary)'
+      fontSize: '13px',
+      color: 'var(--bg-main)',
+      animation: 'slideUp 0.4s ease-out'
     }}>
-      <span style={{ color: 'var(--accent)' }}>
+      <span style={{ fontWeight: 'bold' }}>
         Aggiornamento v{updateReady} pronto.
       </span>
       <button
         onClick={() => window.electronAPI.installUpdate()}
         style={{
-          background: 'none',
-          border: '1px solid var(--accent)',
+          background: 'var(--bg-main)',
+          border: '1px solid transparent',
           borderRadius: '4px',
-          padding: '3px 10px',
+          padding: '4px 12px',
           color: 'var(--accent)',
-          fontSize: '11px',
+          fontSize: '12px',
+          fontWeight: 'bold',
           cursor: 'pointer',
           transition: 'all 0.15s'
         }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent-a15)'; }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+        onMouseEnter={e => { e.currentTarget.style.opacity = '0.85'; }}
+        onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
       >
         Riavvia e aggiorna
       </button>
@@ -1722,16 +1724,16 @@ function UpdateToast() {
         onClick={() => setDismissed(true)}
         style={{
           background: 'none',
-          border: '1px solid var(--border-default)',
+          border: '1px solid rgba(255,255,255,0.4)',
           borderRadius: '4px',
-          padding: '3px 10px',
-          color: 'var(--text-secondary)',
-          fontSize: '11px',
+          padding: '4px 12px',
+          color: 'inherit',
+          fontSize: '12px',
           cursor: 'pointer',
           transition: 'all 0.15s'
         }}
-        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--text-secondary)'; }}
-        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; }}
+        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.7)'; }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.4)'; }}
       >
         Dopo
       </button>
@@ -1742,6 +1744,7 @@ function UpdateToast() {
 function GlobalStyles() {
   return (
     <style>{`
+      @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
       ::-webkit-scrollbar { width: 6px; height: 6px; }
       ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
       ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
