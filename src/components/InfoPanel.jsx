@@ -25,7 +25,9 @@ export default function InfoPanel({ onClose, onOpenSettings }) {
   const [version, setVersion] = useState('...');
   const [updateState, setUpdateState] = useState(UPDATE_IDLE);
   const [updateVersion, setUpdateVersion] = useState(null);
+  const [updateProgress, setUpdateProgress] = useState(0);
   const [updateError, setUpdateError] = useState(null);
+  const [diagCopied, setDiagCopied] = useState(false);
   const panelRef = useRef(null);
 
   // Load version
@@ -48,8 +50,18 @@ export default function InfoPanel({ onClose, onOpenSettings }) {
       setUpdateVersion(data.version);
     };
 
+    const handleProgress = (data) => {
+      setUpdateProgress(data.percent);
+    };
+    const handleError = (data) => {
+      setUpdateState(UPDATE_ERROR);
+      setUpdateError(data.message);
+    };
+
     window.electronAPI.onUpdateAvailable?.(handleAvailable);
+    window.electronAPI.onUpdateProgress?.(handleProgress);
     window.electronAPI.onUpdateDownloaded?.(handleDownloaded);
+    window.electronAPI.onUpdateError?.(handleError);
   }, []);
 
   const handleCheckUpdate = () => {
@@ -194,9 +206,22 @@ export default function InfoPanel({ onClose, onOpenSettings }) {
                 </span>
               )}
               {updateState === UPDATE_AVAILABLE && (
-                <span style={{ fontSize: '12px', color: 'var(--color-warning)' }}>
-                  Versione <strong>v{updateVersion}</strong> disponibile — download in corso...
-                </span>
+                <div>
+                  <span style={{ fontSize: '12px', color: 'var(--color-warning)' }}>
+                    Versione <strong>v{updateVersion}</strong> — download in corso… {updateProgress}%
+                  </span>
+                  <div style={{
+                    marginTop: '6px', height: '4px', borderRadius: '2px',
+                    background: 'var(--border-subtle)', overflow: 'hidden'
+                  }}>
+                    <div style={{
+                      height: '100%', borderRadius: '2px',
+                      background: 'var(--accent)',
+                      width: `${updateProgress}%`,
+                      transition: 'width 0.3s ease'
+                    }} />
+                  </div>
+                </div>
               )}
               {updateState === UPDATE_DOWNLOADED && (
                 <span style={{ fontSize: '12px', color: 'var(--color-success)' }}>
@@ -245,6 +270,64 @@ export default function InfoPanel({ onClose, onOpenSettings }) {
                 {updateState === UPDATE_CHECKING ? '⏳ Controllo...' : 'Controlla aggiornamenti'}
               </button>
             )}
+          </div>
+
+          {/* Diagnostics */}
+          <div style={sectionTitle}>Diagnostica</div>
+          <div style={{
+            background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
+            borderRadius: '6px', padding: '14px 16px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px'
+          }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+              Copia le informazioni di sistema per il supporto
+            </span>
+            <button
+              onClick={async () => {
+                try {
+                  const diag = await window.electronAPI.getDiagnostics();
+                  const lines = [
+                    `GENKAI GM Dashboard — Diagnostica`,
+                    `──────────────────────────────`,
+                    `Versione: ${diag.appVersion}`,
+                    `Electron: ${diag.electron}`,
+                    `Chrome: ${diag.chrome}`,
+                    `Node: ${diag.node}`,
+                    `OS: ${diag.platform} ${diag.osVersion} (${diag.arch})`,
+                    `Locale: ${diag.locale}`,
+                    `Schermo: ${diag.screen}`,
+                    `Percorso app: ${diag.installPath}`,
+                    `Dati utente: ${diag.userData}`,
+                    `Dev mode: ${diag.isDev}`
+                  ];
+                  if (diag.log?.length > 0) {
+                    lines.push(`──────────────────────────────`);
+                    lines.push(`Log (ultimi ${diag.log.length} eventi):`);
+                    diag.log.forEach(e => lines.push(`  [${e.time}] ${e.type}: ${e.msg}`));
+                  }
+                  lines.push(`──────────────────────────────`);
+                  lines.push(`Data: ${new Date().toISOString()}`);
+                  const text = lines.join('\n');
+                  await navigator.clipboard.writeText(text);
+                  setDiagCopied(true);
+                  setTimeout(() => setDiagCopied(false), 2000);
+                } catch (err) {
+                  console.error('Diagnostics copy failed:', err);
+                }
+              }}
+              style={{
+                background: 'none',
+                border: `1px solid ${diagCopied ? 'var(--color-success)' : 'var(--border-default)'}`,
+                borderRadius: '4px', padding: '6px 14px',
+                color: diagCopied ? 'var(--color-success)' : 'var(--accent)',
+                fontSize: '12px', fontWeight: '600',
+                cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap'
+              }}
+              onMouseEnter={e => { if (!diagCopied) { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-elevated)'; } }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = diagCopied ? 'var(--color-success)' : 'var(--border-default)'; e.currentTarget.style.background = 'none'; }}
+            >
+              {diagCopied ? 'Copiato!' : 'Copia diagnostica'}
+            </button>
           </div>
 
           {/* Open settings link */}

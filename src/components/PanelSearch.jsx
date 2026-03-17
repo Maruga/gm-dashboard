@@ -3,39 +3,100 @@ import { ChevronUp, ChevronDown, X } from 'lucide-react';
 
 export default function PanelSearch({ containerRef, onClose }) {
   const [query, setQuery] = useState('');
-  const [matches, setMatches] = useState([]);       // [{ text, node, offset }]
+  const [matches, setMatches] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(-1);
   const [showResults, setShowResults] = useState(false);
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
-  const marksRef = useRef([]);
+  const activeMarkRef = useRef(null);
 
-  // Autofocus
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  const clearHighlights = useCallback(() => {
-    for (const mark of marksRef.current) {
-      if (mark.parentNode) {
-        mark.replaceWith(mark.textContent);
-        mark.parentNode?.normalize();
+  // Build a text map: collect all text nodes and their offsets
+  const getTextMap = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return { fullText: '', nodes: [] };
+
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    let offset = 0;
+    let node;
+    while ((node = walker.nextNode())) {
+      const len = node.textContent.length;
+      if (len > 0) {
+        nodes.push({ node, start: offset, end: offset + len });
+        offset += len;
       }
     }
-    // Second pass: normalize all parents to merge text nodes
-    const container = containerRef.current;
-    if (container) {
-      const leftoverMarks = container.querySelectorAll('mark[data-panel-search]');
-      leftoverMarks.forEach(m => {
-        m.replaceWith(m.textContent);
-        m.parentNode?.normalize();
-      });
-    }
-    marksRef.current = [];
+    return { fullText: nodes.map(n => n.node.textContent).join(''), nodes };
   }, [containerRef]);
 
+  // Remove the single active mark
+  const clearActiveMark = useCallback(() => {
+    const mark = activeMarkRef.current;
+    if (mark?.parentNode) {
+      const parent = mark.parentNode;
+      mark.replaceWith(mark.textContent);
+      parent.normalize();
+    }
+    activeMarkRef.current = null;
+  }, []);
+
+  // Scroll to a specific match by its text offset
+  const scrollToMatch = useCallback((match) => {
+    clearActiveMark();
+    if (!containerRef.current) return;
+
+    const { nodes } = getTextMap();
+    const matchStart = match.offset;
+    const matchEnd = match.offset + match.length;
+
+    // Find start and end text nodes
+    let startNode = null, startOffset = 0;
+    let endNode = null, endOffset = 0;
+
+    for (const n of nodes) {
+      if (!startNode && n.end > matchStart) {
+        startNode = n.node;
+        startOffset = matchStart - n.start;
+      }
+      if (n.end >= matchEnd) {
+        endNode = n.node;
+        endOffset = matchEnd - n.start;
+        break;
+      }
+    }
+
+    if (!startNode) return;
+
+    try {
+      const range = document.createRange();
+      range.setStart(startNode, startOffset);
+      range.setEnd(endNode || startNode, endOffset);
+
+      // Try to wrap in a mark for visual highlight
+      const mark = document.createElement('mark');
+      mark.setAttribute('data-panel-search', 'true');
+      mark.classList.add('current');
+      range.surroundContents(mark);
+      activeMarkRef.current = mark;
+      mark.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    } catch {
+      // Range spans multiple elements — scroll to approximate position
+      const range = document.createRange();
+      range.setStart(startNode, startOffset);
+      range.collapse(true);
+      const rect = range.getBoundingClientRect();
+      const containerRect = containerRef.current.getBoundingClientRect();
+      containerRef.current.scrollTop += rect.top - containerRect.top - containerRef.current.clientHeight / 2;
+    }
+  }, [containerRef, getTextMap, clearActiveMark]);
+
+  // Search: only text matching, no DOM manipulation
   const doSearch = useCallback((searchQuery) => {
-    clearHighlights();
+    clearActiveMark();
     if (!searchQuery || !containerRef.current) {
       setMatches([]);
       setCurrentIdx(-1);
@@ -43,94 +104,46 @@ export default function PanelSearch({ containerRef, onClose }) {
       return;
     }
 
-    const container = containerRef.current;
+    const { fullText } = getTextMap();
     const qLower = searchQuery.toLowerCase();
+    const textLower = fullText.toLowerCase();
     const foundMatches = [];
-    const newMarks = [];
+    let pos = 0;
 
-    // TreeWalker to find text nodes
-    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
-      acceptNode(node) {
-        // Skip nodes inside keyword/search highlights
-        const parent = node.parentElement;
-        if (parent?.closest('[data-kw-hl]') || parent?.closest('[data-search-hl]')) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        return NodeFilter.FILTER_ACCEPT;
-      }
-    });
+    while ((pos = textLower.indexOf(qLower, pos)) !== -1) {
+      const ctxStart = Math.max(0, pos - 30);
+      const ctxEnd = Math.min(fullText.length, pos + searchQuery.length + 30);
+      const before = (ctxStart > 0 ? '…' : '') + fullText.substring(ctxStart, pos);
+      const match = fullText.substring(pos, pos + searchQuery.length);
+      const after = fullText.substring(pos + searchQuery.length, ctxEnd) + (ctxEnd < fullText.length ? '…' : '');
 
-    const textNodes = [];
-    let n;
-    while ((n = walker.nextNode())) textNodes.push(n);
-
-    for (const textNode of textNodes) {
-      const text = textNode.textContent;
-      const lower = text.toLowerCase();
-      let pos = 0;
-      const rangesInNode = [];
-
-      while ((pos = lower.indexOf(qLower, pos)) !== -1) {
-        // Extract context
-        const ctxStart = Math.max(0, pos - 30);
-        const ctxEnd = Math.min(text.length, pos + searchQuery.length + 30);
-        const before = (ctxStart > 0 ? '…' : '') + text.substring(ctxStart, pos);
-        const match = text.substring(pos, pos + searchQuery.length);
-        const after = text.substring(pos + searchQuery.length, ctxEnd) + (ctxEnd < text.length ? '…' : '');
-
-        rangesInNode.push({ start: pos, end: pos + searchQuery.length });
-        foundMatches.push({ text: before + match + after, matchText: match, beforeLen: before.length });
-        pos += searchQuery.length;
-      }
-
-      // Wrap matches in <mark> — process backwards to keep offsets valid
-      if (rangesInNode.length > 0) {
-        for (let i = rangesInNode.length - 1; i >= 0; i--) {
-          const { start, end } = rangesInNode[i];
-          const range = document.createRange();
-          range.setStart(textNode, start);
-          range.setEnd(textNode, end);
-          const mark = document.createElement('mark');
-          mark.setAttribute('data-panel-search', 'true');
-          mark.dataset.matchIdx = String(newMarks.length + i);
-          range.surroundContents(mark);
-          newMarks.push(mark);
-        }
-      }
+      foundMatches.push({
+        text: before + match + after,
+        matchText: match,
+        beforeLen: before.length,
+        offset: pos,
+        length: searchQuery.length
+      });
+      pos += searchQuery.length;
     }
 
-    // Reverse newMarks to match foundMatches order (we built them backwards per node)
-    // Actually, we need to re-index by DOM order
-    const allDomMarks = Array.from(container.querySelectorAll('mark[data-panel-search]'));
-    allDomMarks.forEach((m, i) => m.dataset.matchIdx = String(i));
-
-    marksRef.current = allDomMarks;
     setMatches(foundMatches);
     setShowResults(foundMatches.length > 0);
 
     if (foundMatches.length > 0) {
       setCurrentIdx(0);
-      highlightCurrent(allDomMarks, 0);
+      scrollToMatch(foundMatches[0]);
     } else {
       setCurrentIdx(-1);
     }
-  }, [containerRef, clearHighlights]);
-
-  const highlightCurrent = useCallback((marks, idx) => {
-    marks.forEach((m, i) => {
-      m.classList.toggle('current', i === idx);
-    });
-    if (marks[idx]) {
-      marks[idx].scrollIntoView({ block: 'center', behavior: 'smooth' });
-    }
-  }, []);
+  }, [containerRef, getTextMap, clearActiveMark, scrollToMatch]);
 
   const goToMatch = useCallback((idx) => {
     if (matches.length === 0) return;
     const newIdx = ((idx % matches.length) + matches.length) % matches.length;
     setCurrentIdx(newIdx);
-    highlightCurrent(marksRef.current, newIdx);
-  }, [matches.length, highlightCurrent]);
+    scrollToMatch(matches[newIdx]);
+  }, [matches, scrollToMatch]);
 
   const handleInputChange = useCallback((e) => {
     const val = e.target.value;
@@ -142,7 +155,7 @@ export default function PanelSearch({ containerRef, onClose }) {
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Escape') {
       e.preventDefault();
-      clearHighlights();
+      clearActiveMark();
       onClose();
       return;
     }
@@ -154,26 +167,26 @@ export default function PanelSearch({ containerRef, onClose }) {
         goToMatch(currentIdx + 1);
       }
     }
-  }, [currentIdx, goToMatch, clearHighlights, onClose]);
+  }, [currentIdx, goToMatch, clearActiveMark, onClose]);
 
   const handleResultClick = useCallback((idx) => {
     setCurrentIdx(idx);
-    highlightCurrent(marksRef.current, idx);
+    scrollToMatch(matches[idx]);
     setShowResults(false);
-  }, [highlightCurrent]);
+  }, [matches, scrollToMatch]);
 
   const handleClose = useCallback(() => {
-    clearHighlights();
+    clearActiveMark();
     onClose();
-  }, [clearHighlights, onClose]);
+  }, [clearActiveMark, onClose]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      clearHighlights();
+      clearActiveMark();
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [clearHighlights]);
+  }, [clearActiveMark]);
 
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>

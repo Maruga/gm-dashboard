@@ -3,12 +3,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 export default function ProjectSelector({ onProjectOpen, onOpenAdventures }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [version, setVersion] = useState('');
 
   useEffect(() => {
     window.electronAPI.getRecentProjects().then(p => {
       setProjects(p || []);
       setLoading(false);
     });
+    window.electronAPI.getAppVersion().then(v => setVersion(v));
   }, []);
 
   const handleOpenFolder = useCallback(async () => {
@@ -89,6 +91,13 @@ export default function ProjectSelector({ onProjectOpen, onOpenAdventures }) {
           }}>
             GM Dashboard
           </div>
+          {version && <div style={{
+            fontSize: '11px',
+            color: 'var(--text-disabled)',
+            marginTop: '6px'
+          }}>
+            v{version}
+          </div>}
         </div>
 
         {/* Action buttons row */}

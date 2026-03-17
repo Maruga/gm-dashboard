@@ -1635,15 +1635,49 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
 
 function UpdateToast() {
   const [updateReady, setUpdateReady] = useState(null);
+  const [downloading, setDownloading] = useState(null); // { version, percent }
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    if (!window.electronAPI?.onUpdateDownloaded) return;
-    window.electronAPI.onUpdateDownloaded((data) => {
+    if (!window.electronAPI) return;
+    window.electronAPI.onUpdateAvailable?.((data) => {
+      setDownloading({ version: data.version, percent: 0 });
+    });
+    window.electronAPI.onUpdateProgress?.((data) => {
+      setDownloading(prev => prev ? { ...prev, percent: data.percent } : null);
+    });
+    window.electronAPI.onUpdateDownloaded?.((data) => {
+      setDownloading(null);
       setUpdateReady(data.version);
       setDismissed(false);
     });
   }, []);
+
+  // Show download progress bar
+  if (downloading && !updateReady) {
+    return (
+      <div style={{
+        position: 'fixed', bottom: '0', left: '0', right: '0',
+        height: '36px', background: 'var(--bg-elevated)',
+        borderTop: '1px solid var(--accent)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        gap: '12px', zIndex: 9999, fontSize: '12px', color: 'var(--text-primary)'
+      }}>
+        <span style={{ color: 'var(--accent)' }}>
+          Scaricando v{downloading.version}… {downloading.percent}%
+        </span>
+        <div style={{
+          width: '120px', height: '4px', borderRadius: '2px',
+          background: 'var(--border-subtle)', overflow: 'hidden'
+        }}>
+          <div style={{
+            height: '100%', borderRadius: '2px', background: 'var(--accent)',
+            width: `${downloading.percent}%`, transition: 'width 0.3s ease'
+          }} />
+        </div>
+      </div>
+    );
+  }
 
   if (!updateReady || dismissed) return null;
 

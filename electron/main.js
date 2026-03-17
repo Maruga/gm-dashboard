@@ -9,6 +9,13 @@ const AdmZip = require('adm-zip');
 const os = require('os');
 const Store = require('electron-store').default;
 
+// Diagnostic log buffer (last 50 entries)
+const diagLog = [];
+function logDiag(type, msg) {
+  diagLog.push({ time: new Date().toISOString(), type, msg });
+  if (diagLog.length > 50) diagLog.shift();
+}
+
 const isDev = !app.isPackaged;
 
 const gmBot = new GmDashBot();
@@ -98,28 +105,50 @@ app.whenReady().then(() => {
   firebase.registerInstallation(installId, installData);
 
   // === Auto-Updater ===
+  logDiag('info', `App avviata v${app.getVersion()} (${isDev ? 'dev' : 'prod'})`);
   if (isDev) {
-    console.log('Auto-update disabilitato in dev mode');
+    logDiag('update', 'Auto-update disabilitato in dev mode');
   } else {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
 
+    autoUpdater.on('checking-for-update', () => {
+      logDiag('update', 'Controllo aggiornamenti...');
+    });
+
+    autoUpdater.on('update-not-available', () => {
+      logDiag('update', 'Nessun aggiornamento disponibile');
+    });
+
     autoUpdater.on('update-available', (info) => {
-      console.log('Update available:', info.version);
+      logDiag('update', `Aggiornamento disponibile: v${info.version}`);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('update-available', { version: info.version });
       }
     });
 
+    autoUpdater.on('download-progress', (progress) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update-progress', {
+          percent: Math.round(progress.percent),
+          transferred: progress.transferred,
+          total: progress.total
+        });
+      }
+    });
+
     autoUpdater.on('update-downloaded', (info) => {
-      console.log('Update downloaded:', info.version);
+      logDiag('update', `Download completato: v${info.version}`);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('update-downloaded', { version: info.version });
       }
     });
 
     autoUpdater.on('error', (err) => {
-      console.error('Auto-updater error:', err.message);
+      logDiag('error', `Auto-updater: ${err.message}`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update-error', { message: err.message });
+      }
     });
 
     setTimeout(() => autoUpdater.checkForUpdatesAndNotify(), 5000);
@@ -338,6 +367,26 @@ ipcMain.handle('window-close', () => mainWindow.close());
 
 // === App info ===
 ipcMain.handle('get-app-version', () => app.getVersion());
+
+ipcMain.handle('get-diagnostics', () => {
+  const { screen } = require('electron');
+  const primaryDisplay = screen.getPrimaryDisplay();
+  return {
+    appVersion: app.getVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    platform: process.platform,
+    arch: process.arch,
+    osVersion: require('os').release(),
+    locale: app.getLocale(),
+    screen: `${primaryDisplay.size.width}x${primaryDisplay.size.height} @${primaryDisplay.scaleFactor}x`,
+    installPath: app.getAppPath(),
+    userData: app.getPath('userData'),
+    isDev,
+    log: diagLog.slice()
+  };
+});
 
 // === Auto-Update IPC ===
 ipcMain.handle('install-update', () => {
