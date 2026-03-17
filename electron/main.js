@@ -9,12 +9,22 @@ const AdmZip = require('adm-zip');
 const os = require('os');
 const Store = require('electron-store').default;
 
-// Diagnostic log buffer (last 50 entries)
+// Diagnostic log buffer (last 200 entries)
 const diagLog = [];
 function logDiag(type, msg) {
   diagLog.push({ time: new Date().toISOString(), type, msg });
-  if (diagLog.length > 50) diagLog.shift();
+  if (diagLog.length > 200) diagLog.shift();
 }
+
+// Catch uncaught errors
+process.on('uncaughtException', (err) => {
+  logDiag('crash', `Uncaught exception: ${err.message}`);
+  console.error('Uncaught exception:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  logDiag('crash', `Unhandled rejection: ${reason}`);
+  console.error('Unhandled rejection:', reason);
+});
 
 const isDev = !app.isPackaged;
 
@@ -80,6 +90,16 @@ function createWindow() {
   mainWindow.on('resize', () => {
     const [width, height] = mainWindow.getSize();
     store.set('windowBounds', { width, height });
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_, details) => {
+    logDiag('crash', `Renderer crashed: ${details.reason} (code ${details.exitCode})`);
+  });
+  mainWindow.on('unresponsive', () => {
+    logDiag('warn', 'Finestra non risponde');
+  });
+  mainWindow.on('responsive', () => {
+    logDiag('info', 'Finestra tornata responsiva');
   });
 }
 
@@ -238,7 +258,7 @@ ipcMain.handle('read-directory', async (event, dirPath) => {
       });
     return result;
   } catch (err) {
-    console.error('Error reading directory:', err);
+    logDiag('error', `read-directory fallito: ${dirPath} — ${err.message}`);
     return [];
   }
 });
@@ -248,7 +268,7 @@ ipcMain.handle('read-file', async (event, filePath) => {
     const content = fs.readFileSync(filePath, 'utf-8');
     return content;
   } catch (err) {
-    console.error('Error reading file:', err);
+    logDiag('error', `read-file fallito: ${filePath} — ${err.message}`);
     return null;
   }
 });
@@ -388,6 +408,79 @@ ipcMain.handle('get-diagnostics', () => {
   };
 });
 
+ipcMain.handle('export-diagnostics', () => {
+  const { screen } = require('electron');
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const diagDir = path.join(app.getPath('userData'), 'diagnostics');
+
+  // Clean old files
+  if (fs.existsSync(diagDir)) {
+    for (const f of fs.readdirSync(diagDir)) {
+      fs.unlinkSync(path.join(diagDir, f));
+    }
+  } else {
+    fs.mkdirSync(diagDir, { recursive: true });
+  }
+
+  // System info
+  const sysInfo = [
+    `GENKAI GM Dashboard — Diagnostica`,
+    `══════════════════════════════════`,
+    `Versione: ${app.getVersion()}`,
+    `Electron: ${process.versions.electron}`,
+    `Chrome: ${process.versions.chrome}`,
+    `Node: ${process.versions.node}`,
+    `OS: ${process.platform} ${os.release()} (${process.arch})`,
+    `Locale: ${app.getLocale()}`,
+    `Schermo: ${primaryDisplay.size.width}x${primaryDisplay.size.height} @${primaryDisplay.scaleFactor}x`,
+    `Percorso app: ${app.getAppPath()}`,
+    `Dati utente: ${app.getPath('userData')}`,
+    `Dev mode: ${isDev}`,
+    `Memoria: ${Math.round(os.totalmem() / 1024 / 1024)} MB totale, ${Math.round(os.freemem() / 1024 / 1024)} MB libera`,
+    `Uptime OS: ${Math.round(os.uptime() / 60)} minuti`,
+    `══════════════════════════════════`,
+    `Esportazione: ${new Date().toISOString()}`
+  ].join('\n');
+
+  // Event log
+  const logLines = diagLog.length > 0
+    ? diagLog.map(e => `[${e.time}] ${e.type.toUpperCase().padEnd(7)} ${e.msg}`).join('\n')
+    : '(nessun evento registrato)';
+
+  // Write files
+  fs.writeFileSync(path.join(diagDir, 'sistema.txt'), sysInfo, 'utf-8');
+  fs.writeFileSync(path.join(diagDir, 'eventi.txt'), logLines, 'utf-8');
+
+  // Check for electron-updater log
+  const updaterLog = path.join(app.getPath('userData'), 'logs', 'main.log');
+  if (fs.existsSync(updaterLog)) {
+    fs.copyFileSync(updaterLog, path.join(diagDir, 'updater.log'));
+  }
+
+  // Create zip
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const zipName = `diagnostica-${timestamp}.zip`;
+  const zipPath = path.join(diagDir, zipName);
+  const zip = new AdmZip();
+  for (const f of fs.readdirSync(diagDir)) {
+    if (f.endsWith('.zip')) continue;
+    zip.addLocalFile(path.join(diagDir, f));
+  }
+  zip.writeZip(zipPath);
+
+  // Remove raw files, keep only zip
+  for (const f of fs.readdirSync(diagDir)) {
+    if (!f.endsWith('.zip')) {
+      fs.unlinkSync(path.join(diagDir, f));
+    }
+  }
+
+  // Open folder
+  shell.openPath(diagDir);
+
+  return { path: zipPath };
+});
+
 // === Auto-Update IPC ===
 ipcMain.handle('install-update', () => {
   autoUpdater.quitAndInstall();
@@ -405,7 +498,7 @@ ipcMain.handle('telegram-verify-token', async (event, token) => {
 });
 
 ipcMain.handle('telegram-start-bot', async (event, token, sessionCode, players) => {
-  console.log('[MAIN] telegram-start-bot IPC ricevuto');
+  logDiag('info', `Telegram bot avvio (sessione: ${sessionCode}, players: ${players?.length || 0})`);
   // Forward bot events to renderer
   gmBot.removeAllListeners('player-joined');
   gmBot.removeAllListeners('player-left');
@@ -425,10 +518,18 @@ ipcMain.handle('telegram-start-bot', async (event, token, sessionCode, players) 
       mainWindow.webContents.send('telegram-message-received', data);
     }
   });
-  return await gmBot.start(token, sessionCode, players);
+  try {
+    const result = await gmBot.start(token, sessionCode, players);
+    logDiag('info', 'Telegram bot avviato');
+    return result;
+  } catch (err) {
+    logDiag('error', `Telegram bot avvio fallito: ${err.message}`);
+    throw err;
+  }
 });
 
 ipcMain.handle('telegram-stop-bot', async () => {
+  logDiag('info', 'Telegram bot fermato');
   await gmBot.stop();
 });
 
@@ -453,6 +554,7 @@ ipcMain.handle('telegram-send-html-as-photo', async (event, chatId, htmlFilePath
     const buffer = await htmlToImage(BrowserWindow, htmlFilePath);
     return await gmBot.sendPhoto(chatId, buffer, caption);
   } catch (err) {
+    logDiag('error', `Telegram send-html-as-photo fallito: ${err.message}`);
     return { error: err.message };
   }
 });
@@ -469,6 +571,7 @@ ipcMain.handle('telegram-get-bot-info', () => {
 // === AI ===
 
 ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => {
+  logDiag('info', `AI chat richiesta (${messages.length} messaggi)`);
   try {
     // Read AI config from project state
     const states = store.get('projectStates');
@@ -537,6 +640,7 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
 
     return result;
   } catch (err) {
+    logDiag('error', `AI chat fallita: ${err.message}`);
     return { error: err.message };
   }
 });
@@ -561,20 +665,39 @@ ipcMain.handle('ai-get-quota', async () => {
       remaining: Math.max(0, allowance - (usage.tokensUsed || 0))
     };
   } catch (err) {
+    logDiag('error', `AI quota check fallito: ${err.message}`);
     return { error: err.message };
   }
 });
 
 // === Firebase Auth ===
 ipcMain.handle('firebase-register', async (_, email, password, displayName) => {
-  return await firebase.register(email, password, displayName);
+  logDiag('info', `Firebase registrazione: ${email}`);
+  try {
+    const result = await firebase.register(email, password, displayName);
+    if (result?.error) logDiag('error', `Firebase registrazione fallita: ${result.error}`);
+    return result;
+  } catch (err) {
+    logDiag('error', `Firebase registrazione errore: ${err.message}`);
+    throw err;
+  }
 });
 
 ipcMain.handle('firebase-login', async (_, email, password) => {
-  return await firebase.login(email, password);
+  logDiag('info', `Firebase login: ${email}`);
+  try {
+    const result = await firebase.login(email, password);
+    if (result?.error) logDiag('error', `Firebase login fallito: ${result.error}`);
+    else logDiag('info', 'Firebase login OK');
+    return result;
+  } catch (err) {
+    logDiag('error', `Firebase login errore: ${err.message}`);
+    throw err;
+  }
 });
 
 ipcMain.handle('firebase-logout', async () => {
+  logDiag('info', 'Firebase logout');
   await firebase.logout();
 });
 
@@ -597,6 +720,7 @@ ipcMain.handle('firebase-fetch-my-adventures', async (_, userId) => {
 // === Adventures ===
 
 ipcMain.handle('adventure-export', async (event, projectPath, metadata, forPublish) => {
+  logDiag('info', `Adventure export: ${metadata?.name || 'unnamed'} (publish: ${!!forPublish})`);
   try {
     // Write _adventure.json (exclude internal config fields)
     const { exportExcludes, ...metaClean } = metadata;
@@ -700,13 +824,16 @@ ipcMain.handle('adventure-export', async (event, projectPath, metadata, forPubli
     const stats = fs.statSync(zipPath);
     const sizeMB = (stats.size / (1024 * 1024)).toFixed(1);
 
+    logDiag('info', `Adventure export OK: ${zipName} (${sizeMB} MB)`);
     return { zipPath, zipName, size: stats.size, sizeMB, metadata: adventureJson };
   } catch (err) {
+    logDiag('error', `Adventure export fallito: ${err.message}`);
     return { error: err.message };
   }
 });
 
 ipcMain.handle('adventure-import-from-file', async () => {
+  logDiag('info', 'Adventure import da file');
   try {
     // Pick zip file
     const zipResult = await dialog.showOpenDialog(mainWindow, {
@@ -743,8 +870,10 @@ ipcMain.handle('adventure-import-from-file', async () => {
     const projectPath = extractPath.replace(/\\/g, '/');
     const projectName = metadata?.name || zipBaseName;
 
+    logDiag('info', `Adventure import OK: ${projectName}`);
     return { path: projectPath, name: projectName, metadata };
   } catch (err) {
+    logDiag('error', `Adventure import fallito: ${err.message}`);
     return { error: err.message };
   }
 });
@@ -764,6 +893,7 @@ ipcMain.handle('adventure-get-download-quota', () => {
 });
 
 ipcMain.handle('adventure-download', async (event, url, adventureName) => {
+  logDiag('info', `Adventure download: ${adventureName}`);
   try {
     // Check download quota
     const quota = getDownloadQuota();
@@ -829,6 +959,7 @@ ipcMain.handle('adventure-download', async (event, url, adventureName) => {
       }
     };
   } catch (err) {
+    logDiag('error', `Adventure download fallito: ${err.message}`);
     return { error: err.message };
   }
 });
@@ -836,6 +967,7 @@ ipcMain.handle('adventure-download', async (event, url, adventureName) => {
 // === Adventure publish operations ===
 
 ipcMain.handle('adventure-publish', async (event, zipPath, metadata) => {
+  logDiag('info', `Adventure publish: ${metadata?.id || 'unknown'}`);
   try {
     const user = firebase.getCurrentUser();
     if (!user) return { error: 'Non sei autenticato' };
@@ -882,13 +1014,16 @@ ipcMain.handle('adventure-publish', async (event, zipPath, metadata) => {
     const pubResult = await firebase.publishAdventure(adventureId, firestoreData);
     if (pubResult.error) return { error: pubResult.error };
 
+    logDiag('info', 'Adventure publish OK');
     return { success: true, downloadUrl: uploadResult.downloadUrl };
   } catch (err) {
+    logDiag('error', `Adventure publish fallito: ${err.message}`);
     return { error: err.message };
   }
 });
 
 ipcMain.handle('adventure-unpublish', async (event, adventureId) => {
+  logDiag('info', `Adventure unpublish: ${adventureId}`);
   try {
     const user = firebase.getCurrentUser();
     if (!user) return { error: 'Non sei autenticato' };
@@ -900,8 +1035,10 @@ ipcMain.handle('adventure-unpublish', async (event, adventureId) => {
     const result = await firebase.unpublishAdventure(adventureId);
     if (result.error) return { error: result.error };
 
+    logDiag('info', `Adventure unpublish OK: ${adventureId}`);
     return { success: true };
   } catch (err) {
+    logDiag('error', `Adventure unpublish fallito: ${err.message}`);
     return { error: err.message };
   }
 });

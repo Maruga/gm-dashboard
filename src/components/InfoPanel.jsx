@@ -28,6 +28,8 @@ export default function InfoPanel({ onClose, onOpenSettings }) {
   const [updateProgress, setUpdateProgress] = useState(0);
   const [updateError, setUpdateError] = useState(null);
   const [diagCopied, setDiagCopied] = useState(false);
+  const [diagExporting, setDiagExporting] = useState(false);
+  const [diagExported, setDiagExported] = useState(false);
   const panelRef = useRef(null);
 
   // Load version
@@ -280,54 +282,84 @@ export default function InfoPanel({ onClose, onOpenSettings }) {
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px'
           }}>
             <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-              Copia le informazioni di sistema per il supporto
+              Informazioni di sistema per il supporto
             </span>
-            <button
-              onClick={async () => {
-                try {
-                  const diag = await window.electronAPI.getDiagnostics();
-                  const lines = [
-                    `GENKAI GM Dashboard — Diagnostica`,
-                    `──────────────────────────────`,
-                    `Versione: ${diag.appVersion}`,
-                    `Electron: ${diag.electron}`,
-                    `Chrome: ${diag.chrome}`,
-                    `Node: ${diag.node}`,
-                    `OS: ${diag.platform} ${diag.osVersion} (${diag.arch})`,
-                    `Locale: ${diag.locale}`,
-                    `Schermo: ${diag.screen}`,
-                    `Percorso app: ${diag.installPath}`,
-                    `Dati utente: ${diag.userData}`,
-                    `Dev mode: ${diag.isDev}`
-                  ];
-                  if (diag.log?.length > 0) {
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={async () => {
+                  try {
+                    const diag = await window.electronAPI.getDiagnostics();
+                    const lines = [
+                      `GENKAI GM Dashboard — Diagnostica`,
+                      `──────────────────────────────`,
+                      `Versione: ${diag.appVersion}`,
+                      `Electron: ${diag.electron}`,
+                      `Chrome: ${diag.chrome}`,
+                      `Node: ${diag.node}`,
+                      `OS: ${diag.platform} ${diag.osVersion} (${diag.arch})`,
+                      `Locale: ${diag.locale}`,
+                      `Schermo: ${diag.screen}`,
+                      `Percorso app: ${diag.installPath}`,
+                      `Dati utente: ${diag.userData}`,
+                      `Dev mode: ${diag.isDev}`
+                    ];
+                    if (diag.log?.length > 0) {
+                      lines.push(`──────────────────────────────`);
+                      lines.push(`Log (ultimi ${diag.log.length} eventi):`);
+                      diag.log.forEach(e => lines.push(`  [${e.time}] ${e.type}: ${e.msg}`));
+                    }
                     lines.push(`──────────────────────────────`);
-                    lines.push(`Log (ultimi ${diag.log.length} eventi):`);
-                    diag.log.forEach(e => lines.push(`  [${e.time}] ${e.type}: ${e.msg}`));
+                    lines.push(`Data: ${new Date().toISOString()}`);
+                    const text = lines.join('\n');
+                    await navigator.clipboard.writeText(text);
+                    setDiagCopied(true);
+                    setTimeout(() => setDiagCopied(false), 2000);
+                  } catch (err) {
+                    console.error('Diagnostics copy failed:', err);
                   }
-                  lines.push(`──────────────────────────────`);
-                  lines.push(`Data: ${new Date().toISOString()}`);
-                  const text = lines.join('\n');
-                  await navigator.clipboard.writeText(text);
-                  setDiagCopied(true);
-                  setTimeout(() => setDiagCopied(false), 2000);
-                } catch (err) {
-                  console.error('Diagnostics copy failed:', err);
-                }
-              }}
-              style={{
-                background: 'none',
-                border: `1px solid ${diagCopied ? 'var(--color-success)' : 'var(--border-default)'}`,
-                borderRadius: '4px', padding: '6px 14px',
-                color: diagCopied ? 'var(--color-success)' : 'var(--accent)',
-                fontSize: '12px', fontWeight: '600',
-                cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap'
-              }}
-              onMouseEnter={e => { if (!diagCopied) { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-elevated)'; } }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = diagCopied ? 'var(--color-success)' : 'var(--border-default)'; e.currentTarget.style.background = 'none'; }}
-            >
-              {diagCopied ? 'Copiato!' : 'Copia diagnostica'}
-            </button>
+                }}
+                style={{
+                  background: 'none',
+                  border: `1px solid ${diagCopied ? 'var(--color-success)' : 'var(--border-default)'}`,
+                  borderRadius: '4px', padding: '6px 14px',
+                  color: diagCopied ? 'var(--color-success)' : 'var(--accent)',
+                  fontSize: '12px', fontWeight: '600',
+                  cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap'
+                }}
+                onMouseEnter={e => { if (!diagCopied) { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-elevated)'; } }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = diagCopied ? 'var(--color-success)' : 'var(--border-default)'; e.currentTarget.style.background = 'none'; }}
+              >
+                {diagCopied ? 'Copiato!' : 'Copia diagnostica'}
+              </button>
+              <button
+                disabled={diagExporting}
+                onClick={async () => {
+                  try {
+                    setDiagExporting(true);
+                    await window.electronAPI.exportDiagnostics();
+                    setDiagExported(true);
+                    setTimeout(() => setDiagExported(false), 2000);
+                  } catch (err) {
+                    console.error('Diagnostics export failed:', err);
+                  } finally {
+                    setDiagExporting(false);
+                  }
+                }}
+                style={{
+                  background: 'none',
+                  border: `1px solid ${diagExported ? 'var(--color-success)' : 'var(--border-default)'}`,
+                  borderRadius: '4px', padding: '6px 14px',
+                  color: diagExporting ? 'var(--text-disabled)' : diagExported ? 'var(--color-success)' : 'var(--accent)',
+                  fontSize: '12px', fontWeight: '600',
+                  cursor: diagExporting ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s', whiteSpace: 'nowrap'
+                }}
+                onMouseEnter={e => { if (!diagExported && !diagExporting) { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-elevated)'; } }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = diagExported ? 'var(--color-success)' : 'var(--border-default)'; e.currentTarget.style.background = 'none'; }}
+              >
+                {diagExporting ? 'Esportazione...' : diagExported ? 'Esportato!' : 'Esporta ZIP'}
+              </button>
+            </div>
           </div>
 
           {/* Open settings link */}
