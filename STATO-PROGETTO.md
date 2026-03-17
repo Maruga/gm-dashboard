@@ -17,6 +17,8 @@
 | **howler.js** | 2.x | Riproduzione audio (tracce ambientali, musica) |
 | **node-telegram-bot-api** | 0.67.x | Integrazione bot Telegram |
 | **lucide-react** | 0.577.x | Icone SVG (SendHorizontal, Loader2, Trash2, SquareArrowOutUpRight) |
+| **firebase** | 11.x | Auth, Firestore, Storage (avventure online, AI quota, installazioni) |
+| **adm-zip** | 0.5.x | Export/import pacchetti avventura |
 
 **Linguaggio:** JavaScript (JSX), nessun TypeScript.
 **CSS:** Inline styles con variabili CSS custom (`var(--name)`), nessun framework CSS.
@@ -77,12 +79,13 @@
 - Context menu per invio via Telegram
 - Stato audio persistente (tracce, volume, loop, rate)
 
-### 2.7 Console (Ricerca + Log)
+### 2.7 Console (Ricerca + AI + Log)
 - **Tab Ricerca**: ricerca full-text nei documenti del progetto (.md, .html, .htm, .txt)
 - Debounce 400ms, snippet con contesto, evidenziazione risultati
 - Click su risultato → apertura file nel Viewer con scroll al punto esatto
 - Storico ricerche con autocomplete (max 30, persistente in localStorage)
 - Ricerca esterna tramite context menu ("Cerca" su testo selezionato)
+- **Tab AI**: assistente AI con contesto sui documenti del progetto
 - **Tab Log Telegram**: cronologia invii con stato (successo/errore), svuota log
 - **Pannello Dadi** laterale: d4, d6, d8, d10, d12, d20, d100 con risultati colorati, raggruppamento temporale, svuota
 
@@ -209,6 +212,37 @@
 - F12 per DevTools
 - Dimensioni finestra persistenti
 
+### 2.22 Firebase Auth e Account
+- Registrazione e login con email + password
+- Auto-login tra sessioni (credenziali criptate in electron-store)
+- Profilo utente (displayName) mostrato in TopMenu
+
+### 2.23 Assistente AI
+- **Console AI** nella Console: chat con contesto sui documenti del progetto
+- **AI su Telegram**: giocatori chiedono con `/ai`, risposte basate su documenti autorizzati
+- **Documenti filtrati per giocatore**: documenti comuni + specifici per PG, toggle attivo/disattivo
+- **Modalità Telegram AI**: manuale (solo `/ai`) o automatica (risponde a ogni messaggio)
+- **Provider**: OpenAI (GPT-5 family) e Anthropic (Claude), modello selezionabile
+- **Effort AI**: regolabile per Anthropic (low/medium/high)
+- **Quota gratuita**: 1M token una tantum (~250 domande, gpt-5-mini), non si rinnova
+- **customAllowance**: campo Firestore per concedere token bonus a utenti specifici (admin da Firebase Console)
+- **Contatore token**: per risposta e per sessione, barra quota con indicatore esaurimento
+- Con chiave API propria: uso illimitato, scelta modello e provider
+
+### 2.24 Avventure Online
+- **Export**: pacchetto .zip del progetto con `_adventure.json` (metadati), pattern di esclusione configurabili
+- **Import**: da file .zip locale
+- **Catalogo online**: sfoglia e scarica avventure pubblicate da altri GM
+- **Pubblica**: upload su Firebase Storage + metadati in Firestore (visibilità pubblica/privata)
+- **Download quota**: 100 MB/giorno, tracciato localmente in electron-store
+- **Rimozione pubblicazione** con eliminazione file e metadati
+
+### 2.25 Installation Tracking
+- UUID generato al primo avvio, salvato in electron-store
+- Documento Firestore `installations/{uuid}` con firstSeen, lastSeen, appVersion, platform, arch
+- Aggiornamento `lastSeen` a ogni avvio
+- Visibile da Firebase Console per conteggio installazioni e utenti attivi
+
 ---
 
 ## 3. Struttura del Progetto
@@ -216,9 +250,11 @@
 ```
 GmDash/
 ├── electron/
-│   ├── main.js              # Processo principale: finestra, IPC handlers, store, Telegram bot
-│   ├── preload.js           # contextBridge → window.electronAPI (file, progetto, finestra, Telegram)
-│   └── telegramBot.js       # Classe GmDashBot, verifyToken, htmlToImage
+│   ├── main.js              # Processo principale: finestra, IPC handlers, store, Telegram, AI, avventure, tracking
+│   ├── preload.js           # contextBridge → window.electronAPI
+│   ├── telegramBot.js       # Classe GmDashBot, verifyToken, htmlToImage
+│   ├── firebaseApi.js       # Firebase Auth, Firestore, Storage, AI quota, installation tracking
+│   └── aiApi.js             # Provider AI (OpenAI, Anthropic), context builder, system prompt
 ├── src/
 │   ├── main.jsx             # Entry point React (ReactDOM.createRoot)
 │   ├── App.jsx              # Router (ProjectSelector ↔ Dashboard), stato centrale, context menu, persistenza
@@ -229,7 +265,7 @@ GmDash/
 │   │   ├── Stage.jsx             # Area Stage (4 tab: Slot A/B/C + Cal) con SnippetView
 │   │   ├── SlotPanel.jsx         # Lista file + snippet per ogni Slot (checkbox, rimuovi)
 │   │   ├── MediaPanel.jsx        # Gestore media: audio (Howl), immagini, video
-│   │   ├── Console.jsx           # Ricerca full-text + Log Telegram + Pannello Dadi
+│   │   ├── Console.jsx           # Ricerca full-text + AI Chat + Log Telegram + Pannello Dadi
 │   │   ├── TopMenu.jsx           # Barra superiore: data, timer, PG, note, checklist, chat, impostazioni
 │   │   ├── DocToc.jsx            # Indice documento (headings) con hover/pin
 │   │   ├── SettingsPanel.jsx     # Pannello impostazioni (progetto, PG, Telegram, manuali, temi, keywords)
@@ -264,13 +300,16 @@ GmDash/
 - [x] **Aggiornamenti automatici** con `electron-updater` — check al boot (5s delay), toast "Riavvia e aggiorna" / "Dopo", publish su GitHub (Maruga/gm-dashboard), disabilitato in dev mode
 
 ### Funzionalità Nuove
-- [ ] **Pacchetti avventura** — Import/export zip di un intero progetto (documenti, calendario, impostazioni, note) per condividere avventure preconfezionate
-- [ ] **Wikilinks `[[NomeFile]]`** stile Obsidian — Link cliccabili nei documenti Markdown che aprono altri file del progetto nel Viewer
-- [ ] **Relazioni PNG** — Grafo navigabile centrato su un personaggio che mostra le relazioni tra PG, PNG e fazioni (visualizzazione interattiva)
-- [ ] **Supporto PDF** — Viewer integrato per file PDF senza aprire applicazioni esterne
-- [ ] **AI Console** — Integrazione AI nel pannello Console per query contestuali sui documenti del progetto
-- [ ] **Temi custom** — Editor con color picker per creare temi personalizzati oltre gli 8 predefiniti
-- [ ] **Pagina Info** — Versione app, crediti, changelog, controllo aggiornamenti
+- [x] **Pacchetti avventura** — Import/export zip, catalogo online, pubblica/scarica
+- [x] **AI Console** — Assistente AI con contesto documenti, quota gratuita una tantum, provider OpenAI/Anthropic
+- [x] **AI su Telegram** — Risposte AI ai giocatori con documenti filtrati per PG
+- [x] **Firebase Auth** — Registrazione, login, auto-login, profilo utente
+- [x] **Installation tracking** — UUID + documento Firestore per conteggio installazioni
+- [x] **Relazioni PNG** — Pannello relazioni con punteggi e note, visualizzazione nello Stage
+- [x] **Pagina Info** — Versione app, controllo aggiornamenti
+- [ ] **Wikilinks `[[NomeFile]]`** stile Obsidian — Link cliccabili nei documenti Markdown
+- [ ] **Supporto PDF** — Viewer integrato per file PDF
+- [ ] **Temi custom** — Editor con color picker per temi personalizzati
 
 ### Shortcut Tastiera
 - [ ] `Ctrl+M` — Muta/riattiva audio globale

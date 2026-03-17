@@ -499,7 +499,7 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
             {!(aiConfig?.provider || aiConfig?.apiKey) ? (
               <div style={{ padding: '20px 12px', textAlign: 'center', fontSize: '12px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
                 Configura l'AI nelle Impostazioni → Assistente AI<br />
-                <span style={{ fontSize: '10px' }}>Oppure effettua il login per usare la quota gratuita</span>
+                <span style={{ fontSize: '10px' }}>Oppure effettua il login per usare la quota gratuita (~250 domande incluse)</span>
               </div>
             ) : (
               <>

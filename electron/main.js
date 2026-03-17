@@ -79,6 +79,24 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
+  // === Installation tracking ===
+  const crypto = require('crypto');
+  let installId = globalStore.get('installationId');
+  const isNewInstall = !installId;
+  if (isNewInstall) {
+    installId = crypto.randomUUID();
+    globalStore.set('installationId', installId);
+  }
+  const today = new Date().toISOString().split('T')[0];
+  const installData = {
+    lastSeen: today,
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch
+  };
+  if (isNewInstall) installData.firstSeen = today;
+  firebase.registerInstallation(installId, installData);
+
   // === Auto-Updater ===
   if (isDev) {
     console.log('Auto-update disabilitato in dev mode');
@@ -424,9 +442,9 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
       if (!config || config.error) return { error: 'Configurazione AI non disponibile' };
 
       const usage = await firebase.getAiUsage(user.uid);
-      const allowance = config.tokenAllowance || 1000000;
+      const allowance = usage.customAllowance || config.tokenAllowance || 1000000;
       if (usage.tokensUsed >= allowance) {
-        return { error: `Quota mensile esaurita (${usage.tokensUsed.toLocaleString()}/${allowance.toLocaleString()} token). Configura una chiave API propria nelle Impostazioni per uso illimitato.` };
+        return { error: `Quota gratuita esaurita (${usage.tokensUsed.toLocaleString()} token usati su ${allowance.toLocaleString()} disponibili). Per continuare, configura una chiave API nelle Impostazioni.` };
       }
 
       provider = config.defaultProvider || 'openai';
@@ -459,7 +477,7 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
         await firebase.incrementAiUsage(user.uid, result.tokensUsed);
         const updatedUsage = await firebase.getAiUsage(user.uid);
         const config = await firebase.fetchAiConfig();
-        const allowance = config?.tokenAllowance || 1000000;
+        const allowance = updatedUsage.customAllowance || config?.tokenAllowance || 1000000;
         result.quota = {
           tokensUsed: updatedUsage.tokensUsed || 0,
           tokenAllowance: allowance,
@@ -487,7 +505,7 @@ ipcMain.handle('ai-get-quota', async () => {
     if (!config || config.error) return { tokensUsed: 0, tokenAllowance: 0, remaining: 0 };
 
     const usage = await firebase.getAiUsage(user.uid);
-    const allowance = config.tokenAllowance || 1000000;
+    const allowance = usage.customAllowance || config.tokenAllowance || 1000000;
     return {
       tokensUsed: usage.tokensUsed || 0,
       tokenAllowance: allowance,

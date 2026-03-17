@@ -1306,7 +1306,7 @@ export default function SettingsPanel({
                 </div>
               )}
               <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                Senza chiave API usi la quota gratuita dell'app (richiede login).
+                Senza chiave API hai circa 250 domande gratuite incluse (richiede login). Esaurite quelle, inserisci la tua chiave per uso illimitato.
                 {!aiConfig.apiKey && (
                   <button
                     onClick={async () => {
@@ -1353,7 +1353,7 @@ export default function SettingsPanel({
               </select>
               {!aiConfig.apiKey && (
                 <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
-                  Con la quota gratuita viene usato gpt-5-mini.
+                  Con la quota gratuita viene usato gpt-5-mini. I token inclusi non si rinnovano.
                 </div>
               )}
             </div>

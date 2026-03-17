@@ -15,7 +15,12 @@ const { getFirestore, collection, query, where, getDocs, doc, setDoc, getDoc,
 const { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } = require('firebase/storage');
 const Store = require('electron-store').default;
 
-// ── Firebase Config (pubblica, non è un segreto) ──
+// ── Firebase Config ──
+// Questa chiave API è INTENZIONALMENTE nel codice sorgente.
+// Le chiavi client Firebase sono pubbliche per design (vedi Firebase docs).
+// La sicurezza è garantita dalle Firebase Security Rules, non dalla segretezza della chiave.
+// La chiave è ristretta in Google Cloud Console alle sole API necessarie
+// (Identity Toolkit, Firestore, Cloud Storage).
 const firebaseConfig = {
   apiKey: "AIzaSyAteZai6cYSsdXDjgPvxlN4na5jSNBXPWI",
   authDomain: "gm-dashboard-e2f2d.firebaseapp.com",
@@ -288,6 +293,16 @@ async function incrementAiUsage(userId, tokens) {
   }
 }
 
+// ── Installation tracking ──
+
+async function registerInstallation(installId, data) {
+  try {
+    await setDoc(doc(db, 'installations', installId), data, { merge: true });
+  } catch (err) {
+    console.error('Installation tracking error:', err.message);
+  }
+}
+
 // ── Helpers ──
 
 function firebaseErrorMessage(code) {
@@ -320,5 +335,6 @@ module.exports = {
   downloadAdventureZip,
   fetchAiConfig,
   getAiUsage,
-  incrementAiUsage
+  incrementAiUsage,
+  registerInstallation
 };
