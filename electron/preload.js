@@ -74,6 +74,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   adventureImportFromFile: () => ipcRenderer.invoke('adventure-import-from-file'),
   adventureFetchCatalog: () => ipcRenderer.invoke('adventure-fetch-catalog'),
   adventureDownload: (url, name) => ipcRenderer.invoke('adventure-download', url, name),
+  adventureGetDownloadQuota: () => ipcRenderer.invoke('adventure-get-download-quota'),
   adventurePublish: (zipPath, metadata) => ipcRenderer.invoke('adventure-publish', zipPath, metadata),
   adventureUnpublish: (adventureId) => ipcRenderer.invoke('adventure-unpublish', adventureId),
   onAdventureProgress: (callback) => ipcRenderer.on('adventure-progress', (_, data) => callback(data)),

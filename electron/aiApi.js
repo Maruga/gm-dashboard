@@ -42,14 +42,17 @@ function httpsPost(hostname, urlPath, headers, body) {
 // ── OpenAI ──
 
 async function chatOpenAI(apiKey, model, messages, maxTokens) {
+  // GPT-5 richiede max_completion_tokens, non max_tokens
+  const isGpt5 = model.startsWith('gpt-5');
+  const body = { model, messages, temperature: 0.7 };
+  if (isGpt5) {
+    body.max_completion_tokens = maxTokens || 1024;
+  } else {
+    body.max_tokens = maxTokens || 1024;
+  }
   const res = await httpsPost('api.openai.com', '/v1/chat/completions', {
     'Authorization': `Bearer ${apiKey}`
-  }, {
-    model,
-    messages,
-    max_tokens: maxTokens || 1024,
-    temperature: 0.7
-  });
+  }, body);
   if (res.status !== 200) {
     const msg = res.data?.error?.message || `Errore OpenAI: HTTP ${res.status}`;
     return { error: msg };
@@ -61,7 +64,7 @@ async function chatOpenAI(apiKey, model, messages, maxTokens) {
 
 // ── Anthropic ──
 
-async function chatAnthropic(apiKey, model, messages, maxTokens) {
+async function chatAnthropic(apiKey, model, messages, maxTokens, effort) {
   // Anthropic richiede system message separato
   let system = '';
   const filtered = [];
@@ -79,6 +82,10 @@ async function chatAnthropic(apiKey, model, messages, maxTokens) {
     temperature: 0.7
   };
   if (system) body.system = system;
+  // Effort parameter per adaptive thinking (Opus 4.6, Sonnet 4.6)
+  if (effort && (model.includes('opus') || model.includes('sonnet'))) {
+    body.effort = effort;
+  }
 
   const res = await httpsPost('api.anthropic.com', '/v1/messages', {
     'x-api-key': apiKey,
@@ -97,9 +104,9 @@ async function chatAnthropic(apiKey, model, messages, maxTokens) {
 // ── Dispatcher ──
 
 async function chat(config, messages) {
-  const { provider, apiKey, model, maxTokens } = config;
+  const { provider, apiKey, model, maxTokens, effort } = config;
   if (provider === 'anthropic') {
-    return chatAnthropic(apiKey, model, messages, maxTokens);
+    return chatAnthropic(apiKey, model, messages, maxTokens, effort);
   }
   return chatOpenAI(apiKey, model, messages, maxTokens);
 }
@@ -108,7 +115,7 @@ async function chat(config, messages) {
 
 async function verifyKey(provider, apiKey) {
   const testMessages = [{ role: 'user', content: 'Rispondi OK' }];
-  const model = provider === 'anthropic' ? 'claude-haiku-4-5-20251001' : 'gpt-4o-mini';
+  const model = provider === 'anthropic' ? 'claude-haiku-4-5-20251001' : 'gpt-5-mini';
   try {
     const result = await chat({ provider, apiKey, model, maxTokens: 8 }, testMessages);
     if (result.error) return { error: result.error };

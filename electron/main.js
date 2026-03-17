@@ -21,6 +21,27 @@ const store = new Store({
   }
 });
 
+const globalStore = new Store({
+  name: 'global-settings',
+  defaults: { firebaseCredentials: null, downloadQuota: { date: '', bytesUsed: 0 } }
+});
+
+// ── Download quota (100 MB/giorno) ──
+const DAILY_DOWNLOAD_LIMIT = 100 * 1024 * 1024;
+
+function getDownloadQuota() {
+  const today = new Date().toISOString().split('T')[0];
+  const quota = globalStore.get('downloadQuota', { date: '', bytesUsed: 0 });
+  if (quota.date !== today) return { date: today, bytesUsed: 0 };
+  return quota;
+}
+
+function recordDownloadBytes(bytes) {
+  const quota = getDownloadQuota();
+  quota.bytesUsed += bytes;
+  globalStore.set('downloadQuota', quota);
+}
+
 let mainWindow;
 
 function createWindow() {
@@ -393,7 +414,7 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
       // Utente ha la sua key
       provider = aiConfig.provider;
       apiKey = aiConfig.apiKey;
-      model = aiConfig.model || (provider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-4o-mini');
+      model = aiConfig.model || (provider === 'anthropic' ? 'claude-sonnet-4-6' : 'gpt-5-mini');
     } else {
       // Usa key owner da Firebase
       const user = firebase.getCurrentUser();
@@ -403,14 +424,14 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
       if (!config || config.error) return { error: 'Configurazione AI non disponibile' };
 
       const usage = await firebase.getAiUsage(user.uid);
-      const allowance = config.tokenAllowance || 50000;
+      const allowance = config.tokenAllowance || 1000000;
       if (usage.tokensUsed >= allowance) {
-        return { error: `Quota esaurita (${usage.tokensUsed}/${allowance} token). Configura una chiave API propria nelle Impostazioni.` };
+        return { error: `Quota mensile esaurita (${usage.tokensUsed.toLocaleString()}/${allowance.toLocaleString()} token). Configura una chiave API propria nelle Impostazioni per uso illimitato.` };
       }
 
       provider = config.defaultProvider || 'openai';
       apiKey = provider === 'anthropic' ? config.ownerKeyAnthropic : config.ownerKeyOpenai;
-      model = config.defaultModel || (provider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-4o-mini');
+      model = config.defaultModel || 'gpt-5-mini';
 
       if (!apiKey) return { error: 'Chiave AI dell\'app non configurata' };
     }
@@ -428,12 +449,23 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
       ...messages
     ];
 
-    const result = await aiApi.chat({ provider, apiKey, model, maxTokens: 1024 }, fullMessages);
+    const effort = aiConfig?.effort || undefined;
+    const result = await aiApi.chat({ provider, apiKey, model, maxTokens: 1024, effort }, fullMessages);
 
-    // Increment usage if using owner key
+    // Increment usage if using owner key and return quota info
     if (!aiConfig?.apiKey && result.tokensUsed) {
       const user = firebase.getCurrentUser();
-      if (user) firebase.incrementAiUsage(user.uid, result.tokensUsed);
+      if (user) {
+        await firebase.incrementAiUsage(user.uid, result.tokensUsed);
+        const updatedUsage = await firebase.getAiUsage(user.uid);
+        const config = await firebase.fetchAiConfig();
+        const allowance = config?.tokenAllowance || 1000000;
+        result.quota = {
+          tokensUsed: updatedUsage.tokensUsed || 0,
+          tokenAllowance: allowance,
+          remaining: Math.max(0, allowance - (updatedUsage.tokensUsed || 0))
+        };
+      }
     }
 
     return result;
@@ -455,7 +487,7 @@ ipcMain.handle('ai-get-quota', async () => {
     if (!config || config.error) return { tokensUsed: 0, tokenAllowance: 0, remaining: 0 };
 
     const usage = await firebase.getAiUsage(user.uid);
-    const allowance = config.tokenAllowance || 50000;
+    const allowance = config.tokenAllowance || 1000000;
     return {
       tokensUsed: usage.tokensUsed || 0,
       tokenAllowance: allowance,
@@ -654,8 +686,25 @@ ipcMain.handle('adventure-fetch-catalog', async () => {
   return await firebase.fetchPublicAdventures();
 });
 
+ipcMain.handle('adventure-get-download-quota', () => {
+  const quota = getDownloadQuota();
+  return {
+    bytesUsed: quota.bytesUsed,
+    limit: DAILY_DOWNLOAD_LIMIT,
+    remaining: Math.max(0, DAILY_DOWNLOAD_LIMIT - quota.bytesUsed),
+    remainingMB: Math.max(0, (DAILY_DOWNLOAD_LIMIT - quota.bytesUsed) / (1024 * 1024)).toFixed(1)
+  };
+});
+
 ipcMain.handle('adventure-download', async (event, url, adventureName) => {
   try {
+    // Check download quota
+    const quota = getDownloadQuota();
+    const remaining = DAILY_DOWNLOAD_LIMIT - quota.bytesUsed;
+    if (remaining <= 0) {
+      return { error: 'Quota di download giornaliera esaurita (100 MB/giorno). Riprova domani.' };
+    }
+
     // Pick destination folder
     const destResult = await dialog.showOpenDialog(mainWindow, {
       title: 'Scegli dove scaricare l\'avventura',
@@ -690,6 +739,9 @@ ipcMain.handle('adventure-download', async (event, url, adventureName) => {
     const zip = new AdmZip(buffer);
     zip.extractAllTo(extractPath, true);
 
+    // Record download bytes for quota tracking
+    recordDownloadBytes(buffer.length);
+
     // Read _adventure.json if present
     let metadata = null;
     const metaPath = path.join(extractPath, '_adventure.json');
@@ -700,7 +752,15 @@ ipcMain.handle('adventure-download', async (event, url, adventureName) => {
     const projectPath = extractPath.replace(/\\/g, '/');
     const projectName = metadata?.name || safeName;
 
-    return { path: projectPath, name: projectName, metadata };
+    // Return download quota info
+    const updatedQuota = getDownloadQuota();
+    return {
+      path: projectPath, name: projectName, metadata,
+      downloadQuota: {
+        remaining: Math.max(0, DAILY_DOWNLOAD_LIMIT - updatedQuota.bytesUsed),
+        remainingMB: Math.max(0, (DAILY_DOWNLOAD_LIMIT - updatedQuota.bytesUsed) / (1024 * 1024)).toFixed(1)
+      }
+    };
   } catch (err) {
     return { error: err.message };
   }

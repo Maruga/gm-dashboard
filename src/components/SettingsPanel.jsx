@@ -1246,7 +1246,7 @@ export default function SettingsPanel({
               value={aiConfig?.provider || ''}
               onChange={e => {
                 const prov = e.target.value;
-                const defaultModel = prov === 'anthropic' ? 'claude-sonnet-4-20250514' : prov === 'openai' ? 'gpt-4o-mini' : '';
+                const defaultModel = prov === 'anthropic' ? 'claude-sonnet-4-6' : prov === 'openai' ? 'gpt-5-mini' : '';
                 onAiConfigChange(prev => ({ ...prev, provider: prov, model: defaultModel }));
                 setAiVerifyResult(null);
               }}
@@ -1339,16 +1339,42 @@ export default function SettingsPanel({
               >
                 {aiConfig.provider === 'openai' ? (
                   <>
-                    <option value="gpt-4o-mini">gpt-4o-mini (consigliato)</option>
-                    <option value="gpt-4o">gpt-4o</option>
+                    <option value="gpt-5-mini">gpt-5-mini — $0.13 / $1.00 per 1M token</option>
+                    <option value="gpt-5.2">gpt-5.2 — $1.75 / $14.00 per 1M token</option>
+                    <option value="gpt-5.4">gpt-5.4 — $2.50 / $15.00 per 1M token</option>
                   </>
                 ) : (
                   <>
-                    <option value="claude-sonnet-4-20250514">claude-sonnet-4-20250514 (consigliato)</option>
-                    <option value="claude-haiku-4-5-20251001">claude-haiku-4-5-20251001</option>
+                    <option value="claude-haiku-4-5-20251001">Haiku 4.5 — $1 / $5 per 1M token</option>
+                    <option value="claude-sonnet-4-6">Sonnet 4.6 — $3 / $15 per 1M token</option>
+                    <option value="claude-opus-4-6">Opus 4.6 — $5 / $25 per 1M token</option>
                   </>
                 )}
               </select>
+              {!aiConfig.apiKey && (
+                <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                  Con la quota gratuita viene usato gpt-5-mini.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Effort (solo Anthropic con chiave custom) */}
+          {aiConfig?.provider === 'anthropic' && aiConfig?.apiKey && (
+            <div style={{ marginBottom: '16px' }}>
+              <label style={labelStyle}>Effort (profondità di ragionamento)</label>
+              <select
+                value={aiConfig?.effort || 'medium'}
+                onChange={e => onAiConfigChange(prev => ({ ...prev, effort: e.target.value }))}
+                style={{ ...inputStyle, cursor: 'pointer' }}
+              >
+                <option value="low">Low — veloce, meno ragionamento</option>
+                <option value="medium">Medium — bilanciato (consigliato)</option>
+                <option value="high">High — massima intelligenza, più lento</option>
+              </select>
+              <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                Il livello di effort controlla quanto Claude ragiona prima di rispondere. I token di ragionamento sono conteggiati come output.
+              </div>
             </div>
           )}
 

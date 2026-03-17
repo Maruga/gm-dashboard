@@ -127,6 +127,7 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
   const logEndRef = useRef(null);
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiQuota, setAiQuota] = useState(null);
   const aiEndRef = useRef(null);
   const aiInputRef = useRef(null);
 
@@ -274,11 +275,13 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
       // Send last 10 messages for context
       const contextMessages = newHistory.slice(-10).map(m => ({ role: m.role, content: m.content }));
       const result = await window.electronAPI.aiChat(contextMessages, projectFolder);
+      if (result.quota) setAiQuota(result.quota);
       const aiMsg = {
         role: 'assistant',
         content: result.error ? `❌ ${result.error}` : result.response,
         timestamp: new Date().toISOString(),
-        isError: !!result.error
+        isError: !!result.error,
+        tokensUsed: result.tokensUsed || 0
       };
       onAiChatHistoryChange([...newHistory, aiMsg]);
     } catch (err) {
@@ -541,9 +544,14 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
                           background: isUser ? 'var(--chat-gm-bg)' : 'var(--bg-main)',
                           border: isUser ? '1px solid var(--chat-gm-border)' : '1px solid var(--border-subtle)'
                         }}>
-                          <div style={{ fontSize: '9px', color: 'var(--text-tertiary)', marginBottom: '2px', display: 'flex', gap: '4px' }}>
+                          <div style={{ fontSize: '9px', color: 'var(--text-tertiary)', marginBottom: '2px', display: 'flex', gap: '4px', alignItems: 'center' }}>
                             <span>{time}</span>
                             <span style={{ fontWeight: '600' }}>{isUser ? 'Tu' : '🤖 AI'}</span>
+                            {!isUser && msg.tokensUsed > 0 && (
+                              <span style={{ marginLeft: 'auto', color: 'var(--text-disabled)', fontSize: '9px' }}>
+                                {msg.tokensUsed.toLocaleString()} token
+                              </span>
+                            )}
                           </div>
                           {isUser || msg.isError ? (
                             <div style={{
@@ -614,6 +622,29 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
                     Invia
                   </button>
                 </form>
+                {/* Token usage info — sempre visibile */}
+                {(() => {
+                  const sessionTokens = aiChatHistory.reduce((sum, m) => sum + (m.tokensUsed || 0), 0);
+                  return (sessionTokens > 0 || (aiQuota && !aiConfig?.apiKey)) ? (
+                    <div style={{
+                      padding: '2px 12px 4px', fontSize: '10px', color: 'var(--text-tertiary)',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px'
+                    }}>
+                      {sessionTokens > 0 && (
+                        <span>Sessione: {sessionTokens.toLocaleString()} token</span>
+                      )}
+                      {aiQuota && !aiConfig?.apiKey && (
+                        <span style={{ marginLeft: 'auto' }}>
+                          Quota: {aiQuota.remaining?.toLocaleString()} / {aiQuota.tokenAllowance?.toLocaleString()} rimasti
+                          {aiQuota.remaining <= 0 && <span style={{ color: 'var(--color-danger)', fontWeight: '600', marginLeft: '6px' }}>Esaurita</span>}
+                          {aiQuota.remaining > 0 && aiQuota.remaining < aiQuota.tokenAllowance * 0.2 && (
+                            <span style={{ color: 'var(--color-warning, #e8a33e)', marginLeft: '6px' }}>In esaurimento</span>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  ) : null;
+                })()}
               </>
             )}
           </div>

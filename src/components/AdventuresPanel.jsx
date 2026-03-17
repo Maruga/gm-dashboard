@@ -88,12 +88,14 @@ function DownloadTab({ onProjectOpen, onClose }) {
   const [error, setError] = useState(null);
   const [downloading, setDownloading] = useState(null);
   const [progress, setProgress] = useState(null);
+  const [dlQuota, setDlQuota] = useState(null);
 
   useEffect(() => {
     window.electronAPI.adventureFetchCatalog().then(res => {
       if (res.error) setError(res.error);
       else setAdventures(Array.isArray(res) ? res : (res.adventures || []));
     });
+    window.electronAPI.adventureGetDownloadQuota?.().then(q => { if (q) setDlQuota(q); });
   }, []);
 
   useEffect(() => {
@@ -109,6 +111,7 @@ function DownloadTab({ onProjectOpen, onClose }) {
     setDownloading(null);
     setProgress(null);
     if (result && !result.error && !result.canceled && result.path) {
+      if (result.downloadQuota) setDlQuota({ ...dlQuota, remaining: result.downloadQuota.remaining, remainingMB: result.downloadQuota.remainingMB });
       await window.electronAPI.addRecentProject({
         path: result.path,
         name: result.name,
@@ -117,6 +120,7 @@ function DownloadTab({ onProjectOpen, onClose }) {
       onProjectOpen(result.path, result.name);
       onClose();
     }
+    if (result?.error) setError(result.error);
   };
 
   if (error) {
@@ -149,6 +153,22 @@ function DownloadTab({ onProjectOpen, onClose }) {
 
   return (
     <div style={{ padding: '20px', overflowY: 'auto', height: '100%' }}>
+      {/* Download quota */}
+      {dlQuota && (
+        <div style={{
+          marginBottom: '14px', padding: '8px 12px', borderRadius: '6px',
+          background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
+          fontSize: '11px', color: 'var(--text-secondary)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        }}>
+          <span>Download oggi: {(dlQuota.bytesUsed / (1024 * 1024)).toFixed(1)} / 100 MB</span>
+          <span style={{
+            color: dlQuota.remaining <= 0 ? 'var(--color-danger)' : dlQuota.remaining < 20 * 1024 * 1024 ? 'var(--color-warning, #e8a33e)' : 'var(--text-tertiary)'
+          }}>
+            {dlQuota.remaining <= 0 ? 'Quota esaurita' : `${dlQuota.remainingMB} MB rimasti`}
+          </span>
+        </div>
+      )}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(2, 1fr)',
