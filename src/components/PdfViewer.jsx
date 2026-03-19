@@ -18,24 +18,46 @@ import { Search, ChevronUp, ChevronDown, X } from 'lucide-react';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
+const SEARCH_RESULTS_CAP = 200;
+const SEARCH_DEBOUNCE_MS = 400;
+const TEXT_EXTRACT_BATCH = 20;
+
 /* ------------------------------------------------------------------ */
-/*  Single PDF page – self-contained canvas render                    */
+/*  Lazy PDF page – renders canvas only when near viewport             */
 /* ------------------------------------------------------------------ */
-function PdfPage({ pdf, pageNum, scale }) {
+function LazyPdfPage({ pdf, pageNum, scale, defaultWidth, defaultHeight, scrollContainer }) {
+  const wrapperRef = useRef(null);
   const canvasRef = useRef(null);
   const renderTaskRef = useRef(null);
+  const [isVisible, setIsVisible] = useState(false);
   const [renderError, setRenderError] = useState(null);
 
+  // IntersectionObserver: watch enter/exit from buffer zone
+  useEffect(() => {
+    const el = wrapperRef.current;
+    const root = scrollContainer?.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      setIsVisible(entry.isIntersecting);
+    }, { root, rootMargin: '800px 0px' });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [scrollContainer]);
+
+  // Render canvas when visible, cleanup when not
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !pdf) return;
 
-    // Cancel any in-progress render on this canvas
-    if (renderTaskRef.current) {
-      renderTaskRef.current.cancel();
-      renderTaskRef.current = null;
+    if (!isVisible) {
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+        renderTaskRef.current = null;
+      }
+      canvas.width = 0;
+      canvas.height = 0;
+      return;
     }
-    setRenderError(null);
 
     let cancelled = false;
 
@@ -75,13 +97,16 @@ function PdfPage({ pdf, pageNum, scale }) {
         renderTaskRef.current = null;
       }
     };
-  }, [pdf, pageNum, scale]);
+  }, [isVisible, pdf, pageNum, scale]);
 
   return (
     <div
+      ref={wrapperRef}
       data-page-num={pageNum}
       style={{
         margin: '0 auto 12px',
+        minHeight: defaultHeight,
+        width: defaultWidth,
         boxShadow: '0 1px 4px rgba(0,0,0,0.18)',
         background: '#fff',
         lineHeight: 0
@@ -102,7 +127,7 @@ function PdfPage({ pdf, pageNum, scale }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  PDF Viewer – canvas per page, no pdf_viewer.css                   */
+/*  PDF Viewer – lazy canvas per page, no pdf_viewer.css               */
 /* ------------------------------------------------------------------ */
 const PdfViewer = forwardRef(function PdfViewer({
   filePath, fontSize, searchHighlight, highlightKeywords,
@@ -112,10 +137,11 @@ const PdfViewer = forwardRef(function PdfViewer({
   const containerRef = useRef(null);
   const pdfDocRef = useRef(null);
   const currentPathRef = useRef(null);
+  const baseDimsRef = useRef({ width: 612, height: 792 }); // default US Letter
 
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [pdfDoc, setPdfDoc] = useState(null);   // triggers child renders
+  const [pdfDoc, setPdfDoc] = useState(null);
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('1');
@@ -124,9 +150,14 @@ const PdfViewer = forwardRef(function PdfViewer({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchIdx, setSearchIdx] = useState(-1);
+  const [extractionProgress, setExtractionProgress] = useState(null);
   const searchInputRef = useRef(null);
   const resultsListRef = useRef(null);
   const pageTextsRef = useRef([]);
+  const totalResultCountRef = useRef(0);
+  const searchDebounceRef = useRef(null);
+  const scrollRafRef = useRef(null);
+  const extractionCancelRef = useRef(null);
 
   const { saveScroll, getScroll } = useScrollMemory(scrollMapRef, onScrollChanged);
 
@@ -146,6 +177,10 @@ const PdfViewer = forwardRef(function PdfViewer({
     return ((fontSize || 15) / 15) * computedScale * 1.3;
   })();
 
+  /* ---------- Computed placeholder dimensions ---------- */
+  const defaultWidth = Math.floor(baseDimsRef.current.width * scale);
+  const defaultHeight = Math.floor(baseDimsRef.current.height * scale);
+
   /* ---------- Load PDF ---------- */
   useEffect(() => {
     if (!filePath) return;
@@ -160,8 +195,13 @@ const PdfViewer = forwardRef(function PdfViewer({
     setSearchQuery('');
     setSearchResults([]);
     setSearchIdx(-1);
+    setExtractionProgress(null);
     pageTextsRef.current = [];
+    totalResultCountRef.current = 0;
     if (onOutlineReady) onOutlineReady(null);
+
+    // Cancel any pending extraction
+    if (extractionCancelRef.current) extractionCancelRef.current.cancelled = true;
 
     // Save scroll of previous file
     if (currentPathRef.current && containerRef.current) {
@@ -185,6 +225,14 @@ const PdfViewer = forwardRef(function PdfViewer({
         if (cancelled) { pdf.destroy(); return; }
 
         pdfDocRef.current = pdf;
+
+        // Get base dimensions from page 1
+        try {
+          const page1 = await pdf.getPage(1);
+          const vp = page1.getViewport({ scale: 1 });
+          baseDimsRef.current = { width: vp.width, height: vp.height };
+        } catch (_) { /* keep defaults */ }
+
         setPdfDoc(pdf);
         setTotalPages(pdf.numPages);
         setLoading(false);
@@ -239,6 +287,9 @@ const PdfViewer = forwardRef(function PdfViewer({
 
     return () => {
       cancelled = true;
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+      if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+      if (extractionCancelRef.current) extractionCancelRef.current.cancelled = true;
       if (pdfDocRef.current) {
         try { pdfDocRef.current.destroy(); } catch (e) { console.warn('PDF cleanup:', e.message); }
         pdfDocRef.current = null;
@@ -262,27 +313,35 @@ const PdfViewer = forwardRef(function PdfViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalPages]);
 
-  /* ---------- Track current page on scroll ---------- */
+  /* ---------- Track current page on scroll (rAF throttled) ---------- */
   const handleScroll = useCallback(() => {
     const container = containerRef.current;
     if (!container || !currentPathRef.current) return;
 
+    // Always save scroll position (don't throttle this)
     saveScroll(makeKey(currentPathRef.current), container.scrollTop);
 
-    const wrappers = container.querySelectorAll('[data-page-num]');
-    const containerMid = container.scrollTop + container.clientHeight / 2;
-    let closest = 1;
-    let closestDist = Infinity;
-    wrappers.forEach(el => {
-      const mid = el.offsetTop + el.offsetHeight / 2;
-      const dist = Math.abs(mid - containerMid);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closest = parseInt(el.dataset.pageNum, 10) || 1;
-      }
+    // Throttle page tracking with rAF
+    if (scrollRafRef.current) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      const ct = containerRef.current;
+      if (!ct) return;
+      const wrappers = ct.querySelectorAll('[data-page-num]');
+      const containerMid = ct.scrollTop + ct.clientHeight / 2;
+      let closest = 1;
+      let closestDist = Infinity;
+      wrappers.forEach(el => {
+        const mid = el.offsetTop + el.offsetHeight / 2;
+        const dist = Math.abs(mid - containerMid);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closest = parseInt(el.dataset.pageNum, 10) || 1;
+        }
+      });
+      setCurrentPage(closest);
+      setPageInput(String(closest));
     });
-    setCurrentPage(closest);
-    setPageInput(String(closest));
   }, [saveScroll, makeKey]);
 
   /* ---------- Navigate to page ---------- */
@@ -291,7 +350,6 @@ const PdfViewer = forwardRef(function PdfViewer({
     const page = Math.max(1, Math.min(n, totalPages));
     const wrapper = containerRef.current.querySelector(`[data-page-num="${page}"]`);
     if (wrapper) {
-      // offsetTop è relativo al container (position:relative sul container)
       containerRef.current.scrollTo({ top: wrapper.offsetTop, behavior: 'instant' });
     }
     setPageInput(String(page));
@@ -304,12 +362,10 @@ const PdfViewer = forwardRef(function PdfViewer({
     const wrapper = containerRef.current.querySelector(`[data-page-num="${page}"]`);
     if (!wrapper) return;
 
-    // Stima posizione verticale: rapporto pos/lunghezzaTesto * altezza pagina
     const pageText = pageTextsRef.current[page - 1] || '';
     const ratio = pageText.length > 0 ? result.pos / pageText.length : 0;
     const offsetWithinPage = ratio * wrapper.offsetHeight;
 
-    // Posiziona il punto stimato a ~60px dal top del container visibile
     const targetTop = wrapper.offsetTop + offsetWithinPage - 60;
     containerRef.current.scrollTo({ top: Math.max(0, targetTop), behavior: 'instant' });
     setPageInput(String(page));
@@ -318,21 +374,53 @@ const PdfViewer = forwardRef(function PdfViewer({
   /* ================================================================ */
   /*  SEARCH                                                          */
   /* ================================================================ */
-  const getPageTexts = useCallback(async () => {
+
+  /* ---------- Batch text extraction with progress ---------- */
+  const getPageTexts = useCallback(async (cancelToken) => {
     if (pageTextsRef.current.length > 0) return pageTextsRef.current;
     const pdf = pdfDocRef.current;
     if (!pdf) return [];
-    const texts = [];
-    for (let i = 1; i <= pdf.numPages; i++) {
-      try {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        const str = content.items.map(item => item.str).join(' ');
-        texts.push(str);
-      } catch (_) {
-        texts.push('');
+
+    const numPages = pdf.numPages;
+    const texts = new Array(numPages).fill('');
+
+    for (let batchStart = 0; batchStart < numPages; batchStart += TEXT_EXTRACT_BATCH) {
+      // Check cancellation at batch boundary
+      if (cancelToken?.cancelled) return [];
+
+      const batchEnd = Math.min(batchStart + TEXT_EXTRACT_BATCH, numPages);
+      const batchPromises = [];
+
+      for (let i = batchStart; i < batchEnd; i++) {
+        batchPromises.push(
+          (async (idx) => {
+            try {
+              const page = await pdf.getPage(idx + 1);
+              const content = await page.getTextContent();
+              return content.items.map(item => item.str).join(' ');
+            } catch (_) {
+              return '';
+            }
+          })(i)
+        );
+      }
+
+      const batchResults = await Promise.all(batchPromises);
+      for (let i = 0; i < batchResults.length; i++) {
+        texts[batchStart + i] = batchResults[i];
+      }
+
+      setExtractionProgress({ done: batchEnd, total: numPages });
+
+      // Yield to event loop between batches
+      if (batchEnd < numPages) {
+        await new Promise(r => setTimeout(r, 0));
       }
     }
+
+    if (cancelToken?.cancelled) return [];
+
+    setExtractionProgress(null);
     pageTextsRef.current = texts;
     return texts;
   }, []);
@@ -341,25 +429,44 @@ const PdfViewer = forwardRef(function PdfViewer({
     if (!query || !pdfDocRef.current) {
       setSearchResults([]);
       setSearchIdx(-1);
+      totalResultCountRef.current = 0;
       return;
     }
-    const texts = await getPageTexts();
+
+    // Cancel any in-progress extraction
+    if (extractionCancelRef.current) extractionCancelRef.current.cancelled = true;
+    const cancelToken = { cancelled: false };
+    extractionCancelRef.current = cancelToken;
+
+    const texts = await getPageTexts(cancelToken);
+
+    // Bail out if cancelled during extraction
+    if (cancelToken.cancelled || texts.length === 0) return;
+
     const qLower = query.toLowerCase();
     const qLen = query.length;
     const results = [];
-    texts.forEach((text, idx) => {
+    let totalCount = 0;
+
+    for (let idx = 0; idx < texts.length; idx++) {
+      const text = texts[idx];
       const tLower = text.toLowerCase();
       let pos = 0;
       while ((pos = tLower.indexOf(qLower, pos)) !== -1) {
-        const snippetStart = Math.max(0, pos - 35);
-        const snippetEnd = Math.min(text.length, pos + qLen + 35);
-        const before = (snippetStart > 0 ? '…' : '') + text.substring(snippetStart, pos);
-        const match = text.substring(pos, pos + qLen);
-        const after = text.substring(pos + qLen, snippetEnd) + (snippetEnd < text.length ? '…' : '');
-        results.push({ page: idx + 1, pos, before, match, after });
+        totalCount++;
+        if (results.length < SEARCH_RESULTS_CAP) {
+          const snippetStart = Math.max(0, pos - 35);
+          const snippetEnd = Math.min(text.length, pos + qLen + 35);
+          const before = (snippetStart > 0 ? '…' : '') + text.substring(snippetStart, pos);
+          const match = text.substring(pos, pos + qLen);
+          const after = text.substring(pos + qLen, snippetEnd) + (snippetEnd < text.length ? '…' : '');
+          results.push({ page: idx + 1, pos, before, match, after });
+        }
         pos += qLen;
       }
-    });
+    }
+
+    totalResultCountRef.current = totalCount;
     setSearchResults(results);
     setSearchIdx(results.length > 0 ? 0 : -1);
     if (results.length > 0) scrollToResult(results[0]);
@@ -397,6 +504,7 @@ const PdfViewer = forwardRef(function PdfViewer({
   const handleSearchKeyDown = useCallback((e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
       if (searchResults.length === 0) doSearch(searchQuery);
       else navigateSearch(e.shiftKey ? 'prev' : 'next');
     }
@@ -429,8 +537,25 @@ const PdfViewer = forwardRef(function PdfViewer({
 
   const pages = [];
   for (let i = 1; i <= totalPages; i++) {
-    pages.push(<PdfPage key={i} pdf={pdfDoc} pageNum={i} scale={scale} />);
+    pages.push(
+      <LazyPdfPage
+        key={i}
+        pdf={pdfDoc}
+        pageNum={i}
+        scale={scale}
+        defaultWidth={defaultWidth}
+        defaultHeight={defaultHeight}
+        scrollContainer={containerRef}
+      />
+    );
   }
+
+  const isCapped = totalResultCountRef.current > SEARCH_RESULTS_CAP;
+  const counterText = searchResults.length > 0
+    ? isCapped
+      ? `${searchIdx + 1}/${searchResults.length} (${totalResultCountRef.current} totali)`
+      : `${searchIdx + 1}/${searchResults.length}`
+    : null;
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -444,14 +569,22 @@ const PdfViewer = forwardRef(function PdfViewer({
             placeholder="Cerca nel PDF…"
             value={searchQuery}
             onChange={(e) => {
-              setSearchQuery(e.target.value);
-              doSearch(e.target.value);
+              const val = e.target.value;
+              setSearchQuery(val);
+              if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+              if (val.trim().length >= 2) {
+                searchDebounceRef.current = setTimeout(() => doSearch(val), SEARCH_DEBOUNCE_MS);
+              } else if (!val.trim()) {
+                setSearchResults([]);
+                setSearchIdx(-1);
+                totalResultCountRef.current = 0;
+              }
             }}
             onKeyDown={handleSearchKeyDown}
           />
-          {searchQuery && searchResults.length > 0 && (
+          {searchQuery && counterText && (
             <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', flexShrink: 0 }}>
-              {searchIdx + 1}/{searchResults.length}
+              {counterText}
             </span>
           )}
           <ChevronUp
@@ -469,6 +602,20 @@ const PdfViewer = forwardRef(function PdfViewer({
             style={{ cursor: 'pointer', color: 'var(--text-tertiary)', flexShrink: 0 }}
             onClick={onSearchClose}
           />
+        </div>
+      )}
+
+      {/* Extraction progress */}
+      {searchOpen && extractionProgress && (
+        <div style={{
+          padding: '3px 10px',
+          fontSize: '10px',
+          color: 'var(--text-tertiary)',
+          background: 'var(--bg-elevated)',
+          borderBottom: '1px solid var(--border-subtle)',
+          flexShrink: 0
+        }}>
+          Estrazione testo: {extractionProgress.done}/{extractionProgress.total}
         </div>
       )}
 
@@ -521,9 +668,20 @@ const PdfViewer = forwardRef(function PdfViewer({
               </span>
             </div>
           ))}
+          {isCapped && (
+            <div style={{
+              padding: '4px 10px',
+              fontSize: '10px',
+              color: 'var(--text-disabled)',
+              fontStyle: 'italic',
+              textAlign: 'center'
+            }}>
+              Mostrati primi {SEARCH_RESULTS_CAP} di {totalResultCountRef.current} risultati
+            </div>
+          )}
         </div>
       )}
-      {searchOpen && searchQuery && searchResults.length === 0 && (
+      {searchOpen && searchQuery && searchResults.length === 0 && !extractionProgress && (
         <div style={{
           padding: '6px 10px',
           fontSize: '11px',

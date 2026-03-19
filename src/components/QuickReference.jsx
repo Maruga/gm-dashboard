@@ -43,10 +43,39 @@ function applyKeywordHighlightsToHtml(html, words) {
   return processed.join('');
 }
 
+/**
+ * Build theme style block for srcdoc iframes.
+ */
+function buildIframeThemeStyle() {
+  const cs = getComputedStyle(document.documentElement);
+  const get = (name) => cs.getPropertyValue(name).trim();
+  const vars = ['--accent-a30', '--accent-a35', '--accent-a55'].map(v => `${v}:${get(v)}`).join(';');
+  const thumb = get('--scrollbar-thumb') || '#3a3530';
+  const hover = get('--scrollbar-hover') || '#5a4a3a';
+  return `<style data-theme-inject="true">:root{${vars}}::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${thumb};border-radius:3px}::-webkit-scrollbar-thumb:hover{background:${hover}}</style>`;
+}
+
+/**
+ * Prepare raw HTML for srcdoc rendering: inject <base href> and theme styles.
+ */
+function prepareHtmlForSrcdoc(rawHtml, filePath) {
+  const folder = filePath.replace(/\\/g, '/').replace(/\/[^/]+$/, '/');
+  const baseTag = /<base\s/i.test(rawHtml) ? '' : `<base href="app://local/-/${folder}">`;
+  const themeStyle = buildIframeThemeStyle();
+  const inject = baseTag + themeStyle;
+
+  if (/<head([^>]*)>/i.test(rawHtml)) {
+    return rawHtml.replace(/<head([^>]*)>/i, `<head$1>${inject}`);
+  }
+  if (/<html([^>]*)>/i.test(rawHtml)) {
+    return rawHtml.replace(/<html([^>]*)>/i, `<html$1><head>${inject}</head>`);
+  }
+  return `<head>${inject}</head>${rawHtml}`;
+}
+
 export default function QuickReference({ manuals, projectPath, scrollPositions, onScrollPositionsChange, selectedManualId, onSelectedChange, onClose, highlightKeywords }) {
   const [renderedHtml, setRenderedHtml] = useState('');
   const [isHtmlFile, setIsHtmlFile] = useState(false);
-  const [htmlFileUrl, setHtmlFileUrl] = useState('');
   const [headings, setHeadings] = useState([]);
   const [activeHeading, setActiveHeading] = useState(-1);
   const [searchQuery, setSearchQuery] = useState('');
@@ -56,6 +85,8 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
   const searchRef = useRef(null);
   const debounceRef = useRef(null);
   const scrollSaveRef = useRef(null);
+  const headingsRef = useRef([]);
+  headingsRef.current = headings;
 
   const selected = manuals.find(m => m.id === selectedManualId) || manuals[0] || null;
 
@@ -83,16 +114,46 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
 
     const ext = selected.file.split('.').pop().toLowerCase();
     if (ext === 'html' || ext === 'htm') {
-      // HTML files: use iframe for CSS isolation
+      // HTML files: read content for srcdoc (CSS isolation + highlights + TOC)
       setIsHtmlFile(true);
       setRenderedHtml('');
+      setHeadings([]);
       const normalizedPath = fullPath.replace(/\//g, '\\');
-      window.electronAPI.getFileUrl(normalizedPath).then(url => {
-        setHtmlFileUrl(url);
+      window.electronAPI.readFile(normalizedPath).then(rawHtml => {
+        if (!rawHtml) {
+          setRenderedHtml('<div style="padding:20px;color:var(--color-danger);font-style:italic">File non trovato</div>');
+          setIsHtmlFile(false);
+          return;
+        }
+        let processed = prepareHtmlForSrcdoc(rawHtml, normalizedPath);
+
+        // Add data attributes to headings for TOC navigation and extract heading texts
+        let headingIdx = 0;
+        const extractedHeadings = [];
+        processed = processed.replace(/<h([1-6])([^>]*)>([\s\S]*?)<\/h\1>/gi, (match, level, attrs, content) => {
+          const text = content.replace(/<[^>]+>/g, '').trim();
+          const idx = headingIdx++;
+          if (text) extractedHeadings.push({ id: idx, level: parseInt(level), text });
+          return `<h${level}${attrs} data-qr-heading="${idx}">${content}</h${level}>`;
+        });
+
+        // Normalize heading levels for TOC (show only top 2 levels)
+        if (extractedHeadings.length > 0) {
+          const levels = [...new Set(extractedHeadings.map(h => h.level))].sort();
+          const primary = levels[0];
+          const secondary = levels[1] || null;
+          setHeadings(extractedHeadings
+            .filter(h => h.level === primary || h.level === secondary)
+            .map(h => ({ ...h, level: h.level === primary ? 1 : 2 }))
+          );
+        } else {
+          setHeadings([]);
+        }
+
+        setRenderedHtml(processed);
       });
     } else {
       setIsHtmlFile(false);
-      setHtmlFileUrl('');
       window.electronAPI.readFile(fullPath.replace(/\//g, '\\')).then(text => {
         if (!text) {
           setRenderedHtml('<div style="padding:20px;color:var(--color-danger);font-style:italic">File non trovato</div>');
@@ -117,8 +178,9 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
     setDebouncedQuery('');
   }, [selected?.id, projectPath]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Extract headings from rendered content
+  // Extract headings from rendered content (non-HTML; HTML headings extracted in file loader)
   useEffect(() => {
+    if (isHtmlFile) return;
     const container = contentRef.current;
     if (!container) { setHeadings([]); return; }
     const extract = () => {
@@ -136,12 +198,14 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
     const obs = new MutationObserver(extract);
     obs.observe(container, { childList: true, subtree: true });
     return () => obs.disconnect();
-  }, [renderedHtml]);
+  }, [renderedHtml, isHtmlFile]);
 
-  // Track active heading on scroll
+  // Track active heading on scroll (non-HTML only; iframe tracking in handleIframeLoad)
   useEffect(() => {
+    if (headings.length === 0 || isHtmlFile) return;
+
     const container = contentRef.current;
-    if (!container || headings.length === 0) return;
+    if (!container) return;
     const onScroll = () => {
       const top = container.getBoundingClientRect().top;
       let active = -1;
@@ -154,7 +218,7 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
     container.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
     return () => container.removeEventListener('scroll', onScroll);
-  }, [headings]);
+  }, [headings, isHtmlFile]);
 
   // Save scroll on scroll
   const handleContentScroll = useCallback(() => {
@@ -163,35 +227,46 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
     }
   }, [selected, onScrollPositionsChange]);
 
-  // iframe load handler for HTML files
+  // iframe load handler for HTML files (srcdoc: same-origin, always accessible)
   const handleIframeLoad = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe || !selected) return;
-    // Inject scrollbar styles matching current theme
     try {
       const iframeDoc = iframe.contentDocument;
-      if (iframeDoc) {
-        const cs = getComputedStyle(document.documentElement);
-        const thumb = cs.getPropertyValue('--scrollbar-thumb').trim() || '#3a3530';
-        const hover = cs.getPropertyValue('--scrollbar-hover').trim() || '#5a4a3a';
-        const style = iframeDoc.createElement('style');
-        style.textContent = `::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${thumb};border-radius:3px}::-webkit-scrollbar-thumb:hover{background:${hover}}`;
-        iframeDoc.head.appendChild(style);
+      if (!iframeDoc) return;
+
+      // Check for search highlight to scroll to
+      const searchMark = iframeDoc.querySelector('mark[data-ref-hl="0"]');
+      if (searchMark) {
+        setTimeout(() => {
+          searchMark.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }, 100);
+      } else {
+        // Restore scroll position
+        const targetScroll = scrollPositions[selected.id] || 0;
+        setTimeout(() => {
+          iframe.contentWindow.scrollTo(0, targetScroll);
+        }, 50);
       }
-    } catch (e) { console.warn('QR iframe style:', e.message); }
-    const targetScroll = scrollPositions[selected.id] || 0;
-    setTimeout(() => {
-      try {
-        iframe.contentWindow.scrollTo(0, targetScroll);
-        iframe.contentWindow.addEventListener('scroll', () => {
-          try {
-            if (selected) {
-              onScrollPositionsChange(prev => ({ ...prev, [selected.id]: iframe.contentWindow.scrollY }));
-            }
-          } catch (e) { console.warn('QR scroll save:', e.message); }
-        }, { passive: true });
-      } catch (e) { console.warn('QR iframe scroll:', e.message); }
-    }, 100);
+
+      // Attach scroll listener for saving position + active heading tracking
+      iframe.contentWindow.addEventListener('scroll', () => {
+        if (selected) {
+          onScrollPositionsChange(prev => ({ ...prev, [selected.id]: iframe.contentWindow.scrollY }));
+        }
+        // Track active heading for TOC sidebar
+        const currentHeadings = headingsRef.current;
+        if (currentHeadings.length > 0) {
+          let active = -1;
+          for (let i = 0; i < currentHeadings.length; i++) {
+            const el = iframeDoc.querySelector(`[data-qr-heading="${currentHeadings[i].id}"]`);
+            if (el && el.getBoundingClientRect().top <= 40) active = i;
+            else if (el) break;
+          }
+          setActiveHeading(active);
+        }
+      }, { passive: true });
+    } catch (e) { console.warn('QR iframe load:', e.message); }
   }, [selected, scrollPositions, onScrollPositionsChange]);
 
   // Debounce search
@@ -359,7 +434,14 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
                 headings.map((h, i) => (
                   <div
                     key={h.id}
-                    onClick={() => h.element.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                    onClick={() => {
+                      if (h.element) {
+                        h.element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      } else if (isHtmlFile && iframeRef.current?.contentDocument) {
+                        const el = iframeRef.current.contentDocument.querySelector(`[data-qr-heading="${h.id}"]`);
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }}
                     style={{
                       padding: '3px 10px',
                       paddingLeft: h.level === 2 ? '22px' : '10px',
@@ -424,7 +506,7 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
               isHtmlFile ? (
                 <iframe
                   ref={iframeRef}
-                  src={htmlFileUrl}
+                  srcdoc={displayHtml}
                   onLoad={handleIframeLoad}
                   style={{ flex: 1, width: '100%', border: 'none' }}
                   sandbox="allow-same-origin"

@@ -77,6 +77,37 @@ function highlightHtml(html, query, targetOffset) {
   return { html: finalHtml, targetIdx: bestIdx };
 }
 
+/**
+ * Build theme style block for srcdoc iframes.
+ * Resolves CSS vars from parent so highlights and scrollbars work inside iframe.
+ */
+function buildIframeThemeStyle() {
+  const cs = getComputedStyle(document.documentElement);
+  const get = (name) => cs.getPropertyValue(name).trim();
+  const vars = ['--accent-a30', '--accent-a35', '--accent-a55'].map(v => `${v}:${get(v)}`).join(';');
+  const thumb = get('--scrollbar-thumb') || '#3a3530';
+  const hover = get('--scrollbar-hover') || '#5a4a3a';
+  return `<style data-theme-inject="true">:root{${vars}}::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${thumb};border-radius:3px}::-webkit-scrollbar-thumb:hover{background:${hover}}</style>`;
+}
+
+/**
+ * Prepare raw HTML for srcdoc rendering: inject <base href> and theme styles.
+ */
+function prepareHtmlForSrcdoc(rawHtml, filePath) {
+  const folder = filePath.replace(/\\/g, '/').replace(/\/[^/]+$/, '/');
+  const baseTag = /<base\s/i.test(rawHtml) ? '' : `<base href="app://local/-/${folder}">`;
+  const themeStyle = buildIframeThemeStyle();
+  const inject = baseTag + themeStyle;
+
+  if (/<head([^>]*)>/i.test(rawHtml)) {
+    return rawHtml.replace(/<head([^>]*)>/i, `<head$1>${inject}`);
+  }
+  if (/<html([^>]*)>/i.test(rawHtml)) {
+    return rawHtml.replace(/<html([^>]*)>/i, `<html$1><head>${inject}</head>`);
+  }
+  return `<head>${inject}</head>${rawHtml}`;
+}
+
 const Viewer = forwardRef(function Viewer({
   currentFile, scrollKeyPrefix, searchHighlight, highlightKeywords, onImageClick, onVideoClick,
   scrollMapRef, onScrollChanged, fontSize, searchOpen, onSearchClose, onPdfOutlineReady
@@ -84,7 +115,6 @@ const Viewer = forwardRef(function Viewer({
   const [renderedHtml, setRenderedHtml] = useState('');
   const [isHtmlFile, setIsHtmlFile] = useState(false);
   const [isPdfFile, setIsPdfFile] = useState(false);
-  const [htmlFileUrl, setHtmlFileUrl] = useState('');
   const [isUrlFile, setIsUrlFile] = useState(false);
   const [urlTarget, setUrlTarget] = useState('');
   const [urlError, setUrlError] = useState(false);
@@ -150,7 +180,6 @@ const Viewer = forwardRef(function Viewer({
       setIsHtmlFile(false);
       isHtmlRef.current = false;
       setRenderedHtml('');
-      setHtmlFileUrl('');
       setIsUrlFile(true);
       setUrlError(false);
       setUrlLoaded(false);
@@ -181,7 +210,6 @@ const Viewer = forwardRef(function Viewer({
       isHtmlRef.current = false;
       setIsPdfFile(true);
       setRenderedHtml('');
-      setHtmlFileUrl('');
       currentKeyRef.current = scrollKey;
       return;
     }
@@ -190,18 +218,18 @@ const Viewer = forwardRef(function Viewer({
     if (type === FILE_TYPES.DOCUMENT) {
       const ext = currentFile.extension;
       if (ext === '.html' || ext === '.htm') {
-        // HTML files: use iframe for CSS isolation
+        // HTML files: read content for srcdoc (CSS isolation + highlights)
         setIsHtmlFile(true);
         isHtmlRef.current = true;
         setRenderedHtml('');
         currentKeyRef.current = scrollKey;
-        window.electronAPI.getFileUrl(currentFile.path).then(url => {
-          setHtmlFileUrl(url);
+        window.electronAPI.readFile(currentFile.path).then(rawHtml => {
+          if (!rawHtml) return;
+          setRenderedHtml(prepareHtmlForSrcdoc(rawHtml, currentFile.path));
         });
       } else {
         setIsHtmlFile(false);
         isHtmlRef.current = false;
-        setHtmlFileUrl('');
         window.electronAPI.readFile(currentFile.path).then(text => {
           if (!text) return;
           currentKeyRef.current = scrollKey;
@@ -292,32 +320,39 @@ const Viewer = forwardRef(function Viewer({
   const handleIframeLoad = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe || !currentKeyRef.current) return;
-    // Inject scrollbar styles matching current theme
     try {
       const iframeDoc = iframe.contentDocument;
-      if (iframeDoc) {
-        const cs = getComputedStyle(document.documentElement);
-        const thumb = cs.getPropertyValue('--scrollbar-thumb').trim() || '#3a3530';
-        const hover = cs.getPropertyValue('--scrollbar-hover').trim() || '#5a4a3a';
-        const style = iframeDoc.createElement('style');
-        style.textContent = `::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${thumb};border-radius:3px}::-webkit-scrollbar-thumb:hover{background:${hover}}`;
-        iframeDoc.head.appendChild(style);
+      if (!iframeDoc) return;
+
+      // srcdoc + allow-same-origin: contentDocument always accessible
+      // Check for active search highlight to scroll to
+      const activeMark = iframeDoc.querySelector('mark[data-search-hl][style*="accent-a55"]');
+      if (activeMark) {
+        setTimeout(() => {
+          activeMark.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          setTimeout(() => {
+            const marks = iframeDoc.querySelectorAll('mark[data-search-hl]');
+            marks.forEach(m => {
+              m.style.transition = 'background 3s ease-out';
+              m.style.background = 'transparent';
+            });
+          }, 1000);
+        }, 100);
+      } else {
+        // Restore saved scroll position
+        const targetScroll = getScroll(currentKeyRef.current);
+        setTimeout(() => {
+          iframe.contentWindow.scrollTo(0, targetScroll);
+        }, 50);
       }
-    } catch (e) { console.warn('Iframe style inject:', e.message); }
-    const targetScroll = getScroll(currentKeyRef.current);
-    setTimeout(() => {
-      try {
-        iframe.contentWindow.scrollTo(0, targetScroll);
-        // Attach scroll listener for saving position
-        iframe.contentWindow.addEventListener('scroll', () => {
-          try {
-            if (currentKeyRef.current) {
-              saveScroll(currentKeyRef.current, iframe.contentWindow.scrollY);
-            }
-          } catch (e) { console.warn('Iframe scroll save:', e.message); }
-        }, { passive: true });
-      } catch (_) { /* cross-origin: atteso */ }
-    }, 100);
+
+      // Attach scroll listener for saving position
+      iframe.contentWindow.addEventListener('scroll', () => {
+        if (currentKeyRef.current) {
+          saveScroll(currentKeyRef.current, iframe.contentWindow.scrollY);
+        }
+      }, { passive: true });
+    } catch (e) { console.warn('Iframe load handler:', e.message); }
   }, [getScroll, saveScroll]);
 
   if (isUrlFile) {
@@ -412,7 +447,7 @@ const Viewer = forwardRef(function Viewer({
     return (
       <iframe
         ref={iframeRef}
-        src={htmlFileUrl}
+        srcdoc={displayHtml}
         onLoad={handleIframeLoad}
         style={{
           width: '100%',
