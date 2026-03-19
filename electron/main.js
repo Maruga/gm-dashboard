@@ -168,20 +168,35 @@ function createWindow() {
 
 app.whenReady().then(() => {
   // Registra handler per protocollo app://
-  const distRoot = path.join(__dirname, '..', 'dist');
+  const distRoot = path.resolve(__dirname, '..', 'dist');
   protocol.handle('app', (request) => {
     let { pathname } = new URL(request.url);
     pathname = decodeURIComponent(pathname);
 
     if (pathname.startsWith('/-/')) {
       // File locale dal filesystem: app://local/-/C:/path/to/file
-      const filePath = pathname.substring(3);
+      const filePath = path.resolve(pathname.substring(3));
+
+      // Validazione path: solo file dentro directory di progetto note o dist/
+      const allowed = store.get('recentProjects').map(p => path.resolve(p.path));
+      allowed.push(distRoot);
+      const isAllowed = allowed.some(root => filePath.startsWith(root + path.sep) || filePath === root);
+      if (!isAllowed) {
+        logDiag('warn', `app:// bloccato path fuori progetto: ${filePath}`);
+        return new Response('Forbidden', { status: 403 });
+      }
+
       return net.fetch(pathToFileURL(filePath).href);
     }
 
     // File dell'app: app://local/index.html → dist/index.html
     if (pathname === '/' || pathname === '') pathname = '/index.html';
-    const resolved = path.join(distRoot, pathname);
+    const resolved = path.resolve(path.join(distRoot, pathname));
+    // Validazione: deve restare dentro dist/
+    if (!resolved.startsWith(distRoot + path.sep) && resolved !== distRoot) {
+      logDiag('warn', `app:// bloccato path traversal dist: ${resolved}`);
+      return new Response('Forbidden', { status: 403 });
+    }
     return net.fetch(pathToFileURL(resolved).href);
   });
 
