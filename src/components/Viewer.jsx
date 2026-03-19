@@ -3,6 +3,7 @@ import { renderMarkdown } from '../utils/markdownRenderer';
 import { getFileType, FILE_TYPES, parseUrlFile } from '../utils/fileTypes';
 import { ExternalLink } from 'lucide-react';
 import { useScrollMemory } from '../hooks/useScrollMemory';
+import PdfViewer from './PdfViewer';
 
 /**
  * Apply keyword highlights to HTML string.
@@ -78,10 +79,11 @@ function highlightHtml(html, query, targetOffset) {
 
 const Viewer = forwardRef(function Viewer({
   currentFile, scrollKeyPrefix, searchHighlight, highlightKeywords, onImageClick, onVideoClick,
-  scrollMapRef, onScrollChanged, fontSize
+  scrollMapRef, onScrollChanged, fontSize, searchOpen, onSearchClose
 }, ref) {
   const [renderedHtml, setRenderedHtml] = useState('');
   const [isHtmlFile, setIsHtmlFile] = useState(false);
+  const [isPdfFile, setIsPdfFile] = useState(false);
   const [htmlFileUrl, setHtmlFileUrl] = useState('');
   const [isUrlFile, setIsUrlFile] = useState(false);
   const [urlTarget, setUrlTarget] = useState('');
@@ -91,11 +93,16 @@ const Viewer = forwardRef(function Viewer({
   const containerRef = useRef(null);
   const iframeRef = useRef(null);
   const isHtmlRef = useRef(false);
+  const pdfViewerRef = useRef(null);
   const currentKeyRef = useRef(null);
   const fadeTimerRef = useRef(null);
   const { saveScroll, getScroll } = useScrollMemory(scrollMapRef, onScrollChanged);
 
-  useImperativeHandle(ref, () => (isHtmlFile || isUrlFile) ? null : containerRef.current);
+  useImperativeHandle(ref, () => {
+    if (isPdfFile) return pdfViewerRef.current;
+    if (isHtmlFile || isUrlFile) return null;
+    return containerRef.current;
+  });
 
   const makeKey = useCallback((filePath) => {
     return scrollKeyPrefix ? `${scrollKeyPrefix}:${filePath}` : filePath;
@@ -168,6 +175,17 @@ const Viewer = forwardRef(function Viewer({
     setIsUrlFile(false);
     setUrlTarget('');
     setUrlError(false);
+
+    if (type === FILE_TYPES.PDF) {
+      setIsHtmlFile(false);
+      isHtmlRef.current = false;
+      setIsPdfFile(true);
+      setRenderedHtml('');
+      setHtmlFileUrl('');
+      currentKeyRef.current = scrollKey;
+      return;
+    }
+    setIsPdfFile(false);
 
     if (type === FILE_TYPES.DOCUMENT) {
       const ext = currentFile.extension;
@@ -367,6 +385,23 @@ const Viewer = forwardRef(function Viewer({
           />
         )}
       </div>
+    );
+  }
+
+  if (isPdfFile) {
+    return (
+      <PdfViewer
+        ref={pdfViewerRef}
+        filePath={currentFile.path}
+        fontSize={fontSize}
+        searchHighlight={searchHighlight}
+        highlightKeywords={highlightKeywords}
+        scrollMapRef={scrollMapRef}
+        onScrollChanged={onScrollChanged}
+        scrollKeyPrefix={scrollKeyPrefix}
+        searchOpen={searchOpen}
+        onSearchClose={onSearchClose}
+      />
     );
   }
 

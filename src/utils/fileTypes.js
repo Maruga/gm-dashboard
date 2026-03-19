@@ -1,5 +1,6 @@
 export const FILE_TYPES = {
   DOCUMENT: 'document',
+  PDF: 'pdf',
   IMAGE: 'image',
   AUDIO: 'audio',
   VIDEO: 'video',
@@ -12,6 +13,7 @@ const extensionMap = {
   '.html': FILE_TYPES.DOCUMENT,
   '.htm': FILE_TYPES.DOCUMENT,
   '.txt': FILE_TYPES.DOCUMENT,
+  '.pdf': FILE_TYPES.PDF,
   '.png': FILE_TYPES.IMAGE,
   '.jpg': FILE_TYPES.IMAGE,
   '.jpeg': FILE_TYPES.IMAGE,
@@ -46,6 +48,7 @@ export function getFileIcon(entry) {
     case FILE_TYPES.DOCUMENT:
       if (entry.extension === '.html' || entry.extension === '.htm') return '🌐';
       return '📄';
+    case FILE_TYPES.PDF: return '📕';
     case FILE_TYPES.IMAGE: return '🖼️';
     case FILE_TYPES.AUDIO: return '🎵';
     case FILE_TYPES.VIDEO: return '🎬';

@@ -17,9 +17,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // File system
   readDirectory: (dirPath) => ipcRenderer.invoke('read-directory', dirPath),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+  readFileBinary: (filePath) => ipcRenderer.invoke('read-file-binary', filePath),
   getFileUrl: (filePath) => ipcRenderer.invoke('get-file-url', filePath),
   searchFiles: (folderPath, query) => ipcRenderer.invoke('search-files', folderPath, query),
   selectProjectFile: (projectPath, filters) => ipcRenderer.invoke('select-project-file', projectPath, filters),
+  copyFile: (source, destFolder) => ipcRenderer.invoke('copy-file', source, destFolder),
+  selectProjectSubfolder: (projectPath) => ipcRenderer.invoke('select-project-subfolder', projectPath),
 
   // Window controls
   windowMinimize: () => ipcRenderer.invoke('window-minimize'),
@@ -59,12 +62,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('telegram-message-received');
   },
 
+  // Broadcast
+  fetchBroadcast: () => ipcRenderer.invoke('fetch-broadcast'),
+  dismissBroadcast: (messageId) => ipcRenderer.invoke('dismiss-broadcast', messageId),
+
   // Firebase Auth
   firebaseRegister: (email, password, displayName) => ipcRenderer.invoke('firebase-register', email, password, displayName),
   firebaseLogin: (email, password) => ipcRenderer.invoke('firebase-login', email, password),
   firebaseLogout: () => ipcRenderer.invoke('firebase-logout'),
   firebaseGetUser: () => ipcRenderer.invoke('firebase-get-user'),
   firebaseAutoLogin: () => ipcRenderer.invoke('firebase-auto-login'),
+  firebaseResetPassword: (email) => ipcRenderer.invoke('firebase-reset-password', email),
   firebaseUpdateVisibility: (adventureId, visibility) => ipcRenderer.invoke('firebase-update-visibility', adventureId, visibility),
   firebaseFetchMyAdventures: (userId) => ipcRenderer.invoke('firebase-fetch-my-adventures', userId),
 
@@ -72,6 +80,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   aiChat: (messages, projectPath, options) => ipcRenderer.invoke('ai-chat', messages, projectPath, options),
   aiVerifyKey: (provider, key) => ipcRenderer.invoke('ai-verify-key', provider, key),
   aiGetQuota: () => ipcRenderer.invoke('ai-get-quota'),
+  aiGenerateImage: (prompt, projectPath, options) => ipcRenderer.invoke('ai-generate-image', prompt, projectPath, options),
 
   // Adventures
   adventureExport: (projectPath, metadata, forPublish) => ipcRenderer.invoke('adventure-export', projectPath, metadata, forPublish),

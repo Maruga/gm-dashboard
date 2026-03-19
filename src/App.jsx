@@ -36,18 +36,26 @@ const DEFAULT_PROJECT_STATE = {
   slotDocuments: { A: [], B: [], C: [] },
   scrollPositions: { viewer: {}, slotA: {}, slotB: {}, slotC: {} },
   viewerFontSize: 15,
-  stageFontSize: 15
+  stageFontSize: 15,
+  panelVisibility: { explorer: true, media: true, viewer: true, stage: true, console: true, slotA: true, slotB: true, slotC: true },
+  layoutPresets: []
 };
 
 export default function App() {
   const [activeProject, setActiveProject] = useState(null); // { path, name }
   const [ready, setReady] = useState(false);
   const [adventuresOpen, setAdventuresOpen] = useState(false);
+  const [firebaseUser, setFirebaseUser] = useState(null);
 
-  // Apply saved theme on mount, then show UI
+  // Apply saved theme on mount + auto-login Firebase
   useEffect(() => {
     initTheme();
     setReady(true);
+    (async () => {
+      let u = await window.electronAPI.firebaseGetUser();
+      if (!u) u = await window.electronAPI.firebaseAutoLogin();
+      if (u) setFirebaseUser(u);
+    })();
   }, []);
 
   const handleProjectOpen = useCallback(async (folderPath, name) => {
@@ -77,6 +85,7 @@ export default function App() {
             onProjectOpen={(path, name) => { setAdventuresOpen(false); handleProjectOpen(path, name); }}
           />
         )}
+        <BroadcastBanner />
         <UpdateToast />
         <GlobalStyles />
       </>
@@ -90,6 +99,8 @@ export default function App() {
         projectPath={activeProject.path}
         projectName={activeProject.name}
         onChangeProject={handleBackToSelector}
+        firebaseUser={firebaseUser}
+        onFirebaseUserChange={setFirebaseUser}
       />
       <UpdateToast />
       <GlobalStyles />
@@ -97,7 +108,7 @@ export default function App() {
   );
 }
 
-function Dashboard({ projectPath, projectName, onChangeProject }) {
+function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, onFirebaseUserChange }) {
   // Project-scoped state — loaded from store, saved on changes
   const [leftWidth, setLeftWidth] = useState(DEFAULT_PROJECT_STATE.leftWidth);
   const [rightWidth, setRightWidth] = useState(DEFAULT_PROJECT_STATE.rightWidth);
@@ -130,6 +141,9 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
   const [infoOpen, setInfoOpen] = useState(false);
   const [adventuresOpen, setAdventuresOpen] = useState(false);
   const [exportStatus, setExportStatus] = useState(null);
+  const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
+  const [panelVisibility, setPanelVisibility] = useState(DEFAULT_PROJECT_STATE.panelVisibility);
+  const [layoutPresets, setLayoutPresets] = useState([]);
   const [referenceOpen, setReferenceOpen] = useState(false);
   const [referenceManuals, setReferenceManuals] = useState([]);
   const [referenceScrollPositions, setReferenceScrollPositions] = useState({});
@@ -162,11 +176,13 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
   const [aiConfig, setAiConfig] = useState({
     provider: '',
     apiKey: '',
+    openaiImageKey: '',
     model: '',
     configured: false,
     telegramAiEnabled: true,
     telegramAiMode: 'manual',
-    commonDocs: []
+    commonDocs: [],
+    effort: 'medium'
   });
   const [aiChatHistory, setAiChatHistory] = useState([]);
 
@@ -244,6 +260,8 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
         setViewerFontSize(saved.viewerFontSize ?? 15);
         setStageFontSize(saved.stageFontSize ?? 15);
         setMediaFilter(saved.mediaFilter ?? 'all');
+        setPanelVisibility(saved.panelVisibility ?? DEFAULT_PROJECT_STATE.panelVisibility);
+        setLayoutPresets(saved.layoutPresets ?? []);
         setAiConfig(saved.aiConfig ?? { provider: '', apiKey: '', model: '', configured: false, telegramAiEnabled: true, telegramAiMode: 'manual' });
         setAiChatHistory(saved.aiChatHistory ?? []);
         // Restore media items (audio paused, re-resolve URLs)
@@ -317,7 +335,9 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
         ...(item.type === 'audio' ? { volume: item.volume, loop: item.loop, rate: item.rate } : {})
       })),
       aiConfig: aiConfig,
-      aiChatHistory: aiChatHistory
+      aiChatHistory: aiChatHistory,
+      panelVisibility: panelVisibility,
+      layoutPresets: layoutPresets
     };
   });
 
@@ -327,7 +347,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
     saveTimer.current = setTimeout(() => {
       window.electronAPI.saveProjectState(projectPath, latestState.current);
     }, 400);
-  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, viewerFontSize, stageFontSize, scrollVersion, aiConfig, aiChatHistory]);
+  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, viewerFontSize, stageFontSize, scrollVersion, aiConfig, aiChatHistory, panelVisibility, layoutPresets]);
 
   // Save immediately on unmount (project switch)
   useEffect(() => {
@@ -562,6 +582,14 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
     setFullscreenPanel(prev => prev === panel ? null : panel);
   }, []);
 
+  const handleApplyPreset = useCallback((preset) => {
+    setPanelVisibility(preset.panels);
+  }, []);
+
+  const handleResetLayout = useCallback(() => {
+    setPanelVisibility({ explorer: true, media: true, viewer: true, stage: true, console: true, slotA: true, slotB: true, slotC: true });
+  }, []);
+
   // Open relations in Viewer (new tab each time)
   const handleOpenRelationsViewer = useCallback((pngName) => {
     const newTab = {
@@ -778,6 +806,35 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
       // AI auto-reply for Telegram
       const ai = aiConfigRef.current;
       if (ai.telegramAiEnabled) {
+        // Comando /imagine o /immagina — genera immagine
+        const isImagineCommand = /^\/(imagine|immagina)\s/.test(data.text);
+        if (isImagineCommand) {
+          const imagePrompt = data.text.replace(/^\/(imagine|immagina)\s+/, '');
+          if (!imagePrompt.trim()) {
+            window.electronAPI.telegramSendMessage(data.chatId, 'Descrivi cosa vuoi generare. Es: /imagine un drago rosso');
+          } else {
+            window.electronAPI.aiGenerateImage(imagePrompt, projectPath).then(result => {
+              if (result.error) {
+                window.electronAPI.telegramSendMessage(data.chatId, `❌ ${result.error}`);
+              } else {
+                window.electronAPI.telegramSendPhoto(data.chatId, result.filePath, imagePrompt);
+                setChatMessages(prev => ({
+                  ...prev,
+                  [data.chatId]: [...(prev[data.chatId] || []), {
+                    id: crypto.randomUUID(),
+                    from: 'gm',
+                    text: `🖼️ Immagine generata: ${imagePrompt}`,
+                    timestamp: new Date().toISOString(),
+                    read: true,
+                    isAi: true
+                  }]
+                }));
+              }
+            }).catch(() => {});
+          }
+          return;
+        }
+
         const isAiCommand = /^\/(ai|ia)\s/.test(data.text);
         const shouldReply = ai.telegramAiMode === 'auto' || isAiCommand;
         if (shouldReply) {
@@ -867,6 +924,14 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
   const handleTelegramFile = useCallback((entry) => {
     setTelegramFileData({ name: entry.name, extension: entry.extension, path: entry.path });
   }, []);
+
+  const handleAiSaveImage = useCallback(async (imageFullPath) => {
+    const destFolder = await window.electronAPI.selectProjectSubfolder(projectPath);
+    if (!destFolder) return null;
+    const result = await window.electronAPI.copyFile(imageFullPath, destFolder);
+    if (result.success) setExplorerRefreshKey(k => k + 1);
+    return result;
+  }, [projectPath]);
 
   // Global text selection context menu
   useEffect(() => {
@@ -1087,14 +1152,21 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
         relationsBase={relationsBase}
         onOpenRelationsViewer={handleOpenRelationsViewer}
         onOpenRelationsStage={handleOpenRelationsStage}
+        firebaseUser={firebaseUser}
+        onFirebaseUserChange={onFirebaseUserChange}
+        panelVisibility={panelVisibility}
+        layoutPresets={layoutPresets}
+        onApplyPreset={handleApplyPreset}
+        onResetLayout={handleResetLayout}
       />
 
       {/* === MAIN CONTENT below menu === */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
       {/* === LEFT COLUMN === */}
-      <div ref={leftColRef} style={{ width: `${leftWidth}px`, display: 'flex', flexDirection: 'column', flexShrink: 0, borderRight: '1px solid var(--border-subtle)' }}>
-        <div style={{ height: `${explorerRatio * 100}%`, overflow: 'hidden' }}>
+      {(panelVisibility.explorer || panelVisibility.media) && (<div ref={leftColRef} style={{ width: `${leftWidth}px`, display: 'flex', flexDirection: 'column', flexShrink: 0, borderRight: '1px solid var(--border-subtle)' }}>
+        {panelVisibility.explorer && (
+        <div style={{ height: panelVisibility.media ? `${explorerRatio * 100}%` : '100%', overflow: 'hidden' }}>
           <Explorer
             projectFolder={projectPath}
             activeFilePath={currentFile?.path}
@@ -1105,9 +1177,12 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
             onExpandedDirsChange={setExpandedDirs}
             onTelegramFile={handleTelegramFile}
             hiddenExtensions={projectSettings.hiddenExtensions}
+            refreshKey={explorerRefreshKey}
           />
         </div>
-        <ResizeHandle direction="horizontal" onResize={handleExplorerResize} />
+        )}
+        {panelVisibility.explorer && panelVisibility.media && <ResizeHandle direction="horizontal" onResize={handleExplorerResize} />}
+        {panelVisibility.media && (
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <MediaPanel
             items={mediaItems}
@@ -1121,17 +1196,18 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
             onTelegramFile={handleTelegramFile}
           />
         </div>
-      </div>
+        )}
+      </div>)}
 
-      <ResizeHandle direction="vertical" onResize={handleLeftResize} />
+      {(panelVisibility.explorer || panelVisibility.media) && <ResizeHandle direction="vertical" onResize={handleLeftResize} />}
 
       {/* === CENTER COLUMN === */}
       <div ref={centerRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         {/* Top row: VIEWER + STAGE side by side */}
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden', borderBottom: '1px solid var(--border-subtle)' }}>
           {/* VIEWER */}
-          <div data-source-name={viewerActiveFile?.name || ''} data-source-path={viewerActiveFile?.path || ''} style={{
-            width: fullscreenPanel === 'stage' ? '0' : fullscreenPanel === 'viewer' ? '100%' : `${viewerStageRatio * 100}%`,
+          {panelVisibility.viewer && (<div data-source-name={viewerActiveFile?.name || ''} data-source-path={viewerActiveFile?.path || ''} style={{
+            width: !panelVisibility.stage || fullscreenPanel === 'viewer' ? '100%' : fullscreenPanel === 'stage' ? '0' : `${viewerStageRatio * 100}%`,
             display: fullscreenPanel === 'stage' ? 'none' : 'flex',
             overflow: 'hidden', flexDirection: 'column'
           }}>
@@ -1160,7 +1236,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
                   onToggleFullscreen={() => handleToggleFullscreen('viewer')}
                   searchOpen={viewerSearchOpen}
                   onSearchToggle={() => setViewerSearchOpen(v => !v)}
-                  isHtmlIframe={viewerActiveFile?.extension === '.html' || viewerActiveFile?.extension === '.htm' || viewerActiveFile?.extension === '.url'}
+                  isHtmlIframe={viewerActiveFile?.extension === '.html' || viewerActiveFile?.extension === '.htm' || viewerActiveFile?.extension === '.url' || viewerActiveFile?.extension === '.pdf'}
                 />
                 {(currentFile || viewerTabs.length > 1) && (
                   <span className="close-btn" onClick={handleClearViewerTabs} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', lineHeight: 1 }} title="Svuota viewer">✕</span>
@@ -1207,7 +1283,7 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
                 })}
               </div>
             )}
-            {viewerSearchOpen && !(viewerActiveFile?.extension === '.html' || viewerActiveFile?.extension === '.htm' || viewerActiveFile?.extension === '.url') && (
+            {viewerSearchOpen && !(viewerActiveFile?.extension === '.html' || viewerActiveFile?.extension === '.htm' || viewerActiveFile?.extension === '.url' || viewerActiveFile?.extension === '.pdf') && (
               <PanelSearch containerRef={mainViewerRef} onClose={() => setViewerSearchOpen(false)} />
             )}
             <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -1230,6 +1306,8 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
                   scrollMapRef={scrollMapRef}
                   onScrollChanged={onScrollChanged}
                   fontSize={viewerFontSize}
+                  searchOpen={viewerSearchOpen && viewerActiveFile?.extension === '.pdf'}
+                  onSearchClose={() => setViewerSearchOpen(false)}
                 />
               ) : (
                 <div style={{
@@ -1242,12 +1320,12 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
                 </div>
               )}
             </div>
-          </div>
+          </div>)}
 
-          {!fullscreenPanel && <ResizeHandle direction="vertical" onResize={handleViewerStageResize} />}
+          {panelVisibility.viewer && panelVisibility.stage && !fullscreenPanel && <ResizeHandle direction="vertical" onResize={handleViewerStageResize} />}
 
           {/* STAGE */}
-          <div data-source-name={stageActiveItem?.name || ''} data-source-path={stageActiveItem?.path || ''} style={{
+          {panelVisibility.stage && (<div data-source-name={stageActiveItem?.name || ''} data-source-path={stageActiveItem?.path || ''} style={{
             flex: 1, overflow: 'hidden',
             borderLeft: fullscreenPanel ? 'none' : '1px solid var(--border-subtle)',
             display: fullscreenPanel === 'viewer' ? 'none' : undefined
@@ -1275,33 +1353,41 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
               isFullscreen={fullscreenPanel === 'stage'}
               onToggleFullscreen={() => handleToggleFullscreen('stage')}
             />
-          </div>
+          </div>)}
         </div>
 
-        <ResizeHandle direction="horizontal" onResize={handleConsoleResize} />
+        {panelVisibility.console && <ResizeHandle direction="horizontal" onResize={handleConsoleResize} />}
 
         {/* CONSOLE — full width */}
+        {panelVisibility.console && (
         <div style={{ height: `${consoleHeight}px`, overflow: 'hidden', flexShrink: 0 }}>
-          <Console projectFolder={projectPath} onOpenFile={handleFileOpen} onSearchNavigate={handleSearchNavigate} externalQuery={externalSearchQuery} telegramLog={telegramLog} onClearLog={() => setTelegramLog([])} aiConfig={aiConfig} aiChatHistory={aiChatHistory} onAiChatHistoryChange={setAiChatHistory} />
+          <Console projectFolder={projectPath} onOpenFile={handleFileOpen} onSearchNavigate={handleSearchNavigate} externalQuery={externalSearchQuery} telegramLog={telegramLog} onClearLog={() => setTelegramLog([])} aiConfig={aiConfig} aiChatHistory={aiChatHistory} onAiChatHistoryChange={setAiChatHistory} firebaseUser={firebaseUser} onTelegramText={(text) => setTelegramTextData(text)} onTelegramFile={handleTelegramFile} onSaveImage={handleAiSaveImage} botRunning={botStatus.running} />
         </div>
+        )}
       </div>
 
-      <ResizeHandle direction="vertical" onResize={handleRightResize} />
+      {(panelVisibility.slotA || panelVisibility.slotB || panelVisibility.slotC) && <ResizeHandle direction="vertical" onResize={handleRightResize} />}
 
       {/* === RIGHT COLUMN === */}
-      <div style={{ width: `${rightWidth}px`, display: 'flex', flexDirection: 'column', flexShrink: 0, borderLeft: '1px solid var(--border-subtle)' }}>
-        <div style={{ height: `${(slotRatios[0] || 0.333) * 100}%`, overflow: 'hidden' }}>
+      {(panelVisibility.slotA || panelVisibility.slotB || panelVisibility.slotC) && (<div style={{ width: `${rightWidth}px`, display: 'flex', flexDirection: 'column', flexShrink: 0, borderLeft: '1px solid var(--border-subtle)' }}>
+        {panelVisibility.slotA && (
+        <div style={{ flex: 1, overflow: 'hidden' }}>
           <SlotPanel label="A" files={slotFiles.A} isActive={activeStageSlot === 'A'} activeFileIndex={slotSelectedIndices.A} onClear={() => handleSlotClear('A')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onOpenSnippetSource={handleOpenSnippetSource} onTelegramFile={handleTelegramFile} />
         </div>
-        <ResizeHandle direction="horizontal" onResize={(d) => handleSlotResize(0, d)} />
-        <div style={{ height: `${(slotRatios[1] || 0.333) * 100}%`, overflow: 'hidden' }}>
+        )}
+        {panelVisibility.slotA && panelVisibility.slotB && <ResizeHandle direction="horizontal" onResize={(d) => handleSlotResize(0, d)} />}
+        {panelVisibility.slotB && (
+        <div style={{ flex: 1, overflow: 'hidden' }}>
           <SlotPanel label="B" files={slotFiles.B} isActive={activeStageSlot === 'B'} activeFileIndex={slotSelectedIndices.B} onClear={() => handleSlotClear('B')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onOpenSnippetSource={handleOpenSnippetSource} onTelegramFile={handleTelegramFile} />
         </div>
-        <ResizeHandle direction="horizontal" onResize={(d) => handleSlotResize(1, d)} />
+        )}
+        {(panelVisibility.slotA || panelVisibility.slotB) && panelVisibility.slotC && <ResizeHandle direction="horizontal" onResize={(d) => handleSlotResize(1, d)} />}
+        {panelVisibility.slotC && (
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <SlotPanel label="C" files={slotFiles.C} isActive={activeStageSlot === 'C'} activeFileIndex={slotSelectedIndices.C} onClear={() => handleSlotClear('C')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onOpenSnippetSource={handleOpenSnippetSource} onTelegramFile={handleTelegramFile} />
         </div>
-      </div>
+        )}
+      </div>)}
 
       </div>{/* end MAIN CONTENT */}
 
@@ -1356,6 +1442,10 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           aiConfig={aiConfig}
           onAiConfigChange={setAiConfig}
           onClearAiHistory={() => setAiChatHistory([])}
+          panelVisibility={panelVisibility}
+          onPanelVisibilityChange={setPanelVisibility}
+          layoutPresets={layoutPresets}
+          onLayoutPresetsChange={setLayoutPresets}
         />
       )}
 
@@ -1421,6 +1511,8 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
           onProjectOpen={(path, name) => { setAdventuresOpen(false); /* already in project */ }}
           projectPath={projectPath}
           projectSettings={projectSettings}
+          firebaseUser={firebaseUser}
+          onFirebaseUserChange={onFirebaseUserChange}
         />
       )}
 
@@ -1633,6 +1725,82 @@ function Dashboard({ projectPath, projectName, onChangeProject }) {
   );
 }
 
+function BroadcastBanner() {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    if (!window.electronAPI?.fetchBroadcast) return;
+    let cancelled = false;
+    const tryFetch = (delay) => {
+      setTimeout(() => {
+        if (cancelled) return;
+        window.electronAPI.fetchBroadcast().then(d => {
+          if (cancelled) return;
+          if (d && !d.dismissed) setData(d);
+          else if (!d && delay < 5000) tryFetch(delay + 2000);
+        });
+      }, delay);
+    };
+    tryFetch(1000);
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!data) return null;
+
+  const accentColors = {
+    info: 'var(--color-info)',
+    warning: 'var(--color-warning)',
+    error: 'var(--color-danger)'
+  };
+  const accentColor = accentColors[data.type] || accentColors.info;
+
+  const handleDismiss = () => {
+    if (!data.persistent) {
+      window.electronAPI.dismissBroadcast(data.id);
+    }
+    setData(null);
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9998,
+      background: 'var(--bg-panel)', color: 'var(--text-primary)',
+      borderBottom: `3px solid ${accentColor}`,
+      padding: '12px 16px', display: 'flex', alignItems: 'center',
+      gap: '12px', fontSize: '14px', fontWeight: 500,
+      animation: 'slideDown 0.4s ease-out',
+      boxShadow: '0 2px 12px rgba(0,0,0,0.5)'
+    }}>
+      <div style={{ flex: 1 }}>
+        {data.title && <strong style={{ marginRight: '8px', color: accentColor }}>{data.title}</strong>}
+        <span>{data.message}</span>
+        {data.linkUrl && (
+          <button
+            onClick={() => window.electronAPI.openExternal(data.linkUrl)}
+            style={{
+              marginLeft: '10px', background: 'var(--bg-elevated)',
+              border: `1px solid ${accentColor}`, borderRadius: '4px',
+              padding: '3px 12px', color: accentColor, fontSize: '12px',
+              cursor: 'pointer', fontWeight: 'bold'
+            }}
+          >
+            {data.linkLabel || data.linkUrl}
+          </button>
+        )}
+      </div>
+      <button
+        onClick={handleDismiss}
+        className="close-btn"
+        style={{
+          background: 'none', border: 'none', color: 'var(--text-secondary)',
+          fontSize: '18px', cursor: 'pointer', padding: '0 4px',
+          opacity: 0.8, lineHeight: 1
+        }}
+      >✕</button>
+    </div>
+  );
+}
+
 function UpdateToast() {
   const [updateReady, setUpdateReady] = useState(null);
   const [downloading, setDownloading] = useState(null); // { version, percent }
@@ -1745,6 +1913,7 @@ function GlobalStyles() {
   return (
     <style>{`
       @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+      @keyframes slideDown { from { transform: translateY(-100%); } to { transform: translateY(0); } }
       ::-webkit-scrollbar { width: 6px; height: 6px; }
       ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
       ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
@@ -1891,6 +2060,24 @@ function GlobalStyles() {
       .close-btn:hover {
         color: var(--color-danger);
         background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+      }
+      /* PDF Viewer theming */
+      .pdfViewer .page {
+        margin: 0 auto 12px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+      }
+      .pdfViewer .textLayer span::selection {
+        background: var(--accent-a30);
+      }
+      .pdfViewer .textLayer span[data-kw-hl] {
+        background-color: var(--kw-bg);
+        border-radius: 2px;
+      }
+      .pdfViewer .textLayer .highlight {
+        background: var(--accent-a30) !important;
+      }
+      .pdfViewer .textLayer .highlight.selected {
+        background: var(--accent-a55) !important;
       }
     `}</style>
   );

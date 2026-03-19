@@ -16,6 +16,16 @@ function logDiag(type, msg) {
   if (diagLog.length > 200) diagLog.shift();
 }
 
+function compareSemver(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) < (pb[i] || 0)) return -1;
+    if ((pa[i] || 0) > (pb[i] || 0)) return 1;
+  }
+  return 0;
+}
+
 // Catch uncaught errors
 process.on('uncaughtException', (err) => {
   logDiag('crash', `Uncaught exception: ${err.message}`);
@@ -40,7 +50,7 @@ const store = new Store({
 
 const globalStore = new Store({
   name: 'global-settings',
-  defaults: { firebaseCredentials: null, downloadQuota: { date: '', bytesUsed: 0 } }
+  defaults: { firebaseCredentials: null, downloadQuota: { date: '', bytesUsed: 0 }, dismissedBroadcastId: '' }
 });
 
 // ── Download quota (100 MB/giorno) ──
@@ -66,6 +76,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: bounds.width,
     height: bounds.height,
+    x: bounds.x,
+    y: bounds.y,
     minWidth: 900,
     minHeight: 600,
     frame: false,
@@ -87,10 +99,13 @@ function createWindow() {
     }
   });
 
-  mainWindow.on('resize', () => {
-    const [width, height] = mainWindow.getSize();
-    store.set('windowBounds', { width, height });
-  });
+  const saveBounds = () => {
+    if (mainWindow.isMaximized() || mainWindow.isMinimized()) return;
+    const { x, y, width, height } = mainWindow.getBounds();
+    store.set('windowBounds', { x, y, width, height });
+  };
+  mainWindow.on('resize', saveBounds);
+  mainWindow.on('move', saveBounds);
 
   mainWindow.webContents.on('render-process-gone', (_, details) => {
     logDiag('crash', `Renderer crashed: ${details.reason} (code ${details.exitCode})`);
@@ -273,6 +288,14 @@ ipcMain.handle('read-file', async (event, filePath) => {
   }
 });
 
+ipcMain.handle('read-file-binary', async (event, filePath) => {
+  try { return fs.readFileSync(filePath); }
+  catch (err) {
+    logDiag('error', `read-file-binary fallito: ${filePath} — ${err.message}`);
+    return null;
+  }
+});
+
 ipcMain.handle('get-file-url', async (event, filePath) => {
   const normalizedPath = filePath.replace(/\\/g, '/');
   return `file:///${normalizedPath}`;
@@ -372,6 +395,33 @@ ipcMain.handle('select-project-file', async (event, projectPath, customFilters) 
   if (result.canceled || result.filePaths.length === 0) return null;
   const filePath = result.filePaths[0];
   return path.relative(projectPath, filePath).replace(/\\/g, '/');
+});
+
+// Copy file to destination folder
+ipcMain.handle('copy-file', async (event, sourcePath, destFolder) => {
+  try {
+    const fileName = path.basename(sourcePath);
+    const destPath = path.join(destFolder, fileName);
+    if (!fs.existsSync(destFolder)) fs.mkdirSync(destFolder, { recursive: true });
+    fs.copyFileSync(sourcePath, destPath);
+    return { success: true, destPath: destPath.replace(/\\/g, '/') };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+// Folder picker scoped to project
+ipcMain.handle('select-project-subfolder', async (event, projectPath) => {
+  const normalizedDefault = path.resolve(projectPath);
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Scegli cartella di destinazione',
+    defaultPath: normalizedDefault,
+    properties: ['openDirectory']
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  const selected = path.resolve(result.filePaths[0]);
+  if (!selected.startsWith(path.resolve(projectPath))) return null;
+  return selected.replace(/\\/g, '/');
 });
 
 // Window controls
@@ -591,7 +641,11 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
       if (!user) return { error: 'Effettua il login per usare la quota gratuita AI' };
 
       const config = await firebase.fetchAiConfig();
-      if (!config || config.error) return { error: 'Configurazione AI non disponibile' };
+      if (!config || config.error) {
+        const detail = config?.error || 'documento config/ai non trovato in Firestore';
+        logDiag('error', `AI config non disponibile: ${detail}`);
+        return { error: `Configurazione AI non disponibile (${detail})` };
+      }
 
       const usage = await firebase.getAiUsage(user.uid);
       const allowance = usage.customAllowance || config.tokenAllowance || 1000000;
@@ -670,6 +724,121 @@ ipcMain.handle('ai-get-quota', async () => {
   }
 });
 
+// === AI Image Generation ===
+ipcMain.handle('ai-generate-image', async (event, prompt, projectPath, options = {}) => {
+  logDiag('info', `AI genera immagine: "${prompt.substring(0, 50)}..."`);
+  try {
+    const states = store.get('projectStates');
+    const projectState = states[projectPath];
+    const aiConfig = projectState?.aiConfig;
+
+    // Cascata key OpenAI per immagini
+    let apiKey = null;
+    let usingOwnerKey = false;
+
+    if (aiConfig?.provider === 'openai' && aiConfig?.apiKey) {
+      apiKey = aiConfig.apiKey;
+    } else if (aiConfig?.openaiImageKey) {
+      apiKey = aiConfig.openaiImageKey;
+    } else {
+      // Fallback: owner key da Firebase
+      const user = firebase.getCurrentUser();
+      if (!user) return { error: 'Per generare immagini serve una chiave OpenAI o il login' };
+
+      const config = await firebase.fetchAiConfig();
+      if (!config || config.error) return { error: 'Configurazione AI non disponibile' };
+      if (!config.ownerKeyOpenai) return { error: 'Chiave immagini non configurata' };
+
+      // Controlla quota
+      const usage = await firebase.getAiUsage(user.uid);
+      const allowance = usage.customAllowance || config.tokenAllowance || 1000000;
+      const tokensPerImage = config.tokensPerImage || 100000;
+      if (usage.tokensUsed + tokensPerImage > allowance) {
+        return { error: 'Quota insufficiente per generare un\'immagine' };
+      }
+
+      apiKey = config.ownerKeyOpenai;
+      usingOwnerKey = true;
+    }
+
+    if (!apiKey) return { error: 'Nessuna chiave OpenAI disponibile' };
+
+    // Genera
+    const result = await aiApi.generateImage(apiKey, prompt, options);
+    if (result.error) return result;
+
+    // Salva file nel progetto
+    const dir = path.join(projectPath, '_generated');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const timestamp = Date.now();
+    const fileName = `ai-${timestamp}.png`;
+    const filePath = path.join(dir, fileName);
+
+    if (result.b64) {
+      aiApi.saveBase64Image(result.b64, filePath);
+    } else if (result.url) {
+      // Download da URL (fallback per modelli che restituiscono URL)
+      const urlData = await new Promise((resolve, reject) => {
+        const https = require('https');
+        https.get(result.url, (res) => {
+          const chunks = [];
+          res.on('data', c => chunks.push(c));
+          res.on('end', () => resolve(Buffer.concat(chunks)));
+          res.on('error', reject);
+        }).on('error', reject);
+      });
+      fs.writeFileSync(filePath, urlData);
+    }
+
+    // Incrementa quota se owner key
+    if (usingOwnerKey) {
+      const config = await firebase.fetchAiConfig();
+      const tokensPerImage = config?.tokensPerImage || 100000;
+      const user = firebase.getCurrentUser();
+      await firebase.incrementAiUsage(user.uid, tokensPerImage);
+
+      const updatedUsage = await firebase.getAiUsage(user.uid);
+      const allowance = updatedUsage.customAllowance || config?.tokenAllowance || 1000000;
+      result.quota = {
+        tokensUsed: updatedUsage.tokensUsed,
+        tokenAllowance: allowance,
+        remaining: Math.max(0, allowance - updatedUsage.tokensUsed)
+      };
+    }
+
+    return {
+      filePath,
+      fileName,
+      relativePath: `_generated/${fileName}`,
+      quota: result.quota || null
+    };
+  } catch (err) {
+    logDiag('error', `AI genera immagine fallita: ${err.message}`);
+    return { error: err.message };
+  }
+});
+
+// === Broadcast ===
+ipcMain.handle('fetch-broadcast', async () => {
+  try {
+    const data = await firebase.fetchBroadcast();
+    if (!data || !data.active) return null;
+    const appVersion = app.getVersion();
+    if (data.minVersion && compareSemver(appVersion, data.minVersion) < 0) return null;
+    if (data.maxVersion && compareSemver(appVersion, data.maxVersion) > 0) return null;
+    const dismissedId = globalStore.get('dismissedBroadcastId', '');
+    const dismissed = !data.persistent && dismissedId === data.id;
+    return { ...data, dismissed };
+  } catch (err) {
+    logDiag('error', `Broadcast fetch fallito: ${err.message}`);
+    return null;
+  }
+});
+
+ipcMain.handle('dismiss-broadcast', (_, messageId) => {
+  globalStore.set('dismissedBroadcastId', messageId);
+});
+
 // === Firebase Auth ===
 ipcMain.handle('firebase-register', async (_, email, password, displayName) => {
   logDiag('info', `Firebase registrazione: ${email}`);
@@ -707,6 +876,11 @@ ipcMain.handle('firebase-get-user', async () => {
 
 ipcMain.handle('firebase-auto-login', async () => {
   return await firebase.tryAutoLogin();
+});
+
+ipcMain.handle('firebase-reset-password', async (_, email) => {
+  logDiag('info', `Firebase reset password: ${email}`);
+  return await firebase.resetPassword(email);
 });
 
 ipcMain.handle('firebase-update-visibility', async (_, adventureId, visibility) => {
