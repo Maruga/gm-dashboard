@@ -37,10 +37,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportDiagnostics: () => ipcRenderer.invoke('export-diagnostics'),
 
   // Auto-update
-  onUpdateAvailable: (callback) => ipcRenderer.on('update-available', (_, data) => callback(data)),
-  onUpdateProgress: (callback) => ipcRenderer.on('update-progress', (_, data) => callback(data)),
-  onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', (_, data) => callback(data)),
-  onUpdateError: (callback) => ipcRenderer.on('update-error', (_, data) => callback(data)),
+  onUpdateAvailable: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('update-available', h); return () => ipcRenderer.removeListener('update-available', h); },
+  onUpdateProgress: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('update-progress', h); return () => ipcRenderer.removeListener('update-progress', h); },
+  onUpdateDownloaded: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('update-downloaded', h); return () => ipcRenderer.removeListener('update-downloaded', h); },
+  onUpdateError: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('update-error', h); return () => ipcRenderer.removeListener('update-error', h); },
   installUpdate: () => ipcRenderer.invoke('install-update'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
 
@@ -55,14 +55,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   telegramSendHtmlAsPhoto: (chatId, htmlFilePath, caption) => ipcRenderer.invoke('telegram-send-html-as-photo', chatId, htmlFilePath, caption),
   telegramGetBotInfo: () => ipcRenderer.invoke('telegram-get-bot-info'),
   telegramSendReply: (chatId, text) => ipcRenderer.invoke('telegram-send-reply', chatId, text),
-  onTelegramPlayerJoined: (callback) => ipcRenderer.on('telegram-player-joined', (_, data) => callback(data)),
-  onTelegramPlayerLeft: (callback) => ipcRenderer.on('telegram-player-left', (_, data) => callback(data)),
-  onTelegramMessageReceived: (callback) => ipcRenderer.on('telegram-message-received', (_, data) => callback(data)),
-  removeTelegramListeners: () => {
-    ipcRenderer.removeAllListeners('telegram-player-joined');
-    ipcRenderer.removeAllListeners('telegram-player-left');
-    ipcRenderer.removeAllListeners('telegram-message-received');
-  },
+  onTelegramPlayerJoined: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('telegram-player-joined', h); return () => ipcRenderer.removeListener('telegram-player-joined', h); },
+  onTelegramPlayerLeft: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('telegram-player-left', h); return () => ipcRenderer.removeListener('telegram-player-left', h); },
+  onTelegramMessageReceived: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('telegram-message-received', h); return () => ipcRenderer.removeListener('telegram-message-received', h); },
 
   // Broadcast
   fetchBroadcast: () => ipcRenderer.invoke('fetch-broadcast'),
@@ -92,8 +87,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   adventureGetDownloadQuota: () => ipcRenderer.invoke('adventure-get-download-quota'),
   adventurePublish: (zipPath, metadata) => ipcRenderer.invoke('adventure-publish', zipPath, metadata),
   adventureUnpublish: (adventureId) => ipcRenderer.invoke('adventure-unpublish', adventureId),
-  onAdventureProgress: (callback) => ipcRenderer.on('adventure-progress', (_, data) => callback(data)),
-  removeAdventureListeners: () => {
-    ipcRenderer.removeAllListeners('adventure-progress');
-  }
+  onAdventureProgress: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('adventure-progress', h); return () => ipcRenderer.removeListener('adventure-progress', h); }
 });

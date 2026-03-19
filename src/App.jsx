@@ -757,7 +757,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
 
   // Listen for bot events
   useEffect(() => {
-    window.electronAPI.onTelegramPlayerJoined((data) => {
+    const unsubJoined = window.electronAPI.onTelegramPlayerJoined((data) => {
       setPlayers(prev => prev.map(p => {
         if (p.id !== data.playerId) return p;
         const update = { ...p, telegramChatId: data.chatId };
@@ -765,10 +765,10 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         return update;
       }));
     });
-    window.electronAPI.onTelegramPlayerLeft((data) => {
+    const unsubLeft = window.electronAPI.onTelegramPlayerLeft((data) => {
       setPlayers(prev => prev.map(p => p.id === data.playerId ? { ...p, telegramChatId: '' } : p));
     });
-    window.electronAPI.onTelegramMessageReceived((data) => {
+    const unsubMsg = window.electronAPI.onTelegramMessageReceived((data) => {
       const msg = {
         id: crypto.randomUUID(),
         from: 'player',
@@ -873,7 +873,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         }
       }
     });
-    return () => window.electronAPI.removeTelegramListeners();
+    return () => { unsubJoined(); unsubLeft(); unsubMsg(); };
   }, []);
 
   // Keep refs in sync for the message listener
@@ -1818,17 +1818,18 @@ function UpdateToast() {
 
   useEffect(() => {
     if (!window.electronAPI) return;
-    window.electronAPI.onUpdateAvailable?.((data) => {
+    const unsub1 = window.electronAPI.onUpdateAvailable?.((data) => {
       setDownloading({ version: data.version, percent: 0 });
     });
-    window.electronAPI.onUpdateProgress?.((data) => {
+    const unsub2 = window.electronAPI.onUpdateProgress?.((data) => {
       setDownloading(prev => prev ? { ...prev, percent: data.percent } : null);
     });
-    window.electronAPI.onUpdateDownloaded?.((data) => {
+    const unsub3 = window.electronAPI.onUpdateDownloaded?.((data) => {
       setDownloading(null);
       setUpdateReady(data.version);
       setDismissed(false);
     });
+    return () => { unsub1?.(); unsub2?.(); unsub3?.(); };
   }, []);
 
   // Show download progress bar

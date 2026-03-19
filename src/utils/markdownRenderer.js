@@ -1,4 +1,5 @@
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 marked.setOptions({
   breaks: true,
@@ -6,5 +7,5 @@ marked.setOptions({
 });
 
 export function renderMarkdown(content) {
-  return marked.parse(content);
+  return DOMPurify.sanitize(marked.parse(content));
 }

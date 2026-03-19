@@ -100,8 +100,8 @@ function DownloadTab({ onProjectOpen, onClose }) {
 
   useEffect(() => {
     const handler = (data) => setProgress(data);
-    window.electronAPI.onAdventureProgress?.(handler);
-    return () => window.electronAPI.removeAdventureListeners?.();
+    const unsub = window.electronAPI.onAdventureProgress?.(handler);
+    return () => unsub?.();
   }, []);
 
   const handleDownload = async (adventure) => {
@@ -653,8 +653,8 @@ function PublishWizard({ projectPath, projectSettings, user, onClose, onPublishe
 
   useEffect(() => {
     const handler = (data) => setProgress(data);
-    window.electronAPI.onAdventureProgress?.(handler);
-    return () => window.electronAPI.removeAdventureListeners?.();
+    const unsub = window.electronAPI.onAdventureProgress?.(handler);
+    return () => unsub?.();
   }, []);
 
   const handleExport = async () => {
