@@ -172,6 +172,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   const [stageFontSize, setStageFontSize] = useState(15);
   const [fullscreenPanel, setFullscreenPanel] = useState(null);
   const [viewerSearchOpen, setViewerSearchOpen] = useState(false);
+  const [viewerPdfOutline, setViewerPdfOutline] = useState(null);
   const [stateLoaded, setStateLoaded] = useState(false);
   const [aiConfig, setAiConfig] = useState({
     provider: '',
@@ -1236,12 +1237,12 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
                   onToggleFullscreen={() => handleToggleFullscreen('viewer')}
                   searchOpen={viewerSearchOpen}
                   onSearchToggle={() => setViewerSearchOpen(v => !v)}
-                  isHtmlIframe={viewerActiveFile?.extension === '.html' || viewerActiveFile?.extension === '.htm' || viewerActiveFile?.extension === '.url' || viewerActiveFile?.extension === '.pdf'}
+                  isHtmlIframe={viewerActiveFile?.extension === '.html' || viewerActiveFile?.extension === '.htm' || viewerActiveFile?.extension === '.url'}
                 />
                 {(currentFile || viewerTabs.length > 1) && (
                   <span className="close-btn" onClick={handleClearViewerTabs} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', lineHeight: 1 }} title="Svuota viewer">✕</span>
                 )}
-                <DocToc containerRef={mainViewerRef} pinned={docTocPinned.viewer} onPinnedChange={v => setDocTocPinned(p => ({ ...p, viewer: v }))} contentKey={currentFile?.path || ''} />
+                <DocToc containerRef={mainViewerRef} pinned={docTocPinned.viewer} onPinnedChange={v => setDocTocPinned(p => ({ ...p, viewer: v }))} contentKey={currentFile?.path || ''} pdfOutline={viewerActiveFile?.extension === '.pdf' ? viewerPdfOutline : null} />
               </div>
             </div>
             {/* Viewer tab bar — hidden if only Document tab */}
@@ -1308,6 +1309,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
                   fontSize={viewerFontSize}
                   searchOpen={viewerSearchOpen && viewerActiveFile?.extension === '.pdf'}
                   onSearchClose={() => setViewerSearchOpen(false)}
+                  onPdfOutlineReady={setViewerPdfOutline}
                 />
               ) : (
                 <div style={{
@@ -2060,24 +2062,6 @@ function GlobalStyles() {
       .close-btn:hover {
         color: var(--color-danger);
         background: color-mix(in srgb, var(--color-danger) 10%, transparent);
-      }
-      /* PDF Viewer theming */
-      .pdfViewer .page {
-        margin: 0 auto 12px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.18);
-      }
-      .pdfViewer .textLayer span::selection {
-        background: var(--accent-a30);
-      }
-      .pdfViewer .textLayer span[data-kw-hl] {
-        background-color: var(--kw-bg);
-        border-radius: 2px;
-      }
-      .pdfViewer .textLayer .highlight {
-        background: var(--accent-a30) !important;
-      }
-      .pdfViewer .textLayer .highlight.selected {
-        background: var(--accent-a55) !important;
       }
     `}</style>
   );

@@ -35,6 +35,7 @@ export default function Stage({
   const viewerRef = useRef(null);
   const snippetRef = useRef(null);
   const [stageSearchOpen, setStageSearchOpen] = useState(false);
+  const [stagePdfOutline, setStagePdfOutline] = useState(null);
 
   const isCalTab = activeTab === 'Cal';
   const isVistaTab = activeTab === 'Vista';
@@ -83,7 +84,7 @@ export default function Stage({
             <span className="close-btn" onClick={onClearAll} style={{ fontSize: '12px' }} title="Svuota stage">✕</span>
           )}
           {!isSnippet && !isVistaTab && (
-            <DocToc key={activeItem?.path || activeItem?.id || 'empty'} containerRef={viewerRef} pinned={tocPinned} onPinnedChange={onTocPinnedChange} />
+            <DocToc key={activeItem?.path || activeItem?.id || 'empty'} containerRef={viewerRef} pinned={tocPinned} onPinnedChange={onTocPinnedChange} pdfOutline={activeItem?.extension === '.pdf' ? stagePdfOutline : null} />
           )}
         </div>
       </div>
@@ -129,7 +130,7 @@ export default function Stage({
       </div>
 
       {/* Panel search */}
-      {stageSearchOpen && !(activeItem?.extension === '.html' || activeItem?.extension === '.htm' || activeItem?.extension === '.url') && !isVistaTab && (
+      {stageSearchOpen && !(activeItem?.extension === '.html' || activeItem?.extension === '.htm' || activeItem?.extension === '.url' || activeItem?.extension === '.pdf') && !isVistaTab && (
         <PanelSearch containerRef={isSnippet ? snippetRef : viewerRef} onClose={() => setStageSearchOpen(false)} />
       )}
 
@@ -170,6 +171,9 @@ export default function Stage({
             scrollMapRef={scrollMapRef}
             onScrollChanged={onScrollChanged}
             fontSize={fontSize}
+            searchOpen={stageSearchOpen && activeItem?.extension === '.pdf'}
+            onSearchClose={() => setStageSearchOpen(false)}
+            onPdfOutlineReady={setStagePdfOutline}
           />
         ) : (
           <div style={{

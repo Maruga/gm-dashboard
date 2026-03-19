@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 
-export default function DocToc({ containerRef, pinned: externalPinned, onPinnedChange, contentKey }) {
+export default function DocToc({ containerRef, pinned: externalPinned, onPinnedChange, contentKey, pdfOutline }) {
   const [headings, setHeadings] = useState([]);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [open, setOpen] = useState(false);
@@ -20,8 +20,29 @@ export default function DocToc({ containerRef, pinned: externalPinned, onPinnedC
     if (pinned) setOpen(true);
   }, [pinned]);
 
-  // Extract headings from container via MutationObserver
+  // Extract headings from container via MutationObserver, or use PDF outline
   useEffect(() => {
+    // PDF outline mode
+    if (pdfOutline && pdfOutline.length > 0) {
+      const minLevel = Math.min(...pdfOutline.map(h => h.level));
+      const items = pdfOutline.map((h, i) => ({
+        id: i,
+        level: h.level === minLevel ? 1 : 2,
+        text: h.title,
+        page: h.page,
+        element: null
+      }));
+      setHeadings(items);
+      return;
+    }
+
+    // If pdfOutline is explicitly provided but empty, show nothing
+    if (pdfOutline !== undefined && pdfOutline !== null) {
+      setHeadings([]);
+      return;
+    }
+
+    // DOM heading mode
     const container = containerRef?.current;
     if (!container) { setHeadings([]); return; }
 
@@ -51,25 +72,51 @@ export default function DocToc({ containerRef, pinned: externalPinned, onPinnedC
     const observer = new MutationObserver(extract);
     observer.observe(container, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [containerRef, contentKey]);
+  }, [containerRef, contentKey, pdfOutline]);
 
   // Track active heading via scroll position
   useEffect(() => {
     const container = containerRef?.current;
     if (!container || headings.length === 0) return;
 
+    const isPdfMode = headings[0]?.page != null;
+
     const onScroll = () => {
-      const containerTop = container.getBoundingClientRect().top;
-      let active = -1;
-      for (let i = 0; i < headings.length; i++) {
-        const rect = headings[i].element.getBoundingClientRect();
-        if (rect.top - containerTop <= 40) {
-          active = i;
-        } else {
-          break;
+      if (isPdfMode) {
+        // PDF mode: find which page is most visible, then match to closest heading
+        const wrappers = container.querySelectorAll('[data-page-num]');
+        const containerMid = container.scrollTop + container.clientHeight / 2;
+        let currentPage = 1;
+        let closestDist = Infinity;
+        wrappers.forEach(el => {
+          const mid = el.offsetTop + el.offsetHeight / 2;
+          const dist = Math.abs(mid - containerMid);
+          if (dist < closestDist) {
+            closestDist = dist;
+            currentPage = parseInt(el.dataset.pageNum, 10) || 1;
+          }
+        });
+        let active = -1;
+        for (let i = 0; i < headings.length; i++) {
+          if (headings[i].page <= currentPage) active = i;
+          else break;
         }
+        setActiveIndex(active);
+      } else {
+        // DOM heading mode
+        const containerTop = container.getBoundingClientRect().top;
+        let active = -1;
+        for (let i = 0; i < headings.length; i++) {
+          if (!headings[i].element) continue;
+          const rect = headings[i].element.getBoundingClientRect();
+          if (rect.top - containerTop <= 40) {
+            active = i;
+          } else {
+            break;
+          }
+        }
+        setActiveIndex(active);
       }
-      setActiveIndex(active);
     };
 
     container.addEventListener('scroll', onScroll, { passive: true });
@@ -120,8 +167,14 @@ export default function DocToc({ containerRef, pinned: externalPinned, onPinnedC
   }, [pinned]);
 
   const handleHeadingClick = useCallback((heading) => {
-    heading.element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
+    if (heading.page && containerRef?.current) {
+      // PDF mode: scroll to page element
+      const pageEl = containerRef.current.querySelector(`[data-page-num="${heading.page}"]`);
+      if (pageEl) pageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (heading.element) {
+      heading.element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [containerRef]);
 
   const hasHeadings = headings.length > 0;
 

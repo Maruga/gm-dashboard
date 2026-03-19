@@ -21,9 +21,7 @@ GENKAI GM Dashboard è un'applicazione desktop pensata per i Game Master di gioc
 
 ## Download
 
-Scarica l'ultima versione per Windows:
-
-**[GENKAI GM Dashboard v1.2.0](https://github.com/Maruga/gm-dashboard/releases/latest)**
+**[Scarica l'ultima versione per Windows](https://github.com/Maruga/gm-dashboard/releases/latest)**
 
 ### Requisiti
 

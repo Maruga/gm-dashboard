@@ -79,7 +79,7 @@ function highlightHtml(html, query, targetOffset) {
 
 const Viewer = forwardRef(function Viewer({
   currentFile, scrollKeyPrefix, searchHighlight, highlightKeywords, onImageClick, onVideoClick,
-  scrollMapRef, onScrollChanged, fontSize, searchOpen, onSearchClose
+  scrollMapRef, onScrollChanged, fontSize, searchOpen, onSearchClose, onPdfOutlineReady
 }, ref) {
   const [renderedHtml, setRenderedHtml] = useState('');
   const [isHtmlFile, setIsHtmlFile] = useState(false);
@@ -401,6 +401,7 @@ const Viewer = forwardRef(function Viewer({
         scrollKeyPrefix={scrollKeyPrefix}
         searchOpen={searchOpen}
         onSearchClose={onSearchClose}
+        onOutlineReady={onPdfOutlineReady}
       />
     );
   }

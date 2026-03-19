@@ -115,7 +115,7 @@ function DicePanel() {
 }
 
 // ─── Search Panel (main Console content) ───
-export default function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, telegramLog = [], onClearLog, aiConfig, aiChatHistory = [], onAiChatHistoryChange }) {
+export default function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, telegramLog = [], onClearLog, aiConfig, aiChatHistory = [], onAiChatHistoryChange, firebaseUser, onTelegramText, onTelegramFile, onSaveImage, botRunning }) {
   const [activeTab, setActiveTab] = useState('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
@@ -128,6 +128,9 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiQuota, setAiQuota] = useState(null);
+  const [imageMode, setImageMode] = useState(false);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [saveStatus, setSaveStatus] = useState({});
   const aiEndRef = useRef(null);
   const aiInputRef = useRef(null);
 
@@ -261,11 +264,55 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
     if (activeTab === 'ai' && aiEndRef.current) {
       aiEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [aiChatHistory, aiLoading, activeTab]);
+  }, [aiChatHistory, aiLoading, imageLoading, activeTab]);
+
+  // Fetch quota on first AI tab open
+  useEffect(() => {
+    if (activeTab === 'ai' && !aiQuota && !aiConfig?.apiKey && firebaseUser) {
+      window.electronAPI.aiGetQuota().then(q => { if (q && !q.error) setAiQuota(q); });
+    }
+  }, [activeTab, aiQuota, aiConfig?.apiKey, firebaseUser]);
+
+  const canGenerateImage = !!(
+    (aiConfig?.provider === 'openai' && aiConfig?.apiKey) ||
+    aiConfig?.openaiImageKey ||
+    firebaseUser
+  );
 
   const handleAiSend = useCallback(async () => {
     const text = aiInput.trim();
-    if (!text || aiLoading) return;
+    if (!text || aiLoading || imageLoading) return;
+
+    if (imageMode) {
+      // Modalità generazione immagine
+      const userMsg = { role: 'user', content: `🖼️ ${text}`, timestamp: new Date().toISOString(), isImageRequest: true };
+      const newHistory = [...aiChatHistory, userMsg];
+      onAiChatHistoryChange(newHistory);
+      setAiInput('');
+      setImageLoading(true);
+      try {
+        const result = await window.electronAPI.aiGenerateImage(text, projectFolder);
+        if (result.quota) setAiQuota(result.quota);
+        if (result.error) {
+          onAiChatHistoryChange([...newHistory, { role: 'assistant', content: `❌ ${result.error}`, timestamp: new Date().toISOString(), isError: true }]);
+        } else {
+          onAiChatHistoryChange([...newHistory, {
+            role: 'assistant',
+            content: '',
+            imagePath: result.relativePath,
+            imageFullPath: result.filePath,
+            timestamp: new Date().toISOString()
+          }]);
+        }
+      } catch (err) {
+        onAiChatHistoryChange([...newHistory, { role: 'assistant', content: `❌ ${err.message}`, timestamp: new Date().toISOString(), isError: true }]);
+      }
+      setImageLoading(false);
+      setImageMode(false);
+      aiInputRef.current?.focus();
+      return;
+    }
+
     const userMsg = { role: 'user', content: text, timestamp: new Date().toISOString() };
     const newHistory = [...aiChatHistory, userMsg];
     onAiChatHistoryChange(newHistory);
@@ -289,7 +336,7 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
     }
     setAiLoading(false);
     aiInputRef.current?.focus();
-  }, [aiInput, aiLoading, aiChatHistory, onAiChatHistoryChange, projectFolder]);
+  }, [aiInput, aiLoading, imageLoading, imageMode, aiChatHistory, onAiChatHistoryChange, projectFolder]);
 
   return (
     <div style={{ height: '100%', display: 'flex', overflow: 'hidden' }}>
@@ -496,10 +543,21 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
         {/* AI tab content */}
         {activeTab === 'ai' && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            {!(aiConfig?.provider || aiConfig?.apiKey) ? (
+            {(!aiConfig?.provider && !aiConfig?.apiKey && !firebaseUser) ? (
               <div style={{ padding: '20px 12px', textAlign: 'center', fontSize: '12px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
                 Configura l'AI nelle Impostazioni → Assistente AI<br />
-                <span style={{ fontSize: '10px' }}>Oppure effettua il login per usare la quota gratuita (~250 domande incluse)</span>
+                <span style={{ fontSize: '10px' }}>Oppure effettua il login (icona utente in alto) per usare la quota gratuita (~250 domande incluse)</span>
+              </div>
+            ) : (!aiConfig?.apiKey && !firebaseUser) ? (
+              <div style={{ padding: '20px 12px', textAlign: 'center', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                <div style={{ marginBottom: '8px', fontSize: '13px', color: 'var(--text-primary)' }}>
+                  Per usare l'AI serve un accesso
+                </div>
+                <div style={{ lineHeight: '1.6' }}>
+                  Inserisci una API key nelle Impostazioni → Assistente AI<br />
+                  oppure effettua il login (icona utente in alto a destra)<br />
+                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>per la quota gratuita (~250 domande incluse)</span>
+                </div>
               </div>
             ) : (
               <>
@@ -553,7 +611,38 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
                               </span>
                             )}
                           </div>
-                          {isUser || msg.isError ? (
+                          {msg.imagePath ? (
+                            <div>
+                              <img
+                                src={`file://${msg.imageFullPath?.replace(/\\/g, '/')}`}
+                                alt="Immagine generata"
+                                style={{ maxWidth: '300px', maxHeight: '300px', borderRadius: '4px', cursor: 'pointer', display: 'block' }}
+                                onClick={() => onOpenFile(msg.imagePath)}
+                              />
+                              <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                                <button onClick={() => onOpenFile(msg.imagePath)}
+                                  style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '10px', cursor: 'pointer', padding: '0', textDecoration: 'underline' }}>
+                                  Apri file
+                                </button>
+                                <button
+                                  onClick={() => onTelegramFile({ name: msg.imagePath.split('/').pop(), extension: '.png', path: msg.imageFullPath })}
+                                  disabled={!botRunning}
+                                  style={{ background: 'none', border: 'none', color: botRunning ? 'var(--accent)' : 'var(--text-disabled)', fontSize: '10px', cursor: botRunning ? 'pointer' : 'default', padding: '0' }}>
+                                  ✉ Telegram
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    const r = await onSaveImage(msg.imageFullPath);
+                                    if (r?.success) setSaveStatus(p => ({ ...p, [i]: 'ok' }));
+                                    else if (r?.error) setSaveStatus(p => ({ ...p, [i]: 'err' }));
+                                    if (r) setTimeout(() => setSaveStatus(p => { const n = {...p}; delete n[i]; return n; }), 3000);
+                                  }}
+                                  style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '10px', cursor: 'pointer', padding: '0' }}>
+                                  {saveStatus[i] === 'ok' ? '✓ Salvato' : saveStatus[i] === 'err' ? '✗ Errore' : '💾 Salva in...'}
+                                </button>
+                              </div>
+                            </div>
+                          ) : isUser || msg.isError ? (
                             <div style={{
                               fontSize: '12px',
                               color: msg.isError ? 'var(--color-danger)' : 'var(--text-primary)',
@@ -564,16 +653,26 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
                               {msg.content}
                             </div>
                           ) : (
-                            <div
-                              className="ai-response-md"
-                              style={{
-                                fontSize: '12px',
-                                color: 'var(--text-primary)',
-                                lineHeight: '1.6',
-                                wordBreak: 'break-word'
-                              }}
-                              dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
-                            />
+                            <>
+                              <div
+                                className="ai-response-md"
+                                style={{
+                                  fontSize: '12px',
+                                  color: 'var(--text-primary)',
+                                  lineHeight: '1.6',
+                                  wordBreak: 'break-word'
+                                }}
+                                dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                              />
+                              <div style={{ display: 'flex', gap: '6px', marginTop: '4px', paddingTop: '3px', borderTop: '1px solid var(--border-subtle)' }}>
+                                <button
+                                  onClick={() => onTelegramText(msg.content)}
+                                  disabled={!botRunning}
+                                  style={{ background: 'none', border: 'none', color: botRunning ? 'var(--accent)' : 'var(--text-disabled)', fontSize: '10px', cursor: botRunning ? 'pointer' : 'default', padding: '0' }}>
+                                  ✉ Invia via Telegram
+                                </button>
+                              </div>
+                            </>
                           )}
                         </div>
                       </div>
@@ -584,6 +683,11 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
                       🤖 Sto pensando...
                     </div>
                   )}
+                  {imageLoading && (
+                    <div style={{ padding: '6px 0', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      🖼️ Genero l'immagine...
+                    </div>
+                  )}
                   <div ref={aiEndRef} />
                 </div>
 
@@ -592,34 +696,49 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
                   onSubmit={e => { e.preventDefault(); handleAiSend(); }}
                   style={{ padding: '6px 12px', flexShrink: 0, display: 'flex', gap: '6px' }}
                 >
+                  <button
+                    type="button"
+                    onClick={() => setImageMode(v => !v)}
+                    disabled={!canGenerateImage}
+                    title={canGenerateImage ? (imageMode ? 'Torna alla chat' : 'Genera immagine') : 'Serve una chiave OpenAI o il login per generare immagini'}
+                    style={{
+                      background: imageMode ? 'var(--accent)' : 'none',
+                      border: '1px solid var(--border-default)',
+                      borderRadius: '4px', padding: '0 8px', flexShrink: 0,
+                      color: !canGenerateImage ? 'var(--text-disabled)' : imageMode ? 'var(--bg-main)' : 'var(--text-secondary)',
+                      cursor: canGenerateImage ? 'pointer' : 'not-allowed',
+                      fontSize: '13px', transition: 'all 0.15s', lineHeight: 1
+                    }}
+                  >🖼️</button>
                   <input
                     ref={aiInputRef}
                     type="text"
                     value={aiInput}
                     onChange={e => setAiInput(e.target.value)}
-                    placeholder="Chiedi qualcosa sull'avventura..."
-                    disabled={aiLoading}
+                    placeholder={imageMode ? "Descrivi l'immagine da generare..." : "Chiedi qualcosa sull'avventura..."}
+                    disabled={aiLoading || imageLoading}
                     style={{
-                      flex: 1, background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+                      flex: 1, background: 'var(--bg-input)',
+                      border: imageMode ? '1px solid var(--accent)' : '1px solid var(--border-default)',
                       borderRadius: '4px', padding: '6px 10px', color: 'var(--text-primary)',
                       fontSize: '12px', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box'
                     }}
-                    onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-                    onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+                    onFocus={e => { if (!imageMode) e.currentTarget.style.borderColor = 'var(--accent)'; }}
+                    onBlur={e => { if (!imageMode) e.currentTarget.style.borderColor = 'var(--border-default)'; }}
                   />
                   <button
                     type="submit"
-                    disabled={!aiInput.trim() || aiLoading}
+                    disabled={!aiInput.trim() || aiLoading || imageLoading}
                     style={{
                       background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
-                      padding: '0 12px', color: aiInput.trim() && !aiLoading ? 'var(--accent)' : 'var(--text-disabled)',
-                      cursor: aiInput.trim() && !aiLoading ? 'pointer' : 'not-allowed',
+                      padding: '0 12px', color: aiInput.trim() && !aiLoading && !imageLoading ? 'var(--accent)' : 'var(--text-disabled)',
+                      cursor: aiInput.trim() && !aiLoading && !imageLoading ? 'pointer' : 'not-allowed',
                       fontSize: '12px', transition: 'all 0.15s', flexShrink: 0
                     }}
-                    onMouseEnter={e => { if (aiInput.trim() && !aiLoading) e.currentTarget.style.borderColor = 'var(--accent)'; }}
+                    onMouseEnter={e => { if (aiInput.trim() && !aiLoading && !imageLoading) e.currentTarget.style.borderColor = 'var(--accent)'; }}
                     onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
                   >
-                    Invia
+                    {imageMode ? 'Genera' : 'Invia'}
                   </button>
                 </form>
                 {/* Token usage info — sempre visibile */}
@@ -631,11 +750,11 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px'
                     }}>
                       {sessionTokens > 0 && (
-                        <span>Sessione: {sessionTokens.toLocaleString()} token</span>
+                        <span>Utilizzati in sessione: {sessionTokens.toLocaleString()} token</span>
                       )}
                       {aiQuota && !aiConfig?.apiKey && (
                         <span style={{ marginLeft: 'auto' }}>
-                          Quota: {aiQuota.remaining?.toLocaleString()} / {aiQuota.tokenAllowance?.toLocaleString()} rimasti
+                          Disponibili: {aiQuota.remaining?.toLocaleString()} / {aiQuota.tokenAllowance?.toLocaleString()}
                           {aiQuota.remaining <= 0 && <span style={{ color: 'var(--color-danger)', fontWeight: '600', marginLeft: '6px' }}>Esaurita</span>}
                           {aiQuota.remaining > 0 && aiQuota.remaining < aiQuota.tokenAllowance * 0.2 && (
                             <span style={{ color: 'var(--color-warning, #e8a33e)', marginLeft: '6px' }}>In esaurimento</span>

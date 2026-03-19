@@ -4,6 +4,7 @@ const TECHNOLOGIES = [
   { name: 'Electron', version: '40', desc: 'Framework desktop' },
   { name: 'React', version: '19', desc: 'UI library' },
   { name: 'Vite', version: '7', desc: 'Build tool' },
+  { name: 'Firebase', version: '12', desc: 'Backend & auth' },
   { name: 'electron-store', version: '', desc: 'Persistenza dati' },
   { name: 'Howler.js', version: '', desc: 'Audio player' },
   { name: 'Marked', version: '', desc: 'Markdown renderer' },
@@ -100,7 +101,7 @@ export default function InfoPanel({ onClose, onOpenSettings }) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div ref={panelRef} style={{
-        width: '480px', maxHeight: '80vh', background: 'var(--bg-panel)',
+        width: '520px', maxHeight: '80vh', background: 'var(--bg-panel)',
         border: '1px solid var(--border-default)', borderRadius: '8px',
         display: 'flex', flexDirection: 'column',
         boxShadow: '0 16px 48px var(--shadow-dropdown)'
@@ -146,48 +147,6 @@ export default function InfoPanel({ onClose, onOpenSettings }) {
             Strumento per Game Master — gestione documenti, personaggi, calendario,
             note, checklist, manuali di riferimento e comunicazione con i giocatori via Telegram.
           </p>
-
-          {/* Credits */}
-          <div style={sectionTitle}>Crediti</div>
-          <div style={{
-            background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
-            borderRadius: '6px', padding: '12px 16px'
-          }}>
-            {[
-              { role: 'Ideazione e design', name: 'Genkai' },
-              { role: 'Sviluppo', name: 'Genkai + Claude AI' },
-              { role: 'Temi e grafica', name: 'Genkai' }
-            ].map((c, i, arr) => (
-              <div key={i} style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '4px 0',
-                borderBottom: i < arr.length - 1 ? '1px solid var(--border-subtle)' : 'none'
-              }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{c.role}</span>
-                <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: '600' }}>{c.name}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Technologies */}
-          <div style={sectionTitle}>Tecnologie</div>
-          <div style={{
-            background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
-            borderRadius: '6px', padding: '8px 16px'
-          }}>
-            {TECHNOLOGIES.map((t, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                padding: '4px 0',
-                borderBottom: i < TECHNOLOGIES.length - 1 ? '1px solid var(--border-subtle)' : 'none'
-              }}>
-                <span style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: '600', minWidth: '140px' }}>
-                  {t.name}{t.version ? ` ${t.version}` : ''}
-                </span>
-                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{t.desc}</span>
-              </div>
-            ))}
-          </div>
 
           {/* Updates */}
           <div style={sectionTitle}>Aggiornamenti</div>
@@ -272,6 +231,58 @@ export default function InfoPanel({ onClose, onOpenSettings }) {
                 {updateState === UPDATE_CHECKING ? '⏳ Controllo...' : 'Controlla aggiornamenti'}
               </button>
             )}
+          </div>
+
+          {/* Credits */}
+          <div style={sectionTitle}>Crediti</div>
+          <div style={{
+            background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
+            borderRadius: '6px', padding: '12px 16px'
+          }}>
+            {[
+              { role: 'Ideazione e design', name: 'Claudio {maruga} Bartolini' },
+              { role: 'Sviluppo', name: 'maru + alcune AI' }
+            ].map((c, i, arr) => (
+              <div key={i} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '4px 0',
+                borderBottom: i < arr.length - 1 ? '1px solid var(--border-subtle)' : 'none'
+              }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{c.role}</span>
+                <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: '600' }}>{c.name}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Ringraziamenti */}
+          <div style={sectionTitle}>Ringraziamenti</div>
+          <div style={{
+            background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
+            borderRadius: '6px', padding: '14px 16px'
+          }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+              A chi verrà...
+            </span>
+          </div>
+
+          {/* Technologies */}
+          <div style={sectionTitle}>Tecnologie</div>
+          <div style={{
+            background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
+            borderRadius: '6px', padding: '8px 16px'
+          }}>
+            {TECHNOLOGIES.map((t, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                padding: '4px 0',
+                borderBottom: i < TECHNOLOGIES.length - 1 ? '1px solid var(--border-subtle)' : 'none'
+              }}>
+                <span style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: '600', minWidth: '140px' }}>
+                  {t.name}{t.version ? ` ${t.version}` : ''}
+                </span>
+                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{t.desc}</span>
+              </div>
+            ))}
           </div>
 
           {/* Diagnostics */}

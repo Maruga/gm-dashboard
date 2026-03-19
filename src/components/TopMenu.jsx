@@ -3,9 +3,9 @@ import {
   ChevronLeft, ChevronRight, Bell, Calendar,
   Timer, Play, Pause, RotateCcw,
   Users, StickyNote, CheckSquare, Highlighter, Network, MessageCircle, FileText,
-  BookOpen, Monitor, Eye, Search,
+  BookOpen, Monitor, Eye, Search, UserCircle,
   Info, Settings, Globe, FolderOpen, FolderRoot,
-  Minus, Square, X
+  Minus, Square, X, LayoutGrid
 } from 'lucide-react';
 
 const ICON_SIZE = 16;
@@ -255,7 +255,7 @@ function TimerWidget() {
   const timerColor = expired ? 'var(--color-danger-bright)' : running && seconds <= 30 ? 'var(--color-warning)' : running ? 'var(--text-bright)' : 'var(--text-secondary)';
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }} ref={dropdownRef}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative', WebkitAppRegion: 'no-drag' }} ref={dropdownRef}>
       <span
         onClick={() => setDropdownOpen(v => !v)}
         className={expired ? 'timer-expired' : ''}
@@ -359,7 +359,8 @@ function IconBtn({ Icon, tooltip, onClick, active, disabled, size, children }) {
         opacity: disabled ? 0.5 : 1,
         transition: 'all 0.15s',
         flexShrink: 0,
-        position: 'relative'
+        position: 'relative',
+        WebkitAppRegion: 'no-drag'
       }}
       onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = 'var(--bg-hover-subtle)'; }}
       onMouseLeave={e => e.currentTarget.style.background = 'none'}
@@ -385,7 +386,8 @@ function WindowButton({ Icon, onClick, isClose }) {
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: '3px',
-        transition: 'all 0.2s'
+        transition: 'all 0.2s',
+        WebkitAppRegion: 'no-drag'
       }}
       onMouseEnter={e => {
         e.currentTarget.style.background = isClose ? 'var(--color-danger-bg)' : 'var(--border-default)';
@@ -528,6 +530,195 @@ function RelationsDropdown({ relationsBase, onClose, onOpenOverlay, onOpenViewer
   );
 }
 
+// ─── Auth Dropdown ───
+
+function AuthDropdown({ firebaseUser, onFirebaseUserChange, onClose }) {
+  const [mode, setMode] = useState('login'); // 'login' | 'register' | 'forgot'
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  // Auto-reset "Sicuro?" after 3 seconds
+  useEffect(() => {
+    if (!confirmLogout) return;
+    const t = setTimeout(() => setConfirmLogout(false), 3000);
+    return () => clearTimeout(t);
+  }, [confirmLogout]);
+
+  const inputStyle = {
+    width: '100%', padding: '6px 10px',
+    background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+    borderRadius: '4px', color: 'var(--text-primary)', fontSize: '12px',
+    outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box'
+  };
+
+  const handleSubmit = async () => {
+    setError(null);
+    setSuccess(null);
+    if (mode === 'forgot') {
+      if (!email) { setError('Inserisci la tua email'); return; }
+      setLoading(true);
+      const result = await window.electronAPI.firebaseResetPassword(email);
+      setLoading(false);
+      if (result.error) setError(result.error);
+      else setSuccess('Email inviata! Controlla la posta.');
+      return;
+    }
+    if (mode === 'register') {
+      if (!email || !password || !displayName) { setError('Compila tutti i campi'); return; }
+      if (password !== confirmPassword) { setError('Le password non corrispondono'); return; }
+      if (password.length < 6) { setError('Almeno 6 caratteri'); return; }
+    } else {
+      if (!email || !password) { setError('Compila email e password'); return; }
+    }
+    setLoading(true);
+    let result;
+    if (mode === 'register') {
+      result = await window.electronAPI.firebaseRegister(email, password, displayName);
+    } else {
+      result = await window.electronAPI.firebaseLogin(email, password);
+    }
+    setLoading(false);
+    if (result.error) setError(result.error);
+    else { onFirebaseUserChange(result); onClose(); }
+  };
+
+  const handleLogout = async () => {
+    if (!confirmLogout) { setConfirmLogout(true); return; }
+    await window.electronAPI.firebaseLogout();
+    onFirebaseUserChange(null);
+    setConfirmLogout(false);
+  };
+
+  const handleKeyDown = (e) => { if (e.key === 'Enter') handleSubmit(); };
+
+  // Logged-in view
+  if (firebaseUser) {
+    return (
+      <div ref={ref} style={{
+        position: 'absolute', top: '100%', right: 0, marginTop: '4px',
+        width: '240px', background: 'var(--bg-elevated)',
+        border: '1px solid var(--border-default)', borderRadius: '6px',
+        zIndex: 1200, boxShadow: '0 8px 24px var(--shadow-dropdown)',
+        padding: '12px'
+      }}>
+        <div style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: '600', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {firebaseUser.displayName || firebaseUser.email}
+        </div>
+        {firebaseUser.displayName && (
+          <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginBottom: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {firebaseUser.email}
+          </div>
+        )}
+        <button
+          onClick={handleLogout}
+          style={{
+            width: '100%', padding: '6px', background: 'none',
+            border: '1px solid', borderColor: confirmLogout ? 'var(--color-danger)' : 'var(--border-default)',
+            borderRadius: '4px', fontSize: '11px', cursor: 'pointer',
+            color: confirmLogout ? 'var(--color-danger)' : 'var(--text-secondary)',
+            transition: 'all 0.15s'
+          }}
+          onMouseEnter={e => { if (!confirmLogout) e.currentTarget.style.borderColor = 'var(--color-danger)'; e.currentTarget.style.color = 'var(--color-danger)'; }}
+          onMouseLeave={e => { if (!confirmLogout) { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-secondary)'; } }}
+        >
+          {confirmLogout ? 'Sicuro?' : 'Esci'}
+        </button>
+      </div>
+    );
+  }
+
+  // Logged-out view (login / register / forgot)
+  return (
+    <div ref={ref} style={{
+      position: 'absolute', top: '100%', right: 0, marginTop: '4px',
+      width: '280px', background: 'var(--bg-elevated)',
+      border: '1px solid var(--border-default)', borderRadius: '6px',
+      zIndex: 1200, boxShadow: '0 8px 24px var(--shadow-dropdown)',
+      padding: '14px'
+    }}>
+      <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '10px' }}>
+        {mode === 'login' ? 'Accedi' : mode === 'register' ? 'Registrati' : 'Recupera password'}
+      </div>
+
+      {mode === 'register' && (
+        <div style={{ marginBottom: '8px' }}>
+          <input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Nome autore" style={inputStyle} onKeyDown={handleKeyDown} />
+        </div>
+      )}
+      <div style={{ marginBottom: '8px' }}>
+        <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" style={inputStyle} onKeyDown={handleKeyDown} autoFocus />
+      </div>
+      {mode !== 'forgot' && (
+        <div style={{ marginBottom: '8px' }}>
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" style={inputStyle} onKeyDown={handleKeyDown} />
+        </div>
+      )}
+      {mode === 'register' && (
+        <div style={{ marginBottom: '8px' }}>
+          <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Conferma password" style={inputStyle} onKeyDown={handleKeyDown} />
+        </div>
+      )}
+
+      {error && <div style={{ fontSize: '11px', color: 'var(--color-danger)', marginBottom: '8px' }}>{error}</div>}
+      {success && <div style={{ fontSize: '11px', color: 'var(--color-success)', marginBottom: '8px' }}>{success}</div>}
+
+      <button
+        onClick={handleSubmit}
+        disabled={loading}
+        style={{
+          width: '100%', padding: '7px', background: 'none',
+          border: '1px solid var(--accent)', borderRadius: '4px',
+          color: loading ? 'var(--text-disabled)' : 'var(--accent)',
+          fontSize: '12px', fontWeight: '600', cursor: loading ? 'not-allowed' : 'pointer',
+          transition: 'all 0.15s', marginBottom: '10px'
+        }}
+        onMouseEnter={e => { if (!loading) e.currentTarget.style.background = 'var(--accent-a10)'; }}
+        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+      >
+        {loading ? 'Attendere...' : mode === 'login' ? 'Accedi' : mode === 'register' ? 'Crea account' : 'Invia link'}
+      </button>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+        {mode === 'login' && (
+          <>
+            <span onClick={() => { setMode('register'); setError(null); setSuccess(null); }} style={{ fontSize: '11px', color: 'var(--accent)', cursor: 'pointer' }}>
+              Non hai un account? Registrati
+            </span>
+            <span onClick={() => { setMode('forgot'); setError(null); setSuccess(null); }} style={{ fontSize: '11px', color: 'var(--text-tertiary)', cursor: 'pointer' }}>
+              Password dimenticata?
+            </span>
+          </>
+        )}
+        {mode === 'register' && (
+          <span onClick={() => { setMode('login'); setError(null); setSuccess(null); }} style={{ fontSize: '11px', color: 'var(--accent)', cursor: 'pointer' }}>
+            Hai già un account? Accedi
+          </span>
+        )}
+        {mode === 'forgot' && (
+          <span onClick={() => { setMode('login'); setError(null); setSuccess(null); }} style={{ fontSize: '11px', color: 'var(--accent)', cursor: 'pointer' }}>
+            Torna al login
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───
 
 export default function TopMenu({
@@ -539,7 +730,9 @@ export default function TopMenu({
   players, onOpenCharacterSheet, calendarEvents, botRunning,
   chatMessages, chatOpen, chatFlash, onToggleChat,
   onOpenReference, referenceOpen,
-  highlightEnabled, onToggleHighlight
+  highlightEnabled, onToggleHighlight,
+  firebaseUser, onFirebaseUserChange,
+  panelVisibility, layoutPresets, onApplyPreset, onResetLayout
 }) {
   const connectedPlayers = (players || []).filter(p => p.telegramChatId).length;
 
@@ -554,8 +747,12 @@ export default function TopMenu({
   const [pgOpen, setPgOpen] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [relDropdownOpen, setRelDropdownOpen] = useState(false);
+  const [authDropdownOpen, setAuthDropdownOpen] = useState(false);
+  const [layoutOpen, setLayoutOpen] = useState(false);
   const pgRef = useRef(null);
   const relRef = useRef(null);
+  const authRef = useRef(null);
+  const layoutRef = useRef(null);
 
   useEffect(() => {
     if (!pgOpen) return;
@@ -565,6 +762,15 @@ export default function TopMenu({
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [pgOpen]);
+
+  useEffect(() => {
+    if (!layoutOpen) return;
+    const handler = (e) => {
+      if (layoutRef.current && !layoutRef.current.contains(e.target)) setLayoutOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [layoutOpen]);
 
   return (
     <div
@@ -593,7 +799,7 @@ export default function TopMenu({
         限界 GM DASHBOARD
       </span>
 
-      <div style={{ display: 'flex', alignItems: 'center', flex: 1, WebkitAppRegion: 'no-drag', gap: '0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', flex: 1, gap: '0' }}>
 
         {/* ── Gruppo 2: TEMPO ── */}
         <Separator />
@@ -614,7 +820,8 @@ export default function TopMenu({
                   borderRadius: '4px',
                   padding: '4px 6px',
                   transition: 'all 0.15s',
-                  display: 'inline-block'
+                  display: 'inline-block',
+                  WebkitAppRegion: 'no-drag'
                 }}
                 onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-hover-subtle)'; }}
                 onMouseLeave={e => { if (!datePickerOpen) { e.currentTarget.style.color = 'var(--text-primary)'; } e.currentTarget.style.background = 'transparent'; }}
@@ -777,7 +984,7 @@ export default function TopMenu({
           </div>
 
           {/* Chat with unread badge + bot status dot */}
-          <span data-chat-toggle style={{ position: 'relative', display: 'inline-flex' }}>
+          <span data-chat-toggle style={{ position: 'relative', display: 'inline-flex', WebkitAppRegion: 'no-drag' }}>
             <IconBtn Icon={MessageCircle} tooltip="Chat Telegram" onClick={onToggleChat} active={chatOpen} />
             {/* Unread badge */}
             {totalUnread > 0 && (
@@ -817,9 +1024,69 @@ export default function TopMenu({
         <Separator />
         <IconBtn Icon={BookOpen} tooltip="Manuali di riferimento" onClick={onOpenReference} active={referenceOpen} />
 
+        {/* ── Gruppo: LAYOUT ── */}
+        <Separator />
+        <div ref={layoutRef} style={{ position: 'relative' }}>
+          <IconBtn Icon={LayoutGrid} tooltip="Layout pannelli" onClick={() => setLayoutOpen(v => !v)} active={layoutOpen} />
+          {layoutOpen && (
+            <div style={{
+              position: 'absolute', top: '100%', right: 0, marginTop: '4px',
+              minWidth: '180px', background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-default)', borderRadius: '6px',
+              zIndex: 1100, boxShadow: '0 8px 24px var(--shadow-dropdown)',
+              padding: '4px 0'
+            }}>
+              <div
+                onClick={() => { onResetLayout(); setLayoutOpen(false); }}
+                style={{
+                  padding: '7px 14px', cursor: 'pointer', fontSize: '12px',
+                  color: Object.values(panelVisibility).every(v => v) ? 'var(--accent)' : 'var(--text-primary)',
+                  fontWeight: Object.values(panelVisibility).every(v => v) ? '600' : '400',
+                  display: 'flex', alignItems: 'center', gap: '8px'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--border-subtle)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                ▣ Principale
+              </div>
+              {layoutPresets.length > 0 && <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '2px 0' }} />}
+              {layoutPresets.map(preset => (
+                <div
+                  key={preset.name}
+                  onClick={() => { onApplyPreset(preset); setLayoutOpen(false); }}
+                  style={{
+                    padding: '7px 14px', cursor: 'pointer', fontSize: '12px',
+                    color: 'var(--text-primary)'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--border-subtle)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  {preset.name}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* ── Gruppo 6: SISTEMA ── */}
         <Separator />
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {/* User auth icon */}
+          <div ref={authRef} style={{ position: 'relative' }}>
+            <IconBtn
+              Icon={UserCircle}
+              tooltip={firebaseUser ? (firebaseUser.displayName || firebaseUser.email) : 'Accedi'}
+              onClick={() => setAuthDropdownOpen(v => !v)}
+              active={!!firebaseUser || authDropdownOpen}
+            />
+            {authDropdownOpen && (
+              <AuthDropdown
+                firebaseUser={firebaseUser}
+                onFirebaseUserChange={onFirebaseUserChange}
+                onClose={() => setAuthDropdownOpen(false)}
+              />
+            )}
+          </div>
           <IconBtn Icon={Info} tooltip="Informazioni" onClick={onOpenInfo} />
           <IconBtn Icon={Settings} tooltip="Impostazioni" onClick={onOpenSettings} />
           <IconBtn Icon={Globe} tooltip="Avventure online" onClick={onOpenAdventures} />
@@ -829,7 +1096,7 @@ export default function TopMenu({
       </div>
 
       {/* ── Gruppo 7: FINESTRA ── */}
-      <div style={{ display: 'flex', WebkitAppRegion: 'no-drag', marginLeft: '8px' }}>
+      <div style={{ display: 'flex', marginLeft: '8px' }}>
         <Separator />
         <WindowButton Icon={Minus} onClick={() => window.electronAPI?.windowMinimize()} />
         <WindowButton Icon={Square} onClick={() => window.electronAPI?.windowMaximize()} />

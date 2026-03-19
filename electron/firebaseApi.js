@@ -9,7 +9,8 @@
 
 const { initializeApp } = require('firebase/app');
 const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-        signOut, updateProfile, inMemoryPersistence, setPersistence } = require('firebase/auth');
+        signOut, updateProfile, inMemoryPersistence, setPersistence,
+        sendPasswordResetEmail } = require('firebase/auth');
 const { getFirestore, collection, query, where, getDocs, doc, setDoc, getDoc,
         deleteDoc, updateDoc, increment } = require('firebase/firestore');
 const { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } = require('firebase/storage');
@@ -100,6 +101,15 @@ function getCurrentUser() {
   const user = auth.currentUser;
   if (!user) return null;
   return { uid: user.uid, email: user.email, displayName: user.displayName };
+}
+
+async function resetPassword(email) {
+  try {
+    await sendPasswordResetEmail(auth, email);
+    return { success: true };
+  } catch (err) {
+    return { error: firebaseErrorMessage(err.code) };
+  }
 }
 
 async function tryAutoLogin() {
@@ -293,6 +303,18 @@ async function incrementAiUsage(userId, tokens) {
   }
 }
 
+// ── Broadcast ──
+
+async function fetchBroadcast() {
+  try {
+    const snap = await getDoc(doc(db, 'config', 'broadcast'));
+    if (!snap.exists()) return null;
+    return snap.data();
+  } catch {
+    return null;  // Non-critico, fail silenzioso
+  }
+}
+
 // ── Installation tracking ──
 
 async function registerInstallation(installId, data) {
@@ -324,6 +346,7 @@ module.exports = {
   login,
   logout,
   getCurrentUser,
+  resetPassword,
   tryAutoLogin,
   fetchPublicAdventures,
   fetchMyAdventures,
@@ -336,5 +359,6 @@ module.exports = {
   fetchAiConfig,
   getAiUsage,
   incrementAiUsage,
-  registerInstallation
+  registerInstallation,
+  fetchBroadcast
 };

@@ -154,6 +154,7 @@ export function TelegramFileModal({ fileName, fileExtension, filePath, players, 
 }
 
 export function TelegramTextModal({ selectedText, players, botRunning, gameDate, onLog, onClose }) {
+  const [editedText, setEditedText] = useState(() => mdToPlainText(selectedText || ''));
   const [message, setMessage] = useState('');
   const [selected, setSelected] = useState(() => {
     const s = {};
@@ -165,7 +166,7 @@ export function TelegramTextModal({ selectedText, players, botRunning, gameDate,
 
   const toggle = (id) => setSelected(prev => ({ ...prev, [id]: !prev[id] }));
   const recipients = (players || []).filter(p => selected[p.id] && p.telegramChatId);
-  const canSend = botRunning && recipients.length > 0 && !sending;
+  const canSend = botRunning && recipients.length > 0 && !sending && editedText.trim().length > 0;
 
   const handleSend = useCallback(async () => {
     if (!canSend) return;
@@ -175,7 +176,7 @@ export function TelegramTextModal({ selectedText, players, botRunning, gameDate,
       setResults(prev => [...prev, { name: pg.playerName || pg.characterName, status: 'pending' }]);
       try {
         if (message.trim()) await window.electronAPI.telegramSendMessage(pg.telegramChatId, message.trim());
-        const result = await window.electronAPI.telegramSendMessage(pg.telegramChatId, selectedText);
+        const result = await window.electronAPI.telegramSendMessage(pg.telegramChatId, editedText.trim());
         sendResults.push({ name: pg.playerName || pg.characterName, ok: result.success, error: result.error });
         setResults(prev => prev.map((r, i) => i === prev.length - 1 ? { ...r, status: result.success ? 'ok' : 'error', error: result.error } : r));
       } catch (err) {
@@ -190,7 +191,7 @@ export function TelegramTextModal({ selectedText, players, botRunning, gameDate,
       fail.forEach(r => onLog({ gameDate, realTimestamp: new Date().toISOString(), description: `Errore invio a ${r.name}`, recipients: [r.name], status: 'error', error: r.error }));
     }
     setSending(false);
-  }, [canSend, recipients, message, selectedText, gameDate, onLog]);
+  }, [canSend, recipients, message, editedText, gameDate, onLog]);
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'var(--overlay-medium)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -200,10 +201,8 @@ export function TelegramTextModal({ selectedText, players, botRunning, gameDate,
           <span className="close-btn" onClick={onClose} style={{ fontSize: '14px' }}>✕</span>
         </div>
         <div style={{ padding: '16px 20px' }}>
-          <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Testo selezionato</label>
-          <div style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: '4px', padding: '10px 12px', fontSize: '12px', color: 'var(--text-primary)', maxHeight: '200px', overflowY: 'auto', lineHeight: '1.6', marginBottom: '16px', whiteSpace: 'pre-wrap' }}>
-            {selectedText}
-          </div>
+          <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Testo da inviare</label>
+          <textarea value={editedText} onChange={e => setEditedText(e.target.value)} rows={6} style={{ ...inputStyle, maxHeight: '200px', lineHeight: '1.6', marginBottom: '16px' }} />
 
           <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Messaggio aggiuntivo</label>
           <textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Opzionale..." rows={2} style={{ ...inputStyle, marginBottom: '16px' }} />

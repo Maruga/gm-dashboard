@@ -1,58 +1,167 @@
 import React, { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
+
+// Polyfill: pdfjs-dist v5 usa getOrInsertComputed (Chrome 134+),
+// Electron 40 ha Chromium 132 che non lo supporta
+if (!Map.prototype.getOrInsertComputed) {
+  Map.prototype.getOrInsertComputed = function(key, callbackFn) {
+    if (this.has(key)) return this.get(key);
+    const value = callbackFn(key);
+    this.set(key, value);
+    return value;
+  };
+}
+
 import * as pdfjsLib from 'pdfjs-dist';
-import { PDFViewer, EventBus, PDFLinkService, PDFFindController }
-  from 'pdfjs-dist/web/pdf_viewer.mjs';
-import 'pdfjs-dist/web/pdf_viewer.css';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { useScrollMemory } from '../hooks/useScrollMemory';
 import { Search, ChevronUp, ChevronDown, X } from 'lucide-react';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
+/* ------------------------------------------------------------------ */
+/*  Single PDF page – self-contained canvas render                    */
+/* ------------------------------------------------------------------ */
+function PdfPage({ pdf, pageNum, scale }) {
+  const canvasRef = useRef(null);
+  const renderTaskRef = useRef(null);
+  const [renderError, setRenderError] = useState(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !pdf) return;
+
+    // Cancel any in-progress render on this canvas
+    if (renderTaskRef.current) {
+      renderTaskRef.current.cancel();
+      renderTaskRef.current = null;
+    }
+    setRenderError(null);
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const page = await pdf.getPage(pageNum);
+        if (cancelled) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        const viewport = page.getViewport({ scale });
+
+        canvas.width = Math.floor(viewport.width * dpr);
+        canvas.height = Math.floor(viewport.height * dpr);
+        canvas.style.width = Math.floor(viewport.width) + 'px';
+        canvas.style.height = Math.floor(viewport.height) + 'px';
+
+        const renderTask = page.render({
+          canvasContext: canvas.getContext('2d'),
+          viewport,
+          transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null
+        });
+        renderTaskRef.current = renderTask;
+        await renderTask.promise;
+        renderTaskRef.current = null;
+      } catch (err) {
+        if (err?.name !== 'RenderingCancelledException') {
+          console.warn(`PDF page ${pageNum} render failed:`, err);
+          setRenderError(err?.message || 'Errore rendering');
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+        renderTaskRef.current = null;
+      }
+    };
+  }, [pdf, pageNum, scale]);
+
+  return (
+    <div
+      data-page-num={pageNum}
+      style={{
+        margin: '0 auto 12px',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.18)',
+        background: '#fff',
+        lineHeight: 0
+      }}
+    >
+      <canvas ref={canvasRef} />
+      {renderError && (
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+          justifyContent: 'center', color: 'red', fontSize: '11px', padding: '8px',
+          textAlign: 'center', background: 'rgba(255,255,255,0.85)'
+        }}>
+          {renderError}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  PDF Viewer – canvas per page, no pdf_viewer.css                   */
+/* ------------------------------------------------------------------ */
 const PdfViewer = forwardRef(function PdfViewer({
   filePath, fontSize, searchHighlight, highlightKeywords,
   scrollMapRef, onScrollChanged, scrollKeyPrefix,
-  searchOpen, onSearchClose
+  searchOpen, onSearchClose, onOutlineReady
 }, ref) {
   const containerRef = useRef(null);
-  const viewerWrapRef = useRef(null);
-  const viewerRef = useRef(null);
-  const eventBusRef = useRef(null);
-  const findControllerRef = useRef(null);
   const pdfDocRef = useRef(null);
   const currentPathRef = useRef(null);
 
   const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [pdfDoc, setPdfDoc] = useState(null);   // triggers child renders
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('1');
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
-  const [matchCount, setMatchCount] = useState(0);
-  const [matchCurrent, setMatchCurrent] = useState(0);
-
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchIdx, setSearchIdx] = useState(-1);
   const searchInputRef = useRef(null);
+  const resultsListRef = useRef(null);
+  const pageTextsRef = useRef([]);
+
   const { saveScroll, getScroll } = useScrollMemory(scrollMapRef, onScrollChanged);
 
   const makeKey = useCallback((fp) => {
     return scrollKeyPrefix ? `${scrollKeyPrefix}:${fp}` : fp;
   }, [scrollKeyPrefix]);
 
-  // Expose scroll container to parent (for DocToc etc.)
   useImperativeHandle(ref, () => containerRef.current);
 
-  // --- Initialize PDF viewer and load document ---
+  /* ---------- compute scale ---------- */
+  const scale = (() => {
+    const computedScale = parseFloat(
+      (typeof document !== 'undefined'
+        ? getComputedStyle(document.documentElement).getPropertyValue('--font-size-scale')
+        : '1') || '1'
+    );
+    return ((fontSize || 15) / 15) * computedScale * 1.3;
+  })();
+
+  /* ---------- Load PDF ---------- */
   useEffect(() => {
     if (!filePath) return;
+    let cancelled = false;
 
     setError(null);
+    setLoading(true);
+    setPdfDoc(null);
     setTotalPages(0);
     setCurrentPage(1);
     setPageInput('1');
     setSearchQuery('');
-    setMatchCount(0);
-    setMatchCurrent(0);
+    setSearchResults([]);
+    setSearchIdx(-1);
+    pageTextsRef.current = [];
+    if (onOutlineReady) onOutlineReady(null);
 
     // Save scroll of previous file
     if (currentPathRef.current && containerRef.current) {
@@ -61,109 +170,75 @@ const PdfViewer = forwardRef(function PdfViewer({
     currentPathRef.current = filePath;
 
     // Cleanup previous
-    if (viewerRef.current) {
-      try { viewerRef.current.cleanup(); } catch (_) {}
-      viewerRef.current = null;
-    }
     if (pdfDocRef.current) {
       try { pdfDocRef.current.destroy(); } catch (_) {}
       pdfDocRef.current = null;
     }
 
-    // Clear the viewer container
-    const viewerDiv = viewerWrapRef.current;
-    if (viewerDiv) viewerDiv.innerHTML = '';
-
-    const eventBus = new EventBus();
-    eventBusRef.current = eventBus;
-
-    const linkService = new PDFLinkService({ eventBus });
-    const findController = new PDFFindController({ eventBus, linkService });
-    findControllerRef.current = findController;
-
-    const viewer = new PDFViewer({
-      container: containerRef.current,
-      eventBus,
-      linkService,
-      findController,
-      // TextLayerMode.ENABLE = 1 (not exported in pdfjs-dist 5.x)
-      textLayerMode: 1
-    });
-    viewerRef.current = viewer;
-    linkService.setViewer(viewer);
-
-    // Events
-    const onPageChanging = (evt) => {
-      setCurrentPage(evt.pageNumber);
-      setPageInput(String(evt.pageNumber));
-    };
-    eventBus.on('pagechanging', onPageChanging);
-
-    const onFindState = (evt) => {
-      // matchesCount: { current, total }
-      if (evt.matchesCount) {
-        setMatchCount(evt.matchesCount.total || 0);
-        setMatchCurrent((evt.matchesCount.current || 0) + 1);
-      }
-    };
-    eventBus.on('updatefindcontrolstate', onFindState);
-
-    const onTextLayerRendered = (evt) => {
-      applyKeywordHighlights(evt.pageNumber);
-    };
-    eventBus.on('textlayerrendered', onTextLayerRendered);
-
-    // Load PDF
     (async () => {
       try {
-        let pdf;
-        try {
-          const url = await window.electronAPI.getFileUrl(filePath);
-          pdf = await pdfjsLib.getDocument(url).promise;
-        } catch {
-          // Fallback for dev mode (file:// blocked by CORS)
-          const data = await window.electronAPI.readFileBinary(filePath);
-          if (!data) throw new Error('Impossibile leggere il file');
-          pdf = await pdfjsLib.getDocument({ data: new Uint8Array(data) }).promise;
-        }
+        const data = await window.electronAPI.readFileBinary(filePath);
+        if (cancelled) return;
+        if (!data) throw new Error('Impossibile leggere il file');
+
+        const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(data) }).promise;
+        if (cancelled) { pdf.destroy(); return; }
 
         pdfDocRef.current = pdf;
-        viewer.setDocument(pdf);
-        linkService.setDocument(pdf);
+        setPdfDoc(pdf);
         setTotalPages(pdf.numPages);
+        setLoading(false);
 
-        // Restore scroll after pages render
-        const scrollKey = makeKey(filePath);
-        const targetScroll = getScroll(scrollKey);
-        if (targetScroll > 0) {
-          const onPagesLoaded = () => {
-            eventBus.off('pagesloaded', onPagesLoaded);
-            requestAnimationFrame(() => {
-              if (containerRef.current) {
-                containerRef.current.scrollTop = targetScroll;
-              }
-            });
-          };
-          eventBus.on('pagesloaded', onPagesLoaded);
+        // Estrai outline/segnalibri del PDF
+        if (onOutlineReady) {
+          try {
+            const outline = await pdf.getOutline();
+            if (cancelled) return;
+            if (outline && outline.length > 0) {
+              const items = [];
+              const flatten = async (entries, level) => {
+                for (const entry of entries) {
+                  let pageNum = 1;
+                  try {
+                    if (entry.dest) {
+                      const dest = typeof entry.dest === 'string'
+                        ? await pdf.getDestination(entry.dest)
+                        : entry.dest;
+                      if (dest && dest[0]) {
+                        const pageIndex = await pdf.getPageIndex(dest[0]);
+                        pageNum = pageIndex + 1;
+                      }
+                    }
+                  } catch (_) {}
+                  items.push({ title: entry.title, page: pageNum, level });
+                  if (entry.items && entry.items.length > 0) {
+                    await flatten(entry.items, level + 1);
+                  }
+                }
+              };
+              await flatten(outline, 1);
+              if (!cancelled) onOutlineReady(items);
+            } else {
+              onOutlineReady(null);
+            }
+          } catch (_) {
+            onOutlineReady(null);
+          }
         }
       } catch (err) {
+        if (cancelled) return;
         const msg = err?.message || '';
         if (msg.includes('password') || msg.includes('Password')) {
           setError('PDF protetto da password');
         } else {
           setError(`Errore apertura PDF: ${msg}`);
         }
+        setLoading(false);
       }
     })();
 
     return () => {
-      eventBus.off('pagechanging', onPageChanging);
-      eventBus.off('updatefindcontrolstate', onFindState);
-      eventBus.off('textlayerrendered', onTextLayerRendered);
-      if (viewerRef.current) {
-        try { viewerRef.current.cleanup(); } catch (_) {}
-        viewerRef.current = null;
-      }
+      cancelled = true;
       if (pdfDocRef.current) {
         try { pdfDocRef.current.destroy(); } catch (_) {}
         pdfDocRef.current = null;
@@ -172,142 +247,163 @@ const PdfViewer = forwardRef(function PdfViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filePath]);
 
-  // --- Zoom (debounced) ---
+  /* ---------- Restore scroll after pages rendered ---------- */
   useEffect(() => {
-    if (!viewerRef.current) return;
-    const timer = setTimeout(() => {
-      const computedScale = parseFloat(
-        getComputedStyle(document.documentElement).getPropertyValue('--font-size-scale') || '1'
-      );
-      const scale = (fontSize / 15) * computedScale;
-      viewerRef.current.currentScaleValue = scale;
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [fontSize]);
-
-  // --- Search highlight from Console ---
-  useEffect(() => {
-    if (!findControllerRef.current || !searchHighlight?.query) return;
-    findControllerRef.current.executeCommand('find', {
-      query: searchHighlight.query,
-      highlightAll: true
-    });
-  }, [searchHighlight]);
-
-  // --- Keyword highlighting ---
-  const kwRef = useRef(highlightKeywords);
-  kwRef.current = highlightKeywords;
-
-  const applyKeywordHighlights = useCallback((pageNumber) => {
-    const kw = kwRef.current;
-    if (!kw?.enabled || !kw.words?.length) return;
-    const container = containerRef.current;
-    if (!container) return;
-
-    const pageEl = container.querySelector(`.page[data-page-number="${pageNumber}"]`);
-    if (!pageEl) return;
-    const textLayer = pageEl.querySelector('.textLayer');
-    if (!textLayer) return;
-
-    const words = kw.words;
-    const sorted = [...words].sort((a, b) => b.text.length - a.text.length);
-    const pattern = new RegExp(
-      '(' + sorted.map(w => w.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')',
-      'gi'
-    );
-    const colorMap = {};
-    for (const w of words) colorMap[w.text.toLowerCase()] = w.color;
-
-    const spans = textLayer.querySelectorAll('span');
-    spans.forEach(span => {
-      if (span.getAttribute('data-kw-hl')) {
-        span.removeAttribute('data-kw-hl');
-        span.style.removeProperty('--kw-bg');
-      }
-      const text = span.textContent;
-      if (pattern.test(text)) {
-        pattern.lastIndex = 0;
-        const match = text.match(pattern);
-        if (match) {
-          const color = colorMap[match[0].toLowerCase()] || 'rgba(201,169,110,0.55)';
-          span.setAttribute('data-kw-hl', 'true');
-          span.style.setProperty('--kw-bg', color);
+    if (totalPages > 0 && containerRef.current) {
+      const t = setTimeout(() => {
+        const scrollKey = makeKey(currentPathRef.current || filePath);
+        const targetScroll = getScroll(scrollKey);
+        if (targetScroll > 0 && containerRef.current) {
+          containerRef.current.scrollTop = targetScroll;
         }
+      }, 200);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalPages]);
+
+  /* ---------- Track current page on scroll ---------- */
+  const handleScroll = useCallback(() => {
+    const container = containerRef.current;
+    if (!container || !currentPathRef.current) return;
+
+    saveScroll(makeKey(currentPathRef.current), container.scrollTop);
+
+    const wrappers = container.querySelectorAll('[data-page-num]');
+    const containerMid = container.scrollTop + container.clientHeight / 2;
+    let closest = 1;
+    let closestDist = Infinity;
+    wrappers.forEach(el => {
+      const mid = el.offsetTop + el.offsetHeight / 2;
+      const dist = Math.abs(mid - containerMid);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closest = parseInt(el.dataset.pageNum, 10) || 1;
       }
     });
-  }, []);
-
-  // Re-apply keywords when highlightKeywords changes
-  useEffect(() => {
-    if (!containerRef.current || !viewerRef.current) return;
-    const pages = containerRef.current.querySelectorAll('.page[data-page-number]');
-    pages.forEach(pageEl => {
-      const textLayer = pageEl.querySelector('.textLayer');
-      if (!textLayer) return;
-      // Clear existing
-      textLayer.querySelectorAll('span[data-kw-hl]').forEach(span => {
-        span.removeAttribute('data-kw-hl');
-        span.style.removeProperty('--kw-bg');
-      });
-      const pageNum = parseInt(pageEl.getAttribute('data-page-number'), 10);
-      applyKeywordHighlights(pageNum);
-    });
-  }, [highlightKeywords, applyKeywordHighlights]);
-
-  // --- Save scroll on scroll ---
-  const handleScroll = useCallback(() => {
-    if (currentPathRef.current && containerRef.current) {
-      saveScroll(makeKey(currentPathRef.current), containerRef.current.scrollTop);
-    }
+    setCurrentPage(closest);
+    setPageInput(String(closest));
   }, [saveScroll, makeKey]);
 
-  // --- Internal search bar ---
+  /* ---------- Navigate to page ---------- */
+  const goToPage = useCallback((n) => {
+    if (!containerRef.current || totalPages === 0) return;
+    const page = Math.max(1, Math.min(n, totalPages));
+    const wrapper = containerRef.current.querySelector(`[data-page-num="${page}"]`);
+    if (wrapper) {
+      // offsetTop è relativo al container (position:relative sul container)
+      containerRef.current.scrollTo({ top: wrapper.offsetTop, behavior: 'instant' });
+    }
+    setPageInput(String(page));
+  }, [totalPages]);
+
+  /* ---------- Scroll to search result (posizione stimata dentro la pagina) ---------- */
+  const scrollToResult = useCallback((result) => {
+    if (!containerRef.current || totalPages === 0 || !result) return;
+    const page = Math.max(1, Math.min(result.page, totalPages));
+    const wrapper = containerRef.current.querySelector(`[data-page-num="${page}"]`);
+    if (!wrapper) return;
+
+    // Stima posizione verticale: rapporto pos/lunghezzaTesto * altezza pagina
+    const pageText = pageTextsRef.current[page - 1] || '';
+    const ratio = pageText.length > 0 ? result.pos / pageText.length : 0;
+    const offsetWithinPage = ratio * wrapper.offsetHeight;
+
+    // Posiziona il punto stimato a ~60px dal top del container visibile
+    const targetTop = wrapper.offsetTop + offsetWithinPage - 60;
+    containerRef.current.scrollTo({ top: Math.max(0, targetTop), behavior: 'instant' });
+    setPageInput(String(page));
+  }, [totalPages]);
+
+  /* ================================================================ */
+  /*  SEARCH                                                          */
+  /* ================================================================ */
+  const getPageTexts = useCallback(async () => {
+    if (pageTextsRef.current.length > 0) return pageTextsRef.current;
+    const pdf = pdfDocRef.current;
+    if (!pdf) return [];
+    const texts = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      try {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const str = content.items.map(item => item.str).join(' ');
+        texts.push(str);
+      } catch (_) {
+        texts.push('');
+      }
+    }
+    pageTextsRef.current = texts;
+    return texts;
+  }, []);
+
+  const doSearch = useCallback(async (query) => {
+    if (!query || !pdfDocRef.current) {
+      setSearchResults([]);
+      setSearchIdx(-1);
+      return;
+    }
+    const texts = await getPageTexts();
+    const qLower = query.toLowerCase();
+    const qLen = query.length;
+    const results = [];
+    texts.forEach((text, idx) => {
+      const tLower = text.toLowerCase();
+      let pos = 0;
+      while ((pos = tLower.indexOf(qLower, pos)) !== -1) {
+        const snippetStart = Math.max(0, pos - 35);
+        const snippetEnd = Math.min(text.length, pos + qLen + 35);
+        const before = (snippetStart > 0 ? '…' : '') + text.substring(snippetStart, pos);
+        const match = text.substring(pos, pos + qLen);
+        const after = text.substring(pos + qLen, snippetEnd) + (snippetEnd < text.length ? '…' : '');
+        results.push({ page: idx + 1, pos, before, match, after });
+        pos += qLen;
+      }
+    });
+    setSearchResults(results);
+    setSearchIdx(results.length > 0 ? 0 : -1);
+    if (results.length > 0) scrollToResult(results[0]);
+  }, [getPageTexts, scrollToResult]);
+
+  const navigateSearch = useCallback((direction) => {
+    if (searchResults.length === 0) return;
+    const next = direction === 'next'
+      ? (searchIdx + 1) % searchResults.length
+      : (searchIdx - 1 + searchResults.length) % searchResults.length;
+    setSearchIdx(next);
+    scrollToResult(searchResults[next]);
+  }, [searchResults, searchIdx, scrollToResult]);
+
+  useEffect(() => {
+    if (!searchHighlight?.query || !pdfDocRef.current) return;
+    setSearchQuery(searchHighlight.query);
+    doSearch(searchHighlight.query);
+  }, [searchHighlight, doSearch]);
+
   useEffect(() => {
     if (searchOpen && searchInputRef.current) {
       searchInputRef.current.focus();
     }
   }, [searchOpen]);
 
-  const handleFind = useCallback((query, findPrevious = false) => {
-    if (!findControllerRef.current || !query) return;
-    findControllerRef.current.executeCommand('find', {
-      query,
-      highlightAll: true,
-      findPrevious
-    });
-  }, []);
-
-  const handleFindAgain = useCallback((findPrevious) => {
-    if (!findControllerRef.current || !searchQuery) return;
-    findControllerRef.current.executeCommand('findagain', {
-      query: searchQuery,
-      highlightAll: true,
-      findPrevious
-    });
-  }, [searchQuery]);
+  // Auto-scroll nella lista risultati per mantenere visibile il risultato attivo
+  useEffect(() => {
+    if (searchIdx >= 0 && resultsListRef.current) {
+      const activeEl = resultsListRef.current.querySelector(`[data-result-idx="${searchIdx}"]`);
+      if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
+    }
+  }, [searchIdx]);
 
   const handleSearchKeyDown = useCallback((e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (e.shiftKey) {
-        handleFindAgain(true);
-      } else {
-        handleFindAgain(false);
-      }
+      if (searchResults.length === 0) doSearch(searchQuery);
+      else navigateSearch(e.shiftKey ? 'prev' : 'next');
     }
-    if (e.key === 'Escape') {
-      onSearchClose?.();
-    }
-  }, [handleFindAgain, onSearchClose]);
+    if (e.key === 'Escape') onSearchClose?.();
+  }, [searchQuery, searchResults, doSearch, navigateSearch, onSearchClose]);
 
-  // Navigate to page
-  const goToPage = useCallback((n) => {
-    if (!viewerRef.current || !totalPages) return;
-    const page = Math.max(1, Math.min(n, totalPages));
-    viewerRef.current.currentPageNumber = page;
-    setPageInput(String(page));
-  }, [totalPages]);
-
+  /* ---------- Render ---------- */
   if (error) {
     return (
       <div style={{
@@ -320,9 +416,25 @@ const PdfViewer = forwardRef(function PdfViewer({
     );
   }
 
+  if (loading || !pdfDoc) {
+    return (
+      <div style={{
+        height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: 'var(--text-tertiary)', fontSize: '12px'
+      }}>
+        {filePath ? 'Caricamento PDF…' : ''}
+      </div>
+    );
+  }
+
+  const pages = [];
+  for (let i = 1; i <= totalPages; i++) {
+    pages.push(<PdfPage key={i} pdf={pdfDoc} pageNum={i} scale={scale} />);
+  }
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Internal search bar */}
+      {/* Search bar */}
       {searchOpen && (
         <div className="panel-search-bar">
           <Search size={13} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
@@ -333,30 +445,95 @@ const PdfViewer = forwardRef(function PdfViewer({
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
-              handleFind(e.target.value);
+              doSearch(e.target.value);
             }}
             onKeyDown={handleSearchKeyDown}
           />
-          {searchQuery && matchCount > 0 && (
+          {searchQuery && searchResults.length > 0 && (
             <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', flexShrink: 0 }}>
-              {matchCurrent}/{matchCount}
+              {searchIdx + 1}/{searchResults.length}
             </span>
           )}
           <ChevronUp
             size={14}
             style={{ cursor: 'pointer', color: 'var(--text-secondary)', flexShrink: 0 }}
-            onClick={() => handleFindAgain(true)}
+            onClick={() => navigateSearch('prev')}
           />
           <ChevronDown
             size={14}
             style={{ cursor: 'pointer', color: 'var(--text-secondary)', flexShrink: 0 }}
-            onClick={() => handleFindAgain(false)}
+            onClick={() => navigateSearch('next')}
           />
           <X
             size={14}
             style={{ cursor: 'pointer', color: 'var(--text-tertiary)', flexShrink: 0 }}
             onClick={onSearchClose}
           />
+        </div>
+      )}
+
+      {/* Search results list */}
+      {searchOpen && searchQuery && searchResults.length > 0 && (
+        <div
+          ref={resultsListRef}
+          style={{
+            maxHeight: '180px',
+            overflowY: 'auto',
+            borderBottom: '1px solid var(--border-subtle)',
+            background: 'var(--bg-elevated)',
+            flexShrink: 0
+          }}
+        >
+          {searchResults.map((r, i) => (
+            <div
+              key={i}
+              data-result-idx={i}
+              onClick={() => { setSearchIdx(i); scrollToResult(r); }}
+              style={{
+                padding: '4px 10px',
+                fontSize: '11px',
+                cursor: 'pointer',
+                display: 'flex',
+                gap: '8px',
+                alignItems: 'baseline',
+                background: i === searchIdx ? 'var(--accent-a15)' : 'transparent',
+                borderLeft: i === searchIdx ? '2px solid var(--accent)' : '2px solid transparent',
+                transition: 'background 0.1s'
+              }}
+              onMouseEnter={e => { if (i !== searchIdx) e.currentTarget.style.background = 'var(--accent-a08)'; }}
+              onMouseLeave={e => { if (i !== searchIdx) e.currentTarget.style.background = 'transparent'; }}
+            >
+              <span style={{
+                color: 'var(--accent)',
+                fontSize: '10px',
+                flexShrink: 0,
+                minWidth: '32px'
+              }}>
+                p.{r.page}
+              </span>
+              <span style={{
+                color: 'var(--text-secondary)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}>
+                {r.before}<strong style={{ color: 'var(--text-primary)' }}>{r.match}</strong>{r.after}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {searchOpen && searchQuery && searchResults.length === 0 && (
+        <div style={{
+          padding: '6px 10px',
+          fontSize: '11px',
+          color: 'var(--text-disabled)',
+          fontStyle: 'italic',
+          background: 'var(--bg-elevated)',
+          borderBottom: '1px solid var(--border-subtle)',
+          flexShrink: 0
+        }}>
+          Nessun risultato
         </div>
       )}
 
@@ -368,10 +545,11 @@ const PdfViewer = forwardRef(function PdfViewer({
           flex: 1,
           overflow: 'auto',
           position: 'relative',
-          background: 'var(--bg-main)'
+          background: 'var(--bg-main)',
+          padding: '12px 0'
         }}
       >
-        <div ref={viewerWrapRef} className="pdfViewer" />
+        {pages}
       </div>
 
       {/* Page navigation bar */}

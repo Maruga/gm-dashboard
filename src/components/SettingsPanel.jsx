@@ -88,6 +88,8 @@ export default function SettingsPanel({
   onExportAdventure, onOpenAdventures,
   onResetAllRelations,
   aiConfig, onAiConfigChange, onClearAiHistory,
+  panelVisibility, onPanelVisibilityChange,
+  layoutPresets, onLayoutPresetsChange,
   initialSection
 }) {
   const [showToken, setShowToken] = useState(false);
@@ -98,6 +100,9 @@ export default function SettingsPanel({
   const [aiVerifyResult, setAiVerifyResult] = useState(null);
   const [aiQuota, setAiQuota] = useState(null);
   const [showAiKey, setShowAiKey] = useState(false);
+  const [showImageKey, setShowImageKey] = useState(false);
+  const [imageKeyVerifying, setImageKeyVerifying] = useState(false);
+  const [imageKeyVerifyResult, setImageKeyVerifyResult] = useState(null);
   const [confirmClearAi, setConfirmClearAi] = useState(false);
   const confirmClearAiTimer = useRef(null);
   // Firebase auth state
@@ -112,6 +117,9 @@ export default function SettingsPanel({
   const [confirmResetRelations, setConfirmResetRelations] = useState(false);
   const confirmRelationsTimer = useRef(null);
   const [section, setSection] = useState(initialSection || 'aspetto');
+  const [presetName, setPresetName] = useState('');
+  const [confirmDeletePreset, setConfirmDeletePreset] = useState(null);
+  const confirmDeletePresetTimer = useRef(null);
 
   // Load Firebase user on mount
   useEffect(() => {
@@ -222,6 +230,7 @@ export default function SettingsPanel({
               { id: 'account', icon: '👤', label: 'Account' },
               { id: 'parole', icon: '🔆', label: 'Parole evidenziate' },
               { id: 'manuali', icon: '📖', label: 'Manuali' },
+              { id: 'layout', icon: '🖥️', label: 'Layout' },
             ].map(item => (
               <div
                 key={item.id}
@@ -1254,7 +1263,10 @@ export default function SettingsPanel({
             >
               <option value="">— Seleziona provider —</option>
               <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic</option>
+              <option value="anthropic">Anthropic (Claude)</option>
+              <option value="grok" disabled>Grok (xAI) — in arrivo</option>
+              <option value="groq" disabled>Groq — in arrivo</option>
+              <option value="gemini" disabled>Gemini (Google) — in arrivo</option>
             </select>
           </div>
 
@@ -1374,6 +1386,58 @@ export default function SettingsPanel({
               </select>
               <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-tertiary)' }}>
                 Il livello di effort controlla quanto Claude ragiona prima di rispondere. I token di ragionamento sono conteggiati come output.
+              </div>
+            </div>
+          )}
+
+          {/* Generazione immagini — solo se provider NON è OpenAI (OpenAI usa stessa key) */}
+          {aiConfig?.provider && aiConfig?.provider !== 'openai' && (
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ ...sectionStyle, marginTop: '24px' }}>Generazione immagini</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '8px' }}>
+                Le immagini vengono generate tramite OpenAI. Inserisci una chiave OpenAI dedicata oppure usa la quota gratuita (richiede login).
+              </div>
+              <label style={labelStyle}>Chiave OpenAI per immagini</label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <input
+                  type={showImageKey ? 'text' : 'password'}
+                  value={aiConfig?.openaiImageKey || ''}
+                  onChange={e => { onAiConfigChange(prev => ({ ...prev, openaiImageKey: e.target.value })); setImageKeyVerifyResult(null); }}
+                  placeholder="Inserisci la tua OpenAI API key (facoltativo)"
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                <button
+                  onClick={() => setShowImageKey(v => !v)}
+                  style={{
+                    background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                    padding: '0 10px', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer'
+                  }}
+                >{showImageKey ? '🙈' : '👁️'}</button>
+                <button
+                  onClick={async () => {
+                    if (!aiConfig.openaiImageKey) return;
+                    setImageKeyVerifying(true);
+                    setImageKeyVerifyResult(null);
+                    const result = await window.electronAPI.aiVerifyKey('openai', aiConfig.openaiImageKey);
+                    setImageKeyVerifying(false);
+                    setImageKeyVerifyResult(result.success ? { ok: true } : { ok: false, error: result.error });
+                  }}
+                  disabled={!aiConfig.openaiImageKey || imageKeyVerifying}
+                  style={{
+                    background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                    padding: '0 12px', color: aiConfig.openaiImageKey && !imageKeyVerifying ? 'var(--accent)' : 'var(--text-disabled)',
+                    fontSize: '11px', cursor: aiConfig.openaiImageKey && !imageKeyVerifying ? 'pointer' : 'not-allowed',
+                    transition: 'all 0.2s', flexShrink: 0
+                  }}
+                >{imageKeyVerifying ? '...' : 'Verifica'}</button>
+              </div>
+              {imageKeyVerifyResult && (
+                <div style={{ marginTop: '6px', fontSize: '12px', color: imageKeyVerifyResult.ok ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                  {imageKeyVerifyResult.ok ? '✅ Chiave valida' : `❌ ${imageKeyVerifyResult.error}`}
+                </div>
+              )}
+              <div style={{ marginTop: '6px', fontSize: '10px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                Senza chiave, le immagini usano la quota gratuita (richiede login). 1 immagine ≈ 100.000 token.
               </div>
             </div>
           )}
@@ -1727,6 +1791,115 @@ export default function SettingsPanel({
             </div>
           )}
 
+          </>)}
+
+          {section === 'layout' && (<>
+          {/* === LAYOUT PANNELLI === */}
+          <div style={sectionStyle}>Layout pannelli</div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label style={labelStyle}>Pannelli visibili</label>
+            {[
+              { id: 'explorer', label: 'Explorer' },
+              { id: 'media', label: 'Media' },
+              { id: 'viewer', label: 'Viewer' },
+              { id: 'stage', label: 'Stage' },
+              { id: 'console', label: 'Console' },
+              { id: 'slotA', label: 'Slot A' },
+              { id: 'slotB', label: 'Slot B' },
+              { id: 'slotC', label: 'Slot C' }
+            ].map(panel => (
+              <label key={panel.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <input type="checkbox"
+                  checked={panelVisibility[panel.id]}
+                  onChange={() => onPanelVisibilityChange(prev => ({ ...prev, [panel.id]: !prev[panel.id] }))}
+                />
+                {panel.label}
+              </label>
+            ))}
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label style={labelStyle}>Salva layout corrente</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                value={presetName}
+                onChange={e => setPresetName(e.target.value)}
+                placeholder="Nome preset..."
+                style={inputStyle}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && presetName.trim()) {
+                    onLayoutPresetsChange(prev => {
+                      const filtered = prev.filter(p => p.name !== presetName.trim());
+                      return [...filtered, { name: presetName.trim(), panels: { ...panelVisibility } }];
+                    });
+                    setPresetName('');
+                  }
+                }}
+              />
+              <button
+                onClick={() => {
+                  if (!presetName.trim()) return;
+                  onLayoutPresetsChange(prev => {
+                    const filtered = prev.filter(p => p.name !== presetName.trim());
+                    return [...filtered, { name: presetName.trim(), panels: { ...panelVisibility } }];
+                  });
+                  setPresetName('');
+                }}
+                disabled={!presetName.trim()}
+                style={{
+                  background: 'none', border: '1px solid var(--accent)',
+                  borderRadius: '4px', padding: '6px 16px',
+                  color: !presetName.trim() ? 'var(--text-disabled)' : 'var(--accent)',
+                  fontSize: '12px', cursor: !presetName.trim() ? 'not-allowed' : 'pointer',
+                  fontWeight: '600', transition: 'all 0.15s', flexShrink: 0
+                }}
+              >
+                Salva
+              </button>
+            </div>
+          </div>
+
+          {layoutPresets.length > 0 && (
+            <div>
+              <label style={labelStyle}>Preset salvati</label>
+              {layoutPresets.map(preset => (
+                <div key={preset.name} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '8px 0', borderBottom: '1px solid var(--border-subtle)'
+                }}>
+                  <div>
+                    <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{preset.name}</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginLeft: '8px' }}>
+                      {Object.entries(preset.panels).filter(([, v]) => v).map(([k]) => k).join(', ')}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (confirmDeletePreset !== preset.name) {
+                        setConfirmDeletePreset(preset.name);
+                        if (confirmDeletePresetTimer.current) clearTimeout(confirmDeletePresetTimer.current);
+                        confirmDeletePresetTimer.current = setTimeout(() => setConfirmDeletePreset(null), 3000);
+                        return;
+                      }
+                      onLayoutPresetsChange(prev => prev.filter(p => p.name !== preset.name));
+                      setConfirmDeletePreset(null);
+                    }}
+                    style={{
+                      background: 'none', border: 'none', padding: '2px 8px',
+                      fontSize: '11px', cursor: 'pointer',
+                      color: confirmDeletePreset === preset.name ? 'var(--color-danger)' : 'var(--text-disabled)',
+                      transition: 'color 0.15s'
+                    }}
+                    onMouseEnter={e => { if (confirmDeletePreset !== preset.name) e.currentTarget.style.color = 'var(--color-danger)'; }}
+                    onMouseLeave={e => { if (confirmDeletePreset !== preset.name) e.currentTarget.style.color = 'var(--text-disabled)'; }}
+                  >
+                    {confirmDeletePreset === preset.name ? 'Sicuro?' : 'Elimina'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           </>)}
 
           </div>{/* end right content */}

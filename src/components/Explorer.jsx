@@ -22,16 +22,16 @@ function shouldHide(entry, hiddenSet) {
   return false;
 }
 
-function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, toggleDir, activeFilePath, hiddenSet }) {
+function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, toggleDir, activeFilePath, hiddenSet, refreshKey }) {
   const isExpanded = expandedDirs[entry.path];
   const [children, setChildren] = useState(null);
   const isActive = !entry.isDirectory && entry.path === activeFilePath;
 
   useEffect(() => {
-    if (entry.isDirectory && isExpanded && !children) {
+    if (entry.isDirectory && isExpanded) {
       window.electronAPI.readDirectory(entry.path).then(setChildren);
     }
-  }, [isExpanded, entry.path, entry.isDirectory, children]);
+  }, [isExpanded, entry.path, entry.isDirectory, refreshKey]);
 
   const handleClick = () => {
     if (entry.isDirectory) {
@@ -94,6 +94,7 @@ function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, togg
               toggleDir={toggleDir}
               activeFilePath={activeFilePath}
               hiddenSet={hiddenSet}
+              refreshKey={refreshKey}
             />
           ))}
         </div>
@@ -106,20 +107,23 @@ export default function Explorer({
   projectFolder, activeFilePath, onFileOpen, onSlotAssign, onMediaAdd,
   expandedDirs: externalExpanded, onExpandedDirsChange,
   onTelegramFile,
-  hiddenExtensions
+  hiddenExtensions,
+  refreshKey
 }) {
   const [entries, setEntries] = useState([]);
   const [internalExpanded, setInternalExpanded] = useState({});
   const expandedDirs = externalExpanded !== undefined ? externalExpanded : internalExpanded;
   const setExpandedDirs = onExpandedDirsChange || setInternalExpanded;
   const [contextMenu, setContextMenu] = useState(null);
+  const [localRefresh, setLocalRefresh] = useState(0);
   const hiddenSet = useMemo(() => buildHiddenSet(hiddenExtensions), [hiddenExtensions]);
+  const combinedRefreshKey = (refreshKey || 0) + localRefresh;
 
   useEffect(() => {
     if (projectFolder) {
       window.electronAPI.readDirectory(projectFolder).then(setEntries);
     }
-  }, [projectFolder]);
+  }, [projectFolder, combinedRefreshKey]);
 
   const toggleDir = useCallback((path) => {
     setExpandedDirs(prev => ({ ...prev, [path]: !prev[path] }));
@@ -180,9 +184,18 @@ export default function Explorer({
         letterSpacing: '1.5px',
         color: 'var(--accent)',
         borderBottom: '1px solid var(--border-subtle)',
-        flexShrink: 0
+        flexShrink: 0,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
       }}>
-        Explorer
+        <span>Explorer</span>
+        <span
+          className="close-btn"
+          onClick={() => setLocalRefresh(k => k + 1)}
+          title="Aggiorna"
+          style={{ fontSize: '12px', cursor: 'pointer' }}
+        >↻</span>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 0' }}>
         {entries.filter(entry => !shouldHide(entry, hiddenSet)).map(entry => (
@@ -196,6 +209,7 @@ export default function Explorer({
             toggleDir={toggleDir}
             activeFilePath={activeFilePath}
             hiddenSet={hiddenSet}
+            refreshKey={combinedRefreshKey}
           />
         ))}
         {entries.length === 0 && (

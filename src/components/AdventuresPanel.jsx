@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 const LANG_LABELS = { it: '🇮🇹', en: '🇬🇧', es: '🇪🇸', fr: '🇫🇷', de: '🇩🇪' };
 
 // ── Overlay principale ──
-export default function AdventuresPanel({ onClose, onProjectOpen, projectPath, projectSettings }) {
+export default function AdventuresPanel({ onClose, onProjectOpen, projectPath, projectSettings, firebaseUser, onFirebaseUserChange }) {
   const [tab, setTab] = useState('download');
 
   return (
@@ -50,7 +50,7 @@ export default function AdventuresPanel({ onClose, onProjectOpen, projectPath, p
             <DownloadTab onProjectOpen={onProjectOpen} onClose={onClose} />
           )}
           {tab === 'publish' && (
-            <PublishTab projectPath={projectPath} projectSettings={projectSettings} />
+            <PublishTab projectPath={projectPath} projectSettings={projectSettings} firebaseUser={firebaseUser} onFirebaseUserChange={onFirebaseUserChange} />
           )}
         </div>
       </div>
@@ -385,9 +385,9 @@ function AuthSection({ onLogin }) {
 }
 
 // ── Tab LE MIE PUBBLICAZIONI ──
-function PublishTab({ projectPath, projectSettings }) {
-  const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+function PublishTab({ projectPath, projectSettings, firebaseUser, onFirebaseUserChange }) {
+  const user = firebaseUser;
+  const [authLoading, setAuthLoading] = useState(!firebaseUser);
   const [myAdventures, setMyAdventures] = useState([]);
   const [publishing, setPublishing] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -395,19 +395,15 @@ function PublishTab({ projectPath, projectSettings }) {
   const [unpublishing, setUnpublishing] = useState(null);
   const [togglingVisibility, setTogglingVisibility] = useState(null);
 
-  // Auto-login on mount
+  // Load adventures when user is available
   useEffect(() => {
+    if (!user) { setAuthLoading(false); return; }
     (async () => {
-      let u = await window.electronAPI.firebaseGetUser();
-      if (!u) u = await window.electronAPI.firebaseAutoLogin();
-      if (u) {
-        setUser(u);
-        const adventures = await window.electronAPI.firebaseFetchMyAdventures(u.uid);
-        if (!adventures.error) setMyAdventures(adventures);
-      }
+      const adventures = await window.electronAPI.firebaseFetchMyAdventures(user.uid);
+      if (!adventures.error) setMyAdventures(adventures);
       setAuthLoading(false);
     })();
-  }, []);
+  }, [user]);
 
   const refreshMyAdventures = async () => {
     if (!user) return;
@@ -416,19 +412,36 @@ function PublishTab({ projectPath, projectSettings }) {
   };
 
   const handleLogin = async (u) => {
-    setUser(u);
+    if (onFirebaseUserChange) onFirebaseUserChange(u);
     const adventures = await window.electronAPI.firebaseFetchMyAdventures(u.uid);
     if (!adventures.error) setMyAdventures(adventures);
   };
 
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  useEffect(() => {
+    if (!confirmLogout) return;
+    const t = setTimeout(() => setConfirmLogout(false), 3000);
+    return () => clearTimeout(t);
+  }, [confirmLogout]);
+
   const handleLogout = async () => {
+    if (!confirmLogout) { setConfirmLogout(true); return; }
     await window.electronAPI.firebaseLogout();
-    setUser(null);
+    if (onFirebaseUserChange) onFirebaseUserChange(null);
     setMyAdventures([]);
+    setConfirmLogout(false);
   };
 
+  const [confirmUnpublish, setConfirmUnpublish] = useState(null);
+  useEffect(() => {
+    if (!confirmUnpublish) return;
+    const t = setTimeout(() => setConfirmUnpublish(null), 3000);
+    return () => clearTimeout(t);
+  }, [confirmUnpublish]);
+
   const handleUnpublish = async (adventure) => {
-    if (!window.confirm(`Rimuovere "${adventure.name}" dal catalogo?`)) return;
+    if (confirmUnpublish !== adventure.id) { setConfirmUnpublish(adventure.id); return; }
+    setConfirmUnpublish(null);
     setUnpublishing(adventure.id);
     const result = await window.electronAPI.adventureUnpublish(adventure.id);
     setUnpublishing(null);
@@ -477,12 +490,14 @@ function PublishTab({ projectPath, projectSettings }) {
           onClick={handleLogout}
           style={{
             background: 'none', border: 'none', padding: '4px 8px',
-            color: 'var(--text-disabled)', fontSize: '11px', cursor: 'pointer'
+            color: confirmLogout ? 'var(--color-danger)' : 'var(--text-disabled)',
+            fontSize: '11px', cursor: 'pointer', fontWeight: confirmLogout ? '600' : '400',
+            transition: 'all 0.15s'
           }}
           onMouseEnter={e => e.currentTarget.style.color = 'var(--color-danger)'}
-          onMouseLeave={e => e.currentTarget.style.color = 'var(--text-disabled)'}
+          onMouseLeave={e => { if (!confirmLogout) e.currentTarget.style.color = 'var(--text-disabled)'; }}
         >
-          Esci
+          {confirmLogout ? 'Sicuro?' : 'Esci'}
         </button>
       </div>
 
@@ -584,14 +599,17 @@ function PublishTab({ projectPath, projectSettings }) {
               onClick={() => handleUnpublish(a)}
               disabled={unpublishing === a.id}
               style={{
-                background: 'none', border: '1px solid var(--color-danger-bg)', borderRadius: '4px',
+                background: 'none', border: '1px solid',
+                borderColor: confirmUnpublish === a.id ? 'var(--color-danger)' : 'var(--color-danger-bg)',
+                borderRadius: '4px',
                 padding: '4px 10px', color: 'var(--color-danger)', fontSize: '11px',
-                cursor: unpublishing === a.id ? 'not-allowed' : 'pointer', transition: 'all 0.2s'
+                cursor: unpublishing === a.id ? 'not-allowed' : 'pointer', transition: 'all 0.2s',
+                fontWeight: confirmUnpublish === a.id ? '600' : '400'
               }}
               onMouseEnter={e => e.currentTarget.style.background = 'var(--color-danger-bg)'}
               onMouseLeave={e => e.currentTarget.style.background = 'none'}
             >
-              {unpublishing === a.id ? '...' : '🗑️'}
+              {unpublishing === a.id ? '...' : confirmUnpublish === a.id ? 'Sicuro?' : '🗑️'}
             </button>
           </div>
         </div>

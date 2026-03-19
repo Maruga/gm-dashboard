@@ -44,11 +44,12 @@ function httpsPost(hostname, urlPath, headers, body) {
 async function chatOpenAI(apiKey, model, messages, maxTokens) {
   // GPT-5 richiede max_completion_tokens, non max_tokens
   const isGpt5 = model.startsWith('gpt-5');
-  const body = { model, messages, temperature: 0.7 };
-  if (isGpt5) {
-    body.max_completion_tokens = maxTokens || 1024;
-  } else {
+  const body = { model, messages };
+  if (!isGpt5) {
+    body.temperature = 0.7;
     body.max_tokens = maxTokens || 1024;
+  } else {
+    body.max_completion_tokens = maxTokens || 1024;
   }
   const res = await httpsPost('api.openai.com', '/v1/chat/completions', {
     'Authorization': `Bearer ${apiKey}`
@@ -222,4 +223,36 @@ function buildSystemPrompt(context, projectName) {
 ${context}`;
 }
 
-module.exports = { chat, verifyKey, buildContext, buildSystemPrompt };
+// ── Generazione immagini (OpenAI gpt-image-1) ──
+
+async function generateImage(apiKey, prompt, options = {}) {
+  const body = {
+    model: options.model || 'gpt-image-1',
+    prompt,
+    n: 1,
+    size: options.size || '1024x1024',
+    output_format: 'png'
+  };
+  const res = await httpsPost('api.openai.com', '/v1/images/generations', {
+    'Authorization': `Bearer ${apiKey}`
+  }, body);
+
+  if (res.status !== 200) {
+    const msg = res.data?.error?.message || `Errore OpenAI Images: HTTP ${res.status}`;
+    return { error: msg };
+  }
+
+  const b64 = res.data?.data?.[0]?.b64_json;
+  const url = res.data?.data?.[0]?.url;
+  if (!b64 && !url) return { error: 'Nessuna immagine nella risposta' };
+
+  return { b64, url };
+}
+
+function saveBase64Image(b64, filePath) {
+  const buffer = Buffer.from(b64, 'base64');
+  fs.writeFileSync(filePath, buffer);
+  return filePath;
+}
+
+module.exports = { chat, verifyKey, buildContext, buildSystemPrompt, generateImage, saveBase64Image };
