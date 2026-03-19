@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getFileIcon, getFileType, FILE_TYPES } from '../utils/fileTypes';
 
 const DEFAULT_HIDDEN = '.json, .yml, .yaml, .git, .gitignore, .DS_Store, .thumbs.db, .ini, .cfg, .log, .bak, .tmp, .swp, .lock';
@@ -22,7 +22,7 @@ function shouldHide(entry, hiddenSet) {
   return false;
 }
 
-function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, toggleDir, activeFilePath, hiddenSet, refreshKey }) {
+function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, toggleDir, activeFilePath, hiddenSet, refreshKey, dropTarget, onDragTarget, onImportDrop }) {
   const isExpanded = expandedDirs[entry.path];
   const [children, setChildren] = useState(null);
   const isActive = !entry.isDirectory && entry.path === activeFilePath;
@@ -47,14 +47,22 @@ function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, togg
     onContextMenu(e, entry);
   };
 
+  const dropDest = entry.isDirectory ? entry.path : entry.path.replace(/[\\/][^\\/]+$/, '');
+  const isDropTarget = dropTarget === entry.path || (!entry.isDirectory && dropTarget === dropDest);
+
   const icon = getFileIcon(entry);
   const activeBg = 'var(--accent-a15)';
+  const normalBg = isActive ? activeBg : 'transparent';
 
   return (
     <div>
       <div
         onClick={handleClick}
         onContextMenu={handleContext}
+        onDragOver={e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; }}
+        onDragEnter={e => { e.stopPropagation(); onDragTarget(dropDest); }}
+        onDragLeave={e => { e.stopPropagation(); if (!e.currentTarget.contains(e.relatedTarget)) onDragTarget(null); }}
+        onDrop={e => { e.stopPropagation(); e.preventDefault(); onImportDrop(e.dataTransfer, dropDest); onDragTarget(null); }}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -63,14 +71,15 @@ function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, togg
           cursor: 'pointer',
           fontSize: '13px',
           color: isActive ? 'var(--accent)' : 'var(--text-primary)',
-          background: isActive ? activeBg : 'transparent',
+          background: isDropTarget ? 'var(--accent-a15)' : normalBg,
+          outline: isDropTarget ? '1px dashed var(--accent)' : 'none',
           borderRadius: '3px',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis'
         }}
-        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--bg-hover-strong)'; }}
-        onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = isActive ? activeBg : 'transparent'; }}
+        onMouseEnter={e => { if (!isActive && !isDropTarget) e.currentTarget.style.background = 'var(--bg-hover-strong)'; }}
+        onMouseLeave={e => { if (!isDropTarget) e.currentTarget.style.background = normalBg; }}
       >
         {entry.isDirectory && (
           <span style={{ marginRight: '4px', fontSize: '10px', color: 'var(--text-secondary)', width: '10px', flexShrink: 0, textAlign: 'center' }}>
@@ -95,6 +104,9 @@ function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, togg
               activeFilePath={activeFilePath}
               hiddenSet={hiddenSet}
               refreshKey={refreshKey}
+              dropTarget={dropTarget}
+              onDragTarget={onDragTarget}
+              onImportDrop={onImportDrop}
             />
           ))}
         </div>
@@ -116,6 +128,8 @@ export default function Explorer({
   const setExpandedDirs = onExpandedDirsChange || setInternalExpanded;
   const [contextMenu, setContextMenu] = useState(null);
   const [localRefresh, setLocalRefresh] = useState(0);
+  const [dropTarget, setDropTarget] = useState(null);
+  const dragCounterRef = useRef(0);
   const hiddenSet = useMemo(() => buildHiddenSet(hiddenExtensions), [hiddenExtensions]);
   const combinedRefreshKey = (refreshKey || 0) + localRefresh;
 
@@ -147,6 +161,16 @@ export default function Explorer({
   }, []);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const handleImportDrop = useCallback(async (dataTransfer, destFolder) => {
+    const files = dataTransfer.files;
+    if (!files?.length || !projectFolder) return;
+    const paths = Array.from(files).map(f => window.electronAPI.getPathForFile(f)).filter(Boolean);
+    if (paths.length === 0) return;
+    const result = await window.electronAPI.importItems(paths, destFolder);
+    if (result.imported > 0) setLocalRefresh(k => k + 1);
+    if (result.errors?.length > 0) console.warn('Import errors:', result.errors);
+  }, [projectFolder]);
 
   useEffect(() => {
     const handler = () => closeContextMenu();
@@ -197,7 +221,18 @@ export default function Explorer({
           style={{ fontSize: '12px', cursor: 'pointer' }}
         >↻</span>
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 0' }}>
+      <div
+        style={{
+          flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 0',
+          outline: dropTarget === 'root' ? '2px dashed var(--accent)' : 'none',
+          outlineOffset: '-2px',
+          background: dropTarget === 'root' ? 'var(--accent-a08)' : 'transparent'
+        }}
+        onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+        onDragEnter={e => { e.preventDefault(); dragCounterRef.current++; if (!dropTarget) setDropTarget('root'); }}
+        onDragLeave={() => { dragCounterRef.current--; if (dragCounterRef.current <= 0) { dragCounterRef.current = 0; setDropTarget(null); } }}
+        onDrop={e => { e.preventDefault(); dragCounterRef.current = 0; handleImportDrop(e.dataTransfer, projectFolder); setDropTarget(null); }}
+      >
         {entries.filter(entry => !shouldHide(entry, hiddenSet)).map(entry => (
           <TreeNode
             key={entry.path}
@@ -210,6 +245,9 @@ export default function Explorer({
             activeFilePath={activeFilePath}
             hiddenSet={hiddenSet}
             refreshKey={combinedRefreshKey}
+            dropTarget={dropTarget}
+            onDragTarget={setDropTarget}
+            onImportDrop={handleImportDrop}
           />
         ))}
         {entries.length === 0 && (

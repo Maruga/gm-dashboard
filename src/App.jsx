@@ -58,6 +58,14 @@ export default function App() {
     })();
   }, []);
 
+  // Prevent Electron from navigating to dropped files — Explorer handles its own drops
+  useEffect(() => {
+    const prevent = e => e.preventDefault();
+    document.addEventListener('dragover', prevent);
+    document.addEventListener('drop', prevent);
+    return () => { document.removeEventListener('dragover', prevent); document.removeEventListener('drop', prevent); };
+  }, []);
+
   const handleProjectOpen = useCallback(async (folderPath, name) => {
     // Add/update in recent projects
     const project = {

@@ -17,6 +17,19 @@ function logDiag(type, msg) {
   if (diagLog.length > 200) diagLog.shift();
 }
 
+function findUniqueName(folder, name) {
+  let candidate = path.join(folder, name);
+  if (!fs.existsSync(candidate)) return candidate;
+  const ext = path.extname(name);
+  const base = ext ? name.slice(0, -ext.length) : name;
+  let i = 1;
+  while (true) {
+    candidate = path.join(folder, ext ? `${base} (${i})${ext}` : `${base} (${i})`);
+    if (!fs.existsSync(candidate)) return candidate;
+    i++;
+  }
+}
+
 function compareSemver(a, b) {
   const pa = a.split('.').map(Number);
   const pb = b.split('.').map(Number);
@@ -492,6 +505,44 @@ ipcMain.handle('copy-file', async (event, sourcePath, destFolder) => {
   } catch (err) {
     return { error: err.message };
   }
+});
+
+// Import files/folders via drag & drop
+ipcMain.handle('import-items', async (event, sourcePaths, destFolder) => {
+  const result = { imported: 0, renamed: [], errors: [] };
+  try {
+    const resolvedDest = path.resolve(destFolder);
+    const allowed = store.get('recentProjects').map(p => path.resolve(p.path));
+    const isAllowed = allowed.some(root => resolvedDest.startsWith(root + path.sep) || resolvedDest === root);
+    if (!isAllowed) {
+      logDiag('warn', `import-items bloccato: dest fuori progetto: ${resolvedDest}`);
+      return { ...result, errors: ['Destination folder is outside any known project'] };
+    }
+    if (!fs.existsSync(resolvedDest)) fs.mkdirSync(resolvedDest, { recursive: true });
+    for (const src of sourcePaths) {
+      try {
+        const stat = fs.statSync(src);
+        const name = path.basename(src);
+        const destPath = findUniqueName(resolvedDest, name);
+        const finalName = path.basename(destPath);
+        if (stat.isDirectory()) {
+          fs.cpSync(src, destPath, { recursive: true });
+        } else {
+          fs.copyFileSync(src, destPath);
+        }
+        result.imported++;
+        if (finalName !== name) result.renamed.push(`${name} → ${finalName}`);
+      } catch (err) {
+        const msg = `${path.basename(src)}: ${err.message}`;
+        result.errors.push(msg);
+        logDiag('warn', `import-items errore: ${msg}`);
+      }
+    }
+  } catch (err) {
+    result.errors.push(err.message);
+    logDiag('warn', `import-items errore generale: ${err.message}`);
+  }
+  return result;
 });
 
 // Folder picker scoped to project

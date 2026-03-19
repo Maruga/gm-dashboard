@@ -311,15 +311,17 @@ const Viewer = forwardRef(function Viewer({
 
     // Wrap matches in reverse order to preserve text node positions
     for (let i = matches.length - 1; i >= 0; i--) {
-      const { node: textNode, pos } = matches[i];
-      const mark = iframeDoc.createElement('mark');
-      mark.setAttribute('data-search-hl', 'true');
-      mark.setAttribute('data-search-idx', String(i));
-      mark.style.cssText = `background:var(--accent-a${i === bestIdx ? '55' : '30'});color:inherit;padding:0 1px;border-radius:2px`;
-      const range = iframeDoc.createRange();
-      range.setStart(textNode, pos);
-      range.setEnd(textNode, pos + sh.query.length);
-      range.surroundContents(mark);
+      try {
+        const { node: textNode, pos } = matches[i];
+        const mark = iframeDoc.createElement('mark');
+        mark.setAttribute('data-search-hl', 'true');
+        mark.setAttribute('data-search-idx', String(i));
+        mark.style.cssText = `background:var(--accent-a${i === bestIdx ? '55' : '30'});color:inherit;padding:0 1px;border-radius:2px`;
+        const range = iframeDoc.createRange();
+        range.setStart(textNode, pos);
+        range.setEnd(textNode, pos + sh.query.length);
+        range.surroundContents(mark);
+      } catch (_) { /* match attraversa confini DOM — skip */ }
     }
 
     // Scroll to best match, then fade

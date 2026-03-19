@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Project management
@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   searchFiles: (folderPath, query) => ipcRenderer.invoke('search-files', folderPath, query),
   selectProjectFile: (projectPath, filters) => ipcRenderer.invoke('select-project-file', projectPath, filters),
   copyFile: (source, destFolder) => ipcRenderer.invoke('copy-file', source, destFolder),
+  importItems: (sourcePaths, destFolder) => ipcRenderer.invoke('import-items', sourcePaths, destFolder),
+  getPathForFile: (file) => webUtils.getPathForFile(file),
   selectProjectSubfolder: (projectPath) => ipcRenderer.invoke('select-project-subfolder', projectPath),
 
   // Window controls
