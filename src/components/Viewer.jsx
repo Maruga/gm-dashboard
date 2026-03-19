@@ -114,7 +114,7 @@ const Viewer = forwardRef(function Viewer({
       try {
         const scrollY = iframeRef.current?.contentWindow?.scrollY;
         if (scrollY != null) saveScroll(currentKeyRef.current, scrollY);
-      } catch (_) { /* cross-origin safety */ }
+      } catch (_) { /* cross-origin: atteso */ }
     } else if (containerRef.current) {
       saveScroll(currentKeyRef.current, containerRef.current.scrollTop);
     }
@@ -303,7 +303,7 @@ const Viewer = forwardRef(function Viewer({
         style.textContent = `::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${thumb};border-radius:3px}::-webkit-scrollbar-thumb:hover{background:${hover}}`;
         iframeDoc.head.appendChild(style);
       }
-    } catch (_) {}
+    } catch (e) { console.warn('Iframe style inject:', e.message); }
     const targetScroll = getScroll(currentKeyRef.current);
     setTimeout(() => {
       try {
@@ -314,9 +314,9 @@ const Viewer = forwardRef(function Viewer({
             if (currentKeyRef.current) {
               saveScroll(currentKeyRef.current, iframe.contentWindow.scrollY);
             }
-          } catch (_) {}
+          } catch (e) { console.warn('Iframe scroll save:', e.message); }
         }, { passive: true });
-      } catch (_) { /* cross-origin safety */ }
+      } catch (_) { /* cross-origin: atteso */ }
     }, 100);
   }, [getScroll, saveScroll]);
 
@@ -372,7 +372,7 @@ const Viewer = forwardRef(function Viewer({
                   setUrlError(true);
                 }
               } catch (_) {
-                // Cross-origin — can't access contentDocument, but site loaded fine
+                /* cross-origin: atteso */
               }
             }}
             onError={() => { if (urlTimeoutRef.current) clearTimeout(urlTimeoutRef.current); setUrlError(true); }}

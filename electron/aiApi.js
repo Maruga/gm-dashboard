@@ -65,6 +65,9 @@ async function chatOpenAI(apiKey, model, messages, maxTokens) {
 
 // ── Anthropic ──
 
+// Budget tokens per livello di effort (Extended Thinking)
+const THINKING_BUDGET = { low: 2048, medium: 5000, high: 10000 };
+
 async function chatAnthropic(apiKey, model, messages, maxTokens, effort) {
   // Anthropic richiede system message separato
   let system = '';
@@ -76,28 +79,39 @@ async function chatAnthropic(apiKey, model, messages, maxTokens, effort) {
       filtered.push(m);
     }
   }
+
+  // Extended Thinking: attivo solo con effort esplicito su modelli compatibili
+  const useThinking = effort && THINKING_BUDGET[effort] &&
+    (model.includes('opus') || model.includes('sonnet'));
+  const budgetTokens = useThinking ? THINKING_BUDGET[effort] : 0;
+
   const body = {
     model,
     messages: filtered,
-    max_tokens: maxTokens || 1024,
-    temperature: 0.7
+    // Con thinking attivo, max_tokens deve essere > budget_tokens
+    max_tokens: useThinking ? budgetTokens + (maxTokens || 1024) : (maxTokens || 1024)
   };
   if (system) body.system = system;
-  // Effort parameter per adaptive thinking (Opus 4.6, Sonnet 4.6)
-  if (effort && (model.includes('opus') || model.includes('sonnet'))) {
-    body.effort = effort;
+
+  if (useThinking) {
+    // Extended Thinking richiede temperature 1.0 (o omessa)
+    body.thinking = { type: 'enabled', budget_tokens: budgetTokens };
+  } else {
+    body.temperature = 0.7;
   }
 
   const res = await httpsPost('api.anthropic.com', '/v1/messages', {
     'x-api-key': apiKey,
-    'anthropic-version': '2023-06-01'
+    'anthropic-version': '2025-04-15'
   }, body);
 
   if (res.status !== 200) {
     const msg = res.data?.error?.message || `Errore Anthropic: HTTP ${res.status}`;
     return { error: msg };
   }
-  const content = res.data.content?.[0]?.text || '';
+  // Extended Thinking: la risposta contiene blocchi thinking + text, estrarre solo il text
+  const textBlock = res.data.content?.find(b => b.type === 'text');
+  const content = textBlock?.text || '';
   const tokensUsed = (res.data.usage?.input_tokens || 0) + (res.data.usage?.output_tokens || 0);
   return { response: content, tokensUsed };
 }
@@ -153,7 +167,7 @@ function collectProjectFiles(dirPath) {
           }
         }
       }
-    } catch {}
+    } catch (e) { console.warn('[ai-walk-error]', e.message); }
   }
   walk(dirPath);
   return files;
@@ -196,7 +210,7 @@ function buildContext(projectPath, question, allowedFiles = null) {
       }
       const relPath = path.relative(projectPath, f.path).replace(/\\/g, '/');
       scored.push({ relPath, content, score });
-    } catch {}
+    } catch (e) { console.warn('[ai-read-score]', e.message); }
   }
 
   // Sort: most relevant first, then alphabetical

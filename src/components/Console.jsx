@@ -139,14 +139,14 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
     try {
       const saved = localStorage.getItem(`search-history:${projectFolder}`);
       if (saved) setSearchHistory(JSON.parse(saved));
-    } catch {}
+    } catch (e) { console.warn('Search history load failed:', e.message); }
   }, [projectFolder]);
 
   const saveToHistory = useCallback((query) => {
     setSearchHistory(prev => {
       const filtered = prev.filter(q => q.toLowerCase() !== query.toLowerCase());
       const next = [query, ...filtered].slice(0, 30);
-      try { localStorage.setItem(`search-history:${projectFolder}`, JSON.stringify(next)); } catch {}
+      try { localStorage.setItem(`search-history:${projectFolder}`, JSON.stringify(next)); } catch (e) { console.warn('Search history save failed:', e.message); }
       return next;
     });
   }, [projectFolder]);
@@ -614,7 +614,7 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
                           {msg.imagePath ? (
                             <div>
                               <img
-                                src={`file://${msg.imageFullPath?.replace(/\\/g, '/')}`}
+                                src={`app://local/-/${msg.imageFullPath?.replace(/\\/g, '/')}`}
                                 alt="Immagine generata"
                                 style={{ maxWidth: '300px', maxHeight: '300px', borderRadius: '4px', cursor: 'pointer', display: 'block' }}
                                 onClick={() => onOpenFile(msg.imagePath)}

@@ -171,7 +171,7 @@ const PdfViewer = forwardRef(function PdfViewer({
 
     // Cleanup previous
     if (pdfDocRef.current) {
-      try { pdfDocRef.current.destroy(); } catch (_) {}
+      try { pdfDocRef.current.destroy(); } catch (e) { console.warn('PDF cleanup:', e.message); }
       pdfDocRef.current = null;
     }
 
@@ -209,7 +209,7 @@ const PdfViewer = forwardRef(function PdfViewer({
                         pageNum = pageIndex + 1;
                       }
                     }
-                  } catch (_) {}
+                  } catch (e) { console.warn('PDF outline resolve:', e.message); }
                   items.push({ title: entry.title, page: pageNum, level });
                   if (entry.items && entry.items.length > 0) {
                     await flatten(entry.items, level + 1);
@@ -240,7 +240,7 @@ const PdfViewer = forwardRef(function PdfViewer({
     return () => {
       cancelled = true;
       if (pdfDocRef.current) {
-        try { pdfDocRef.current.destroy(); } catch (_) {}
+        try { pdfDocRef.current.destroy(); } catch (e) { console.warn('PDF cleanup:', e.message); }
         pdfDocRef.current = null;
       }
     };

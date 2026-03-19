@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain, dialog, globalShortcut, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut, shell, protocol, net, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 const { GmDashBot, verifyToken, htmlToImage } = require('./telegramBot');
 const firebase = require('./firebaseApi');
@@ -38,6 +39,18 @@ process.on('unhandledRejection', (reason) => {
 
 const isDev = !app.isPackaged;
 
+// Custom protocol app:// — DEVE essere registrato prima di app.ready
+protocol.registerSchemesAsPrivileged([{
+  scheme: 'app',
+  privileges: {
+    standard: true,
+    secure: true,
+    supportFetchAPI: true,
+    corsEnabled: true,
+    stream: true
+  }
+}]);
+
 const gmBot = new GmDashBot();
 
 const store = new Store({
@@ -52,6 +65,42 @@ const globalStore = new Store({
   name: 'global-settings',
   defaults: { firebaseCredentials: null, downloadQuota: { date: '', bytesUsed: 0 }, dismissedBroadcastId: '' }
 });
+
+// ── safeStorage helpers per credenziali/API key ──
+
+function safeEncrypt(text) {
+  if (!text) return text;
+  if (safeStorage.isEncryptionAvailable()) {
+    return { __enc: safeStorage.encryptString(text).toString('base64') };
+  }
+  return text; // fallback: testo in chiaro
+}
+
+function safeDecrypt(value) {
+  if (!value) return value;
+  if (typeof value === 'object' && value.__enc) {
+    try {
+      return safeStorage.decryptString(Buffer.from(value.__enc, 'base64'));
+    } catch { return ''; }
+  }
+  return value; // legacy: testo in chiaro o base64
+}
+
+function encryptProjectState(state) {
+  if (!state?.aiConfig) return state;
+  const clone = JSON.parse(JSON.stringify(state));
+  if (clone.aiConfig.apiKey) clone.aiConfig.apiKey = safeEncrypt(clone.aiConfig.apiKey);
+  if (clone.aiConfig.openaiImageKey) clone.aiConfig.openaiImageKey = safeEncrypt(clone.aiConfig.openaiImageKey);
+  return clone;
+}
+
+function decryptProjectState(state) {
+  if (!state?.aiConfig) return state;
+  const clone = JSON.parse(JSON.stringify(state));
+  if (clone.aiConfig.apiKey) clone.aiConfig.apiKey = safeDecrypt(clone.aiConfig.apiKey);
+  if (clone.aiConfig.openaiImageKey) clone.aiConfig.openaiImageKey = safeDecrypt(clone.aiConfig.openaiImageKey);
+  return clone;
+}
 
 // ── Download quota (100 MB/giorno) ──
 const DAILY_DOWNLOAD_LIMIT = 100 * 1024 * 1024;
@@ -85,12 +134,11 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false,
-      webSecurity: false
+      nodeIntegration: false
     }
   });
 
-  mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  mainWindow.loadURL('app://local/index.html');
 
   // Open DevTools with F12
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -119,6 +167,24 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Registra handler per protocollo app://
+  const distRoot = path.join(__dirname, '..', 'dist');
+  protocol.handle('app', (request) => {
+    let { pathname } = new URL(request.url);
+    pathname = decodeURIComponent(pathname);
+
+    if (pathname.startsWith('/-/')) {
+      // File locale dal filesystem: app://local/-/C:/path/to/file
+      const filePath = pathname.substring(3);
+      return net.fetch(pathToFileURL(filePath).href);
+    }
+
+    // File dell'app: app://local/index.html → dist/index.html
+    if (pathname === '/' || pathname === '') pathname = '/index.html';
+    const resolved = path.join(distRoot, pathname);
+    return net.fetch(pathToFileURL(resolved).href);
+  });
+
   createWindow();
 
   // === Installation tracking ===
@@ -201,9 +267,11 @@ ipcMain.handle('open-project-folder', async (_, folderPath) => {
   await shell.openPath(folderPath);
 });
 
-// Open URL in system default browser
+// Open URL in system default browser (solo http/https)
 ipcMain.handle('open-external', async (_, url) => {
-  await shell.openExternal(url);
+  if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+    await shell.openExternal(url);
+  }
 });
 
 // Project management
@@ -245,12 +313,13 @@ ipcMain.handle('remove-recent-project', (event, projectPath) => {
 
 ipcMain.handle('get-project-state', (event, projectPath) => {
   const states = store.get('projectStates');
-  return states[projectPath] || null;
+  const state = states[projectPath] || null;
+  return state ? decryptProjectState(state) : null;
 });
 
 ipcMain.handle('save-project-state', (event, projectPath, state) => {
   const states = store.get('projectStates');
-  states[projectPath] = state;
+  states[projectPath] = encryptProjectState(state);
   store.set('projectStates', states);
 });
 
@@ -298,7 +367,7 @@ ipcMain.handle('read-file-binary', async (event, filePath) => {
 
 ipcMain.handle('get-file-url', async (event, filePath) => {
   const normalizedPath = filePath.replace(/\\/g, '/');
-  return `file:///${normalizedPath}`;
+  return `app://local/-/${normalizedPath}`;
 });
 
 ipcMain.handle('search-files', async (event, folderPath, query) => {
@@ -370,12 +439,12 @@ ipcMain.handle('search-files', async (event, folderPath, query) => {
                   matches: matchingLines
                 });
               }
-            } catch (e) { /* skip unreadable files */ }
+            } catch (e) { logDiag('warn', 'search-read-skip', e.message); }
           }
         }
         if (results.length >= 50) return;
       }
-    } catch (e) { /* skip unreadable dirs */ }
+    } catch (e) { logDiag('warn', 'search-dir-skip', e.message); }
   }
 
   searchDir(folderPath);
@@ -623,9 +692,9 @@ ipcMain.handle('telegram-get-bot-info', () => {
 ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => {
   logDiag('info', `AI chat richiesta (${messages.length} messaggi)`);
   try {
-    // Read AI config from project state
+    // Read AI config from project state (decrypt sensitive fields)
     const states = store.get('projectStates');
-    const projectState = states[projectPath];
+    const projectState = decryptProjectState(states[projectPath]);
     const aiConfig = projectState?.aiConfig;
 
     let provider, apiKey, model;
@@ -729,7 +798,7 @@ ipcMain.handle('ai-generate-image', async (event, prompt, projectPath, options =
   logDiag('info', `AI genera immagine: "${prompt.substring(0, 50)}..."`);
   try {
     const states = store.get('projectStates');
-    const projectState = states[projectPath];
+    const projectState = decryptProjectState(states[projectPath]);
     const aiConfig = projectState?.aiConfig;
 
     // Cascata key OpenAI per immagini
@@ -1038,7 +1107,7 @@ ipcMain.handle('adventure-import-from-file', async () => {
     let metadata = null;
     const metaPath = path.join(extractPath, '_adventure.json');
     if (fs.existsSync(metaPath)) {
-      try { metadata = JSON.parse(fs.readFileSync(metaPath, 'utf-8')); } catch {}
+      try { metadata = JSON.parse(fs.readFileSync(metaPath, 'utf-8')); } catch (e) { logDiag('error', 'adventure-meta-parse', e.message); }
     }
 
     const projectPath = extractPath.replace(/\\/g, '/');
@@ -1117,7 +1186,7 @@ ipcMain.handle('adventure-download', async (event, url, adventureName) => {
     let metadata = null;
     const metaPath = path.join(extractPath, '_adventure.json');
     if (fs.existsSync(metaPath)) {
-      try { metadata = JSON.parse(fs.readFileSync(metaPath, 'utf-8')); } catch {}
+      try { metadata = JSON.parse(fs.readFileSync(metaPath, 'utf-8')); } catch (e) { logDiag('error', 'adventure-meta-parse', e.message); }
     }
 
     const projectPath = extractPath.replace(/\\/g, '/');

@@ -181,7 +181,7 @@ function playBeep() {
       osc.start(t);
       osc.stop(t + 0.1);
     });
-  } catch {}
+  } catch (e) { console.warn('Dice audio failed:', e.message); }
 }
 
 function formatTime(secs) {

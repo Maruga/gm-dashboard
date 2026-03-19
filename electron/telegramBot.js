@@ -47,7 +47,7 @@ class GmDashBot extends EventEmitter {
     } catch (err) {
       console.error('[BOT] Errore start:', err.message);
       if (this.bot) {
-        try { await this.bot.stopPolling(); } catch {}
+        try { await this.bot.stopPolling(); } catch (e) { console.warn('[bot-stop-polling]', e.message); }
       }
       this.bot = null;
       return { error: err.message };

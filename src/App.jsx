@@ -794,7 +794,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
             osc.connect(gain); gain.connect(ctx.destination);
             osc.frequency.value = 600; gain.gain.value = 0.15;
             osc.start(); osc.stop(ctx.currentTime + 0.05);
-          } catch {}
+          } catch (e) { console.warn('Audio beep failed:', e.message); }
         }
       }
       // Auto mark as read if chat is open on this player

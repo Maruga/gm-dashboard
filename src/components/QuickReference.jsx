@@ -178,7 +178,7 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
         style.textContent = `::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${thumb};border-radius:3px}::-webkit-scrollbar-thumb:hover{background:${hover}}`;
         iframeDoc.head.appendChild(style);
       }
-    } catch (_) {}
+    } catch (e) { console.warn('QR iframe style:', e.message); }
     const targetScroll = scrollPositions[selected.id] || 0;
     setTimeout(() => {
       try {
@@ -188,9 +188,9 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
             if (selected) {
               onScrollPositionsChange(prev => ({ ...prev, [selected.id]: iframe.contentWindow.scrollY }));
             }
-          } catch (_) {}
+          } catch (e) { console.warn('QR scroll save:', e.message); }
         }, { passive: true });
-      } catch (_) {}
+      } catch (e) { console.warn('QR iframe scroll:', e.message); }
     }, 100);
   }, [selected, scrollPositions, onScrollPositionsChange]);
 
@@ -253,7 +253,7 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
           onScrollPositionsChange(prev => ({ ...prev, [scrollSaveRef.current]: scrollY }));
           return;
         }
-      } catch (_) {}
+      } catch (_) { /* cross-origin: atteso */ }
       if (contentRef.current) {
         onScrollPositionsChange(prev => ({ ...prev, [scrollSaveRef.current]: contentRef.current.scrollTop }));
       }

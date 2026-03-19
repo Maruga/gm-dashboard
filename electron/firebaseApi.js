@@ -7,6 +7,7 @@
  * salvando email+password criptati in electron-store.
  */
 
+const { safeStorage } = require('electron');
 const { initializeApp } = require('firebase/app');
 const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
         signOut, updateProfile, inMemoryPersistence, setPersistence,
@@ -45,15 +46,26 @@ const globalStore = new Store({
 });
 
 function saveCredentials(email, password) {
-  const encoded = Buffer.from(JSON.stringify({ email, password })).toString('base64');
-  globalStore.set('firebaseCredentials', encoded);
+  const json = JSON.stringify({ email, password });
+  if (safeStorage.isEncryptionAvailable()) {
+    const encrypted = safeStorage.encryptString(json).toString('base64');
+    globalStore.set('firebaseCredentials', { v: 2, data: encrypted });
+  } else {
+    // Fallback se encryption non disponibile
+    globalStore.set('firebaseCredentials', Buffer.from(json).toString('base64'));
+  }
 }
 
 function getCredentials() {
-  const encoded = globalStore.get('firebaseCredentials');
-  if (!encoded) return null;
+  const stored = globalStore.get('firebaseCredentials');
+  if (!stored) return null;
   try {
-    return JSON.parse(Buffer.from(encoded, 'base64').toString('utf-8'));
+    if (typeof stored === 'object' && stored.v === 2) {
+      // safeStorage encrypted
+      return JSON.parse(safeStorage.decryptString(Buffer.from(stored.data, 'base64')));
+    }
+    // Legacy: base64 in chiaro — migra al prossimo salvataggio
+    return JSON.parse(Buffer.from(stored, 'base64').toString('utf-8'));
   } catch { return null; }
 }
 
