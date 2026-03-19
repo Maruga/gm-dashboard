@@ -78,7 +78,7 @@ export default function Stage({
             onToggleFullscreen={onToggleFullscreen}
             searchOpen={stageSearchOpen}
             onSearchToggle={() => setStageSearchOpen(v => !v)}
-            isHtmlIframe={activeItem?.extension === '.html' || activeItem?.extension === '.htm' || activeItem?.extension === '.url'}
+            isHtmlIframe={activeItem?.extension === '.url'}
           />
           {hasStageContent && onClearAll && (
             <span className="close-btn" onClick={onClearAll} style={{ fontSize: '12px' }} title="Svuota stage">✕</span>
@@ -130,7 +130,7 @@ export default function Stage({
       </div>
 
       {/* Panel search */}
-      {stageSearchOpen && !(activeItem?.extension === '.html' || activeItem?.extension === '.htm' || activeItem?.extension === '.url' || activeItem?.extension === '.pdf') && !isVistaTab && (
+      {stageSearchOpen && !(activeItem?.extension === '.url' || activeItem?.extension === '.pdf') && !isVistaTab && (
         <PanelSearch containerRef={isSnippet ? snippetRef : viewerRef} onClose={() => setStageSearchOpen(false)} />
       )}
 

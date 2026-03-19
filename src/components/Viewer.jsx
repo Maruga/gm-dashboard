@@ -76,7 +76,8 @@ const Viewer = forwardRef(function Viewer({
 
   useImperativeHandle(ref, () => {
     if (isPdfFile) return pdfViewerRef.current;
-    if (isHtmlFile || isUrlFile) return null;
+    if (isUrlFile) return null;
+    if (isHtmlFile) return iframeRef.current;
     return containerRef.current;
   });
 

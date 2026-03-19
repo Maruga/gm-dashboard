@@ -9,17 +9,32 @@ export default function PanelSearch({ containerRef, onClose }) {
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
   const activeMarkRef = useRef(null);
+  const wrapperRef = useRef(null);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
+  // Detect if containerRef points to an iframe or a normal DOM element
+  const getSearchContext = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return null;
+    if (el.tagName === 'IFRAME') {
+      try {
+        const doc = el.contentDocument;
+        if (!doc?.body) return null;
+        return { root: doc.body, doc, scrollEl: doc.documentElement };
+      } catch { return null; } // cross-origin
+    }
+    return { root: el, doc: document, scrollEl: el };
+  }, [containerRef]);
+
   // Build a text map: collect all text nodes and their offsets
   const getTextMap = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return { fullText: '', nodes: [] };
+    const ctx = getSearchContext();
+    if (!ctx) return { fullText: '', nodes: [] };
 
-    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const walker = ctx.doc.createTreeWalker(ctx.root, NodeFilter.SHOW_TEXT);
     const nodes = [];
     let offset = 0;
     let node;
@@ -31,7 +46,7 @@ export default function PanelSearch({ containerRef, onClose }) {
       }
     }
     return { fullText: nodes.map(n => n.node.textContent).join(''), nodes };
-  }, [containerRef]);
+  }, [getSearchContext]);
 
   // Remove the single active mark
   const clearActiveMark = useCallback(() => {
@@ -47,7 +62,8 @@ export default function PanelSearch({ containerRef, onClose }) {
   // Scroll to a specific match by its text offset
   const scrollToMatch = useCallback((match) => {
     clearActiveMark();
-    if (!containerRef.current) return;
+    const ctx = getSearchContext();
+    if (!ctx) return;
 
     const { nodes } = getTextMap();
     const matchStart = match.offset;
@@ -72,12 +88,12 @@ export default function PanelSearch({ containerRef, onClose }) {
     if (!startNode) return;
 
     try {
-      const range = document.createRange();
+      const range = ctx.doc.createRange();
       range.setStart(startNode, startOffset);
       range.setEnd(endNode || startNode, endOffset);
 
       // Try to wrap in a mark for visual highlight
-      const mark = document.createElement('mark');
+      const mark = ctx.doc.createElement('mark');
       mark.setAttribute('data-panel-search', 'true');
       mark.classList.add('current');
       range.surroundContents(mark);
@@ -85,19 +101,19 @@ export default function PanelSearch({ containerRef, onClose }) {
       mark.scrollIntoView({ block: 'center', behavior: 'smooth' });
     } catch {
       // Range spans multiple elements — scroll to approximate position
-      const range = document.createRange();
+      const range = ctx.doc.createRange();
       range.setStart(startNode, startOffset);
       range.collapse(true);
       const rect = range.getBoundingClientRect();
-      const containerRect = containerRef.current.getBoundingClientRect();
-      containerRef.current.scrollTop += rect.top - containerRect.top - containerRef.current.clientHeight / 2;
+      const scrollRect = ctx.scrollEl.getBoundingClientRect();
+      ctx.scrollEl.scrollTop += rect.top - scrollRect.top - ctx.scrollEl.clientHeight / 2;
     }
-  }, [containerRef, getTextMap, clearActiveMark]);
+  }, [getSearchContext, getTextMap, clearActiveMark]);
 
   // Search: only text matching, no DOM manipulation
   const doSearch = useCallback((searchQuery) => {
     clearActiveMark();
-    if (!searchQuery || !containerRef.current) {
+    if (!searchQuery || !getSearchContext()) {
       setMatches([]);
       setCurrentIdx(-1);
       setShowResults(false);
@@ -136,7 +152,7 @@ export default function PanelSearch({ containerRef, onClose }) {
     } else {
       setCurrentIdx(-1);
     }
-  }, [containerRef, getTextMap, clearActiveMark, scrollToMatch]);
+  }, [getSearchContext, getTextMap, clearActiveMark, scrollToMatch]);
 
   const goToMatch = useCallback((idx) => {
     if (matches.length === 0) return;
@@ -172,13 +188,24 @@ export default function PanelSearch({ containerRef, onClose }) {
   const handleResultClick = useCallback((idx) => {
     setCurrentIdx(idx);
     scrollToMatch(matches[idx]);
-    setShowResults(false);
   }, [matches, scrollToMatch]);
 
   const handleClose = useCallback(() => {
     clearActiveMark();
     onClose();
   }, [clearActiveMark, onClose]);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    if (!showResults) return;
+    const handleMouseDown = (e) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setShowResults(false);
+      }
+    };
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [showResults]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -189,7 +216,7 @@ export default function PanelSearch({ containerRef, onClose }) {
   }, [clearActiveMark]);
 
   return (
-    <div style={{ position: 'relative', flexShrink: 0 }}>
+    <div ref={wrapperRef} style={{ position: 'relative', flexShrink: 0 }}>
       <div className="panel-search-bar">
         <input
           ref={inputRef}

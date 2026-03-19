@@ -1245,7 +1245,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
                   onToggleFullscreen={() => handleToggleFullscreen('viewer')}
                   searchOpen={viewerSearchOpen}
                   onSearchToggle={() => setViewerSearchOpen(v => !v)}
-                  isHtmlIframe={viewerActiveFile?.extension === '.html' || viewerActiveFile?.extension === '.htm' || viewerActiveFile?.extension === '.url'}
+                  isHtmlIframe={viewerActiveFile?.extension === '.url'}
                 />
                 {(currentFile || viewerTabs.length > 1) && (
                   <span className="close-btn" onClick={handleClearViewerTabs} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', lineHeight: 1 }} title="Svuota viewer">✕</span>
@@ -1292,7 +1292,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
                 })}
               </div>
             )}
-            {viewerSearchOpen && !(viewerActiveFile?.extension === '.html' || viewerActiveFile?.extension === '.htm' || viewerActiveFile?.extension === '.url' || viewerActiveFile?.extension === '.pdf') && (
+            {viewerSearchOpen && !(viewerActiveFile?.extension === '.url' || viewerActiveFile?.extension === '.pdf') && (
               <PanelSearch containerRef={mainViewerRef} onClose={() => setViewerSearchOpen(false)} />
             )}
             <div style={{ flex: 1, overflow: 'hidden' }}>
