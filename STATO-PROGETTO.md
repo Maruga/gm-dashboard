@@ -2,7 +2,7 @@
 
 > Applicazione desktop per Game Master di giochi di ruolo.
 > Gestione sessioni, documenti, calendario, comunicazione con i giocatori via Telegram.
-> **Versione corrente: 1.0.0** (2026-03-18) — prima release stabile.
+> **Versione corrente: 1.1.0** (2026-03-20) — ottimizzazioni performance e fix.
 
 ---
 
@@ -95,6 +95,7 @@
 - Tracce audio sempre montate (Howl vivo) anche se filtrate, per non interrompere la riproduzione
 - Context menu per invio via Telegram
 - Stato audio persistente (tracce, volume, loop, rate)
+- Stabilità audio migliorata (cleanup risorse e gestione errori)
 
 ### 2.7 Console (Ricerca + AI + Log)
 - **Tab Ricerca**: ricerca full-text nei documenti del progetto (.md, .html, .htm, .txt)
@@ -224,7 +225,8 @@
 
 ### 2.21 Persistenza
 - **electron-store**: progetti recenti, stati progetto, dimensioni finestra
-- **Stato per progetto** (salvataggio con debounce 400ms + on unmount):
+- **Accesso granulare per progetto**: dot-notation su electron-store (`projectStates.{path}.key`), evita full-read/write dell'intero oggetto `projectStates`
+- **Stato per progetto** (salvataggio con debounce 1000ms + on unmount):
   - Layout: larghezze colonne, altezza console, ratio viewer/stage, ratio slot
   - Documenti: viewer tabs, slot files, stage tab attivo, indici selezionati
   - Scroll: posizioni scroll per viewer, stage, slot, manuali
@@ -299,6 +301,25 @@
 - **Validazione path `app://`**: prevenzione path traversal
 - **Cleanup listener IPC**: rimozione listener al cambio finestra/progetto
 - **Nessun `nodeIntegration`**: comunicazione solo via contextBridge/preload
+
+### 2.30 Ottimizzazioni Performance
+
+**Fase 1** (`80d1ef4`):
+- `requestAnimationFrame` throttle su eventi resize/scroll (elimina jank da eventi ad alta frequenza)
+- Cleanup listener iframe al unmount (previene memory leak)
+- `chatFlash` GPU-friendly (`will-change: transform`) per animazione badge Telegram
+
+**Fase 2** (`bc8e6b2`):
+- 29 `useCallback` stabili in App.jsx — eliminazione inline arrow nelle props, referenze stabili per i figli memoizzati
+- `React.memo` su 6 componenti pesanti: TopMenu, Explorer, MediaPanel, Console, SlotPanel, Stage
+- electron-store: accesso granulare per progetto con dot-notation (elimina full-read/write di `projectStates`)
+- Cache file AI: `dirCache` 5s TTL + `fileCache` con mtime check, max 50 entry LRU
+- Cache `fetchAiConfig()` con TTL 60s
+- Calcolo quota locale post-increment AI (riduzione da 5 a 2 chiamate Firebase per messaggio)
+
+**Fix correlati** (`90d5b30`):
+- `firebaseUser` passato correttamente ad `AdventuresPanel` da `ProjectSelector`
+- Stabilità audio `MediaPanel` migliorata (cleanup risorse)
 
 ---
 
