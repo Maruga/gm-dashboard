@@ -8,6 +8,7 @@ export default function DocToc({ containerRef, pinned: externalPinned, onPinnedC
   const closeTimer = useRef(null);
   const tocRef = useRef(null);
   const wrapperRef = useRef(null);
+  const scrollRafRef = useRef(null);
 
   const pinned = externalPinned !== undefined ? externalPinned : internalPinned;
   const setPinned = (val) => {
@@ -81,7 +82,7 @@ export default function DocToc({ containerRef, pinned: externalPinned, onPinnedC
 
     const isPdfMode = headings[0]?.page != null;
 
-    const onScroll = () => {
+    const updateActiveHeading = () => {
       if (isPdfMode) {
         // PDF mode: find which page is most visible, then match to closest heading
         const wrappers = container.querySelectorAll('[data-page-num]');
@@ -119,9 +120,20 @@ export default function DocToc({ containerRef, pinned: externalPinned, onPinnedC
       }
     };
 
+    const onScroll = () => {
+      if (scrollRafRef.current) return;
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = null;
+        updateActiveHeading();
+      });
+    };
+
     container.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
-    return () => container.removeEventListener('scroll', onScroll);
+    updateActiveHeading();
+    return () => {
+      container.removeEventListener('scroll', onScroll);
+      if (scrollRafRef.current) { cancelAnimationFrame(scrollRafRef.current); scrollRafRef.current = null; }
+    };
   }, [containerRef, headings]);
 
   // Esc to close pinned

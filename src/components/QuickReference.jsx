@@ -38,6 +38,8 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
   const debounceRef = useRef(null);
   const scrollSaveRef = useRef(null);
   const headingsRef = useRef([]);
+  const scrollRafRef = useRef(null);
+  const iframeScrollRef = useRef(null);
   headingsRef.current = headings;
 
   const selected = manuals.find(m => m.id === selectedManualId) || manuals[0] || null;
@@ -158,7 +160,7 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
 
     const container = contentRef.current;
     if (!container) return;
-    const onScroll = () => {
+    const updateActiveHeading = () => {
       const top = container.getBoundingClientRect().top;
       let active = -1;
       for (let i = 0; i < headings.length; i++) {
@@ -167,9 +169,19 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
       }
       setActiveHeading(active);
     };
+    const onScroll = () => {
+      if (scrollRafRef.current) return;
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = null;
+        updateActiveHeading();
+      });
+    };
     container.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
-    return () => container.removeEventListener('scroll', onScroll);
+    updateActiveHeading();
+    return () => {
+      container.removeEventListener('scroll', onScroll);
+      if (scrollRafRef.current) { cancelAnimationFrame(scrollRafRef.current); scrollRafRef.current = null; }
+    };
   }, [headings, isHtmlFile]);
 
   // Save scroll on scroll
@@ -201,23 +213,49 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
         }, 50);
       }
 
+      // Cleanup previous iframe scroll listener
+      if (iframeScrollRef.current) {
+        try { iframeScrollRef.current.cleanup(); } catch (_) {}
+      }
+
       // Attach scroll listener for saving position + active heading tracking
-      iframe.contentWindow.addEventListener('scroll', () => {
-        if (selected) {
-          onScrollPositionsChange(prev => ({ ...prev, [selected.id]: iframe.contentWindow.scrollY }));
-        }
-        // Track active heading for TOC sidebar
-        const currentHeadings = headingsRef.current;
-        if (currentHeadings.length > 0) {
-          let active = -1;
-          for (let i = 0; i < currentHeadings.length; i++) {
-            const el = iframeDoc.querySelector(`[data-qr-heading="${currentHeadings[i].id}"]`);
-            if (el && el.getBoundingClientRect().top <= 40) active = i;
-            else if (el) break;
+      let scrollDebounce = null;
+      let scrollRaf = null;
+      const scrollHandler = () => {
+        // Debounced scroll position save (300ms)
+        if (scrollDebounce) clearTimeout(scrollDebounce);
+        scrollDebounce = setTimeout(() => {
+          if (selected) {
+            onScrollPositionsChange(prev => ({ ...prev, [selected.id]: iframe.contentWindow.scrollY }));
           }
-          setActiveHeading(active);
+        }, 300);
+        // rAF-throttled heading tracking
+        if (!scrollRaf) {
+          scrollRaf = requestAnimationFrame(() => {
+            scrollRaf = null;
+            const currentHeadings = headingsRef.current;
+            if (currentHeadings.length > 0) {
+              let active = -1;
+              for (let i = 0; i < currentHeadings.length; i++) {
+                const el = iframeDoc.querySelector(`[data-qr-heading="${currentHeadings[i].id}"]`);
+                if (el && el.getBoundingClientRect().top <= 40) active = i;
+                else if (el) break;
+              }
+              setActiveHeading(active);
+            }
+          });
         }
-      }, { passive: true });
+      };
+      iframe.contentWindow.addEventListener('scroll', scrollHandler, { passive: true });
+      iframeScrollRef.current = {
+        handler: scrollHandler,
+        win: iframe.contentWindow,
+        cleanup: () => {
+          try { iframe.contentWindow.removeEventListener('scroll', scrollHandler); } catch (_) {}
+          if (scrollDebounce) clearTimeout(scrollDebounce);
+          if (scrollRaf) cancelAnimationFrame(scrollRaf);
+        }
+      };
     } catch (e) { console.warn('QR iframe load:', e.message); }
   }, [selected, scrollPositions, onScrollPositionsChange]);
 
@@ -268,6 +306,17 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
+
+  // Cleanup iframe scroll listener on unmount
+  useEffect(() => {
+    return () => {
+      if (iframeScrollRef.current) {
+        try { iframeScrollRef.current.cleanup(); } catch (_) {}
+        iframeScrollRef.current = null;
+      }
+      if (scrollRafRef.current) { cancelAnimationFrame(scrollRafRef.current); scrollRafRef.current = null; }
+    };
+  }, []);
 
   // Save scroll on close
   useEffect(() => {

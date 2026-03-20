@@ -3,6 +3,8 @@ import React, { useCallback, useEffect, useRef } from 'react';
 export default function ResizeHandle({ direction = 'vertical', onResize, style = {} }) {
   const dragging = useRef(false);
   const startPos = useRef(0);
+  const rafRef = useRef(null);
+  const accumulatedDelta = useRef(0);
 
   const handleMouseDown = useCallback((e) => {
     e.preventDefault();
@@ -18,11 +20,28 @@ export default function ResizeHandle({ direction = 'vertical', onResize, style =
       const currentPos = direction === 'vertical' ? e.clientX : e.clientY;
       const delta = currentPos - startPos.current;
       startPos.current = currentPos;
-      onResize(delta);
+      accumulatedDelta.current += delta;
+      if (!rafRef.current) {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          const d = accumulatedDelta.current;
+          accumulatedDelta.current = 0;
+          onResize(d);
+        });
+      }
     };
 
     const handleMouseUp = () => {
       dragging.current = false;
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+        // Flush any remaining delta
+        if (accumulatedDelta.current !== 0) {
+          onResize(accumulatedDelta.current);
+          accumulatedDelta.current = 0;
+        }
+      }
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
@@ -32,6 +51,7 @@ export default function ResizeHandle({ direction = 'vertical', onResize, style =
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [direction, onResize]);
 

@@ -1992,9 +1992,9 @@ function GlobalStyles() {
         animation: bellPulse 1s ease-in-out 3;
       }
       @keyframes chatFlash {
-        0% { box-shadow: 0 0 0 0 var(--accent-a55); }
-        50% { box-shadow: 0 0 8px 3px var(--accent-a35); }
-        100% { box-shadow: 0 0 0 0 var(--accent-a04); }
+        0% { outline: 0px solid var(--accent-a55); outline-offset: 0; }
+        50% { outline: 3px solid var(--accent-a35); outline-offset: 2px; }
+        100% { outline: 0px solid var(--accent-a04); outline-offset: 0; }
       }
       @keyframes timerExpired {
         0%, 100% { opacity: 1; }

@@ -70,6 +70,7 @@ const Viewer = forwardRef(function Viewer({
   const currentKeyRef = useRef(null);
   const fadeTimerRef = useRef(null);
   const iframeReadyRef = useRef(false);
+  const iframeScrollHandlerRef = useRef(null);
   const searchHighlightRef = useRef(searchHighlight);
   searchHighlightRef.current = searchHighlight;
   const { saveScroll, getScroll } = useScrollMemory(scrollMapRef, onScrollChanged);
@@ -101,6 +102,13 @@ const Viewer = forwardRef(function Viewer({
 
   useEffect(() => {
     iframeReadyRef.current = false;
+
+    // Cleanup previous iframe scroll listener
+    if (iframeScrollHandlerRef.current && iframeRef.current?.contentWindow) {
+      try { iframeRef.current.contentWindow.removeEventListener('scroll', iframeScrollHandlerRef.current); } catch (_) {}
+      iframeScrollHandlerRef.current = null;
+    }
+
     if (!currentFile) {
       setRenderedHtml('');
       setIsUrlFile(false);
@@ -354,9 +362,15 @@ const Viewer = forwardRef(function Viewer({
         setTimeout(() => iframe.contentWindow.scrollTo(0, targetScroll), 50);
       }
 
-      iframe.contentWindow.addEventListener('scroll', () => {
+      // Cleanup previous iframe scroll listener
+      if (iframeScrollHandlerRef.current && iframeRef.current?.contentWindow) {
+        try { iframeRef.current.contentWindow.removeEventListener('scroll', iframeScrollHandlerRef.current); } catch (_) {}
+      }
+      const scrollHandler = () => {
         if (currentKeyRef.current) saveScroll(currentKeyRef.current, iframe.contentWindow.scrollY);
-      }, { passive: true });
+      };
+      iframeScrollHandlerRef.current = scrollHandler;
+      iframe.contentWindow.addEventListener('scroll', scrollHandler, { passive: true });
     } catch (e) { console.warn('Iframe load handler:', e.message); }
   }, [getScroll, saveScroll, applyIframeSearchHighlights]);
 
