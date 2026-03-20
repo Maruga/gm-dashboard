@@ -332,23 +332,20 @@ ipcMain.handle('remove-recent-project', (event, projectPath) => {
   const projects = store.get('recentProjects');
   const filtered = projects.filter(p => p.path !== projectPath);
   store.set('recentProjects', filtered);
-  // Optionally remove its state too
-  const states = store.get('projectStates');
-  delete states[projectPath];
-  store.set('projectStates', states);
+  const escapedPath = projectPath.replace(/\./g, '\\.');
+  store.delete(`projectStates.${escapedPath}`);
   return filtered;
 });
 
 ipcMain.handle('get-project-state', (event, projectPath) => {
-  const states = store.get('projectStates');
-  const state = states[projectPath] || null;
+  const escapedPath = projectPath.replace(/\./g, '\\.');
+  const state = store.get(`projectStates.${escapedPath}`);
   return state ? decryptProjectState(state) : null;
 });
 
 ipcMain.handle('save-project-state', (event, projectPath, state) => {
-  const states = store.get('projectStates');
-  states[projectPath] = encryptProjectState(state);
-  store.set('projectStates', states);
+  const escapedPath = projectPath.replace(/\./g, '\\.');
+  store.set(`projectStates.${escapedPath}`, encryptProjectState(state));
 });
 
 // File system
@@ -759,8 +756,8 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
   logDiag('info', `AI chat richiesta (${messages.length} messaggi)`);
   try {
     // Read AI config from project state (decrypt sensitive fields)
-    const states = store.get('projectStates');
-    const projectState = decryptProjectState(states[projectPath]);
+    const escapedPath = projectPath.replace(/\./g, '\\.');
+    const projectState = decryptProjectState(store.get(`projectStates.${escapedPath}`));
     const aiConfig = projectState?.aiConfig;
 
     let provider, apiKey, model;
@@ -816,13 +813,11 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
       const user = firebase.getCurrentUser();
       if (user) {
         await firebase.incrementAiUsage(user.uid, result.tokensUsed);
-        const updatedUsage = await firebase.getAiUsage(user.uid);
-        const config = await firebase.fetchAiConfig();
-        const allowance = updatedUsage.customAllowance || config?.tokenAllowance || 1000000;
+        const newTokensUsed = (usage.tokensUsed || 0) + result.tokensUsed;
         result.quota = {
-          tokensUsed: updatedUsage.tokensUsed || 0,
+          tokensUsed: newTokensUsed,
           tokenAllowance: allowance,
-          remaining: Math.max(0, allowance - (updatedUsage.tokensUsed || 0))
+          remaining: Math.max(0, allowance - newTokensUsed)
         };
       }
     }
@@ -863,8 +858,8 @@ ipcMain.handle('ai-get-quota', async () => {
 ipcMain.handle('ai-generate-image', async (event, prompt, projectPath, options = {}) => {
   logDiag('info', `AI genera immagine: "${prompt.substring(0, 50)}..."`);
   try {
-    const states = store.get('projectStates');
-    const projectState = decryptProjectState(states[projectPath]);
+    const escapedPath = projectPath.replace(/\./g, '\\.');
+    const projectState = decryptProjectState(store.get(`projectStates.${escapedPath}`));
     const aiConfig = projectState?.aiConfig;
 
     // Cascata key OpenAI per immagini
@@ -927,17 +922,15 @@ ipcMain.handle('ai-generate-image', async (event, prompt, projectPath, options =
 
     // Incrementa quota se owner key
     if (usingOwnerKey) {
+      const user = firebase.getCurrentUser();
       const config = await firebase.fetchAiConfig();
       const tokensPerImage = config?.tokensPerImage || 100000;
-      const user = firebase.getCurrentUser();
       await firebase.incrementAiUsage(user.uid, tokensPerImage);
-
-      const updatedUsage = await firebase.getAiUsage(user.uid);
-      const allowance = updatedUsage.customAllowance || config?.tokenAllowance || 1000000;
+      const newTokensUsed = (usage.tokensUsed || 0) + tokensPerImage;
       result.quota = {
-        tokensUsed: updatedUsage.tokensUsed,
+        tokensUsed: newTokensUsed,
         tokenAllowance: allowance,
-        remaining: Math.max(0, allowance - updatedUsage.tokensUsed)
+        remaining: Math.max(0, allowance - newTokensUsed)
       };
     }
 

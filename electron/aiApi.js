@@ -148,13 +148,26 @@ function stripHtmlTags(html) {
              .replace(/<[^>]+>/g, '');
 }
 
+const fileCache = new Map(); // path -> { mtimeMs, content }
+const dirCache = new Map();  // dirPath -> { timestamp, files }
+const DIR_CACHE_TTL = 5000;
+const MAX_CACHE_ENTRIES = 50;
+
 function collectProjectFiles(dirPath) {
   const files = [];
   const EXTS = new Set(['.md', '.html', '.htm', '.txt']);
 
   function walk(dir) {
     try {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      const now = Date.now();
+      const cached = dirCache.get(dir);
+      let entries;
+      if (cached && (now - cached.timestamp) < DIR_CACHE_TTL) {
+        entries = cached.entries;
+      } else {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+        dirCache.set(dir, { timestamp: now, entries });
+      }
       for (const entry of entries) {
         if (entry.name.startsWith('.')) continue;
         const full = path.join(dir, entry.name);
@@ -195,7 +208,20 @@ function buildContext(projectPath, question, allowedFiles = null) {
   const scored = [];
   for (const f of files) {
     try {
-      let content = fs.readFileSync(f.path, 'utf-8');
+      let content;
+      const stat = fs.statSync(f.path);
+      const cached = fileCache.get(f.path);
+      if (cached && cached.mtimeMs === stat.mtimeMs) {
+        content = cached.content;
+      } else {
+        content = fs.readFileSync(f.path, 'utf-8');
+        fileCache.set(f.path, { mtimeMs: stat.mtimeMs, content });
+        // LRU eviction
+        if (fileCache.size > MAX_CACHE_ENTRIES) {
+          const firstKey = fileCache.keys().next().value;
+          fileCache.delete(firstKey);
+        }
+      }
       if (f.ext === '.html' || f.ext === '.htm') {
         content = stripHtmlTags(content);
       }

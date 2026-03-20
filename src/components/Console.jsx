@@ -115,7 +115,7 @@ function DicePanel() {
 }
 
 // ─── Search Panel (main Console content) ───
-export default function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, telegramLog = [], onClearLog, aiConfig, aiChatHistory = [], onAiChatHistoryChange, firebaseUser, onTelegramText, onTelegramFile, onSaveImage, botRunning }) {
+function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, telegramLog = [], onClearLog, aiConfig, aiChatHistory = [], onAiChatHistoryChange, firebaseUser, onTelegramText, onTelegramFile, onSaveImage, botRunning }) {
   const [activeTab, setActiveTab] = useState('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
@@ -775,3 +775,5 @@ export default function Console({ projectFolder, onOpenFile, onSearchNavigate, e
     </div>
   );
 }
+
+export default React.memo(Console);

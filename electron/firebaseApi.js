@@ -282,11 +282,20 @@ async function downloadAdventureZip(downloadUrl, onProgress) {
 
 // ── AI Quota ──
 
+let aiConfigCache = { data: null, timestamp: 0 };
+const AI_CONFIG_TTL = 60000;
+
 async function fetchAiConfig() {
+  const now = Date.now();
+  if (aiConfigCache.data && (now - aiConfigCache.timestamp) < AI_CONFIG_TTL) {
+    return aiConfigCache.data;
+  }
   try {
     const snap = await getDoc(doc(db, 'config', 'ai'));
     if (!snap.exists()) return null;
-    return snap.data();
+    const result = snap.data();
+    aiConfigCache = { data: result, timestamp: now };
+    return result;
   } catch (err) {
     return { error: err.message };
   }

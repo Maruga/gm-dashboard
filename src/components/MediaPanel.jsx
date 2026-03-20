@@ -273,7 +273,7 @@ function VideoItem({ item, onRemove, onVideoClick, onContextMenu }) {
 }
 
 // ─── Main Panel ───
-export default function MediaPanel({
+function MediaPanel({
   items, filter, onFilterChange,
   onRemoveItem, onUpdateItem, onClearAll,
   onImageClick, onVideoClick, onTelegramFile
@@ -441,3 +441,5 @@ export default function MediaPanel({
     </div>
   );
 }
+
+export default React.memo(MediaPanel);

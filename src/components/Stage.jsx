@@ -19,7 +19,7 @@ const ALL_TABS = [
   { id: 'Vista', label: 'Vista' }
 ];
 
-export default function Stage({
+function Stage({
   slotFiles, activeTab, selectedIndices, onTabChange,
   onImageClick, onVideoClick,
   calFile,
@@ -187,6 +187,8 @@ export default function Stage({
     </div>
   );
 }
+
+export default React.memo(Stage);
 
 const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpenSource, fontSize }, ref) {
   const sourceName = snippet.source || (snippet.sourcePath ? snippet.sourcePath.split('/').pop().split('\\').pop() : null);

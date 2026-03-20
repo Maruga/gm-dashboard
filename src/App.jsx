@@ -357,7 +357,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       window.electronAPI.saveProjectState(projectPath, latestState.current);
-    }, 400);
+    }, 1000);
   }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, viewerFontSize, stageFontSize, scrollVersion, aiConfig, aiChatHistory, panelVisibility, layoutPresets]);
 
   // Save immediately on unmount (project switch)
@@ -1119,6 +1119,53 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     });
   }, []);
 
+  // ── Stable callbacks for memoized children (Perf Fase 2) ──
+
+  // TopMenu callbacks
+  const handleOpenInfo = useCallback(() => setInfoOpen(true), []);
+  const handleOpenSettings = useCallback(() => setSettingsOpen('aspetto'), []);
+  const handleOpenAiDocs = useCallback(() => setSettingsOpen('aidocs'), []);
+  const handleOpenCalendar = useCallback(() => setCalendarOpen(true), []);
+  const handleToggleNotes = useCallback(() => setNotesOpen(v => !v), []);
+  const handleToggleChecklist = useCallback(() => setChecklistOpen(v => !v), []);
+  const handlePrevDay = useCallback(() => changeGameDate(-1), [changeGameDate]);
+  const handleNextDay = useCallback(() => changeGameDate(1), [changeGameDate]);
+  const handleToggleChat = useCallback(() => setChatOpen(v => !v), []);
+  const handleToggleReference = useCallback(() => setReferenceOpen(v => !v), []);
+  const handleToggleHighlight = useCallback(() => setHighlightKeywords(prev => ({ ...prev, enabled: !prev.enabled })), []);
+  const handleOpenAdventures = useCallback(() => setAdventuresOpen(true), []);
+  const handleOpenProjectFolder = useCallback(() => window.electronAPI.openProjectFolder(projectPath), [projectPath]);
+  const handleOpenRelationsOverlay = useCallback(() => setRelationsOpen(true), []);
+
+  // MediaPanel callbacks
+  const handleOverlayImage = useCallback((url) => setOverlayImage(url), []);
+  const handleOverlayVideo = useCallback((url) => setOverlayVideo(url), []);
+
+  // Viewer/PanelToolbar/PanelSearch callbacks
+  const handleToggleViewerFullscreen = useCallback(() => handleToggleFullscreen('viewer'), [handleToggleFullscreen]);
+  const handleToggleViewerSearch = useCallback(() => setViewerSearchOpen(v => !v), []);
+  const handleCloseViewerSearch = useCallback(() => setViewerSearchOpen(false), []);
+
+  // DocToc callback
+  const handleViewerTocPinned = useCallback(v => setDocTocPinned(p => ({ ...p, viewer: v })), []);
+
+  // Stage callbacks
+  const handleStageTocPinned = useCallback(v => setDocTocPinned(p => ({ ...p, stage: v })), []);
+  const handleToggleStageFullscreen = useCallback(() => handleToggleFullscreen('stage'), [handleToggleFullscreen]);
+
+  // Console callbacks
+  const handleClearTelegramLog = useCallback(() => setTelegramLog([]), []);
+  const handleTelegramText = useCallback((text) => setTelegramTextData(text), []);
+
+  // SlotPanel callbacks
+  const handleSlotClearA = useCallback(() => handleSlotClear('A'), [handleSlotClear]);
+  const handleSlotClearB = useCallback(() => handleSlotClear('B'), [handleSlotClear]);
+  const handleSlotClearC = useCallback(() => handleSlotClear('C'), [handleSlotClear]);
+
+  // ResizeHandle slot callbacks
+  const handleSlotResize0 = useCallback((d) => handleSlotResize(0, d), [handleSlotResize]);
+  const handleSlotResize1 = useCallback((d) => handleSlotResize(1, d), [handleSlotResize]);
+
   if (!stateLoaded) return null;
 
   return (
@@ -1133,15 +1180,15 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
       {/* === TOP MENU — fixed bar === */}
       <TopMenu
         onChangeProject={onChangeProject}
-        onOpenInfo={() => setInfoOpen(true)}
-        onOpenSettings={() => setSettingsOpen('aspetto')}
-        onOpenAiDocs={() => setSettingsOpen('aidocs')}
-        onOpenCalendar={() => setCalendarOpen(true)}
-        onOpenNotes={() => setNotesOpen(v => !v)}
-        onOpenChecklist={() => setChecklistOpen(v => !v)}
+        onOpenInfo={handleOpenInfo}
+        onOpenSettings={handleOpenSettings}
+        onOpenAiDocs={handleOpenAiDocs}
+        onOpenCalendar={handleOpenCalendar}
+        onOpenNotes={handleToggleNotes}
+        onOpenChecklist={handleToggleChecklist}
         gameDate={calendarData.currentDate}
-        onPrevDay={() => changeGameDate(-1)}
-        onNextDay={() => changeGameDate(1)}
+        onPrevDay={handlePrevDay}
+        onNextDay={handleNextDay}
         onSetGameDate={setGameDate}
         hasEvents={gameDateHasEvents}
         players={players}
@@ -1151,14 +1198,14 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         chatMessages={chatMessages}
         chatOpen={chatOpen}
         chatFlash={chatFlash}
-        onToggleChat={() => setChatOpen(v => !v)}
-        onOpenReference={() => setReferenceOpen(v => !v)}
+        onToggleChat={handleToggleChat}
+        onOpenReference={handleToggleReference}
         referenceOpen={referenceOpen}
         highlightEnabled={highlightKeywords.enabled}
-        onToggleHighlight={() => setHighlightKeywords(prev => ({ ...prev, enabled: !prev.enabled }))}
-        onOpenAdventures={() => setAdventuresOpen(true)}
-        onOpenProjectFolder={() => window.electronAPI.openProjectFolder(projectPath)}
-        onOpenRelationsOverlay={() => setRelationsOpen(true)}
+        onToggleHighlight={handleToggleHighlight}
+        onOpenAdventures={handleOpenAdventures}
+        onOpenProjectFolder={handleOpenProjectFolder}
+        onOpenRelationsOverlay={handleOpenRelationsOverlay}
         relationsHasFile={!!projectSettings.relationsFile && Object.keys(relationsBase).length > 0}
         relationsBase={relationsBase}
         onOpenRelationsViewer={handleOpenRelationsViewer}
@@ -1202,8 +1249,8 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
             onRemoveItem={handleRemoveMediaItem}
             onUpdateItem={handleUpdateMediaItem}
             onClearAll={handleClearAllMedia}
-            onImageClick={(url) => setOverlayImage(url)}
-            onVideoClick={(url) => setOverlayVideo(url)}
+            onImageClick={handleOverlayImage}
+            onVideoClick={handleOverlayVideo}
             onTelegramFile={handleTelegramFile}
           />
         </div>
@@ -1244,15 +1291,15 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
                   fontSize={viewerFontSize}
                   onFontSizeChange={setViewerFontSize}
                   isFullscreen={fullscreenPanel === 'viewer'}
-                  onToggleFullscreen={() => handleToggleFullscreen('viewer')}
+                  onToggleFullscreen={handleToggleViewerFullscreen}
                   searchOpen={viewerSearchOpen}
-                  onSearchToggle={() => setViewerSearchOpen(v => !v)}
+                  onSearchToggle={handleToggleViewerSearch}
                   isHtmlIframe={viewerActiveFile?.extension === '.url'}
                 />
                 {(currentFile || viewerTabs.length > 1) && (
                   <span className="close-btn" onClick={handleClearViewerTabs} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', lineHeight: 1 }} title="Svuota viewer">✕</span>
                 )}
-                <DocToc containerRef={mainViewerRef} pinned={docTocPinned.viewer} onPinnedChange={v => setDocTocPinned(p => ({ ...p, viewer: v }))} contentKey={currentFile?.path || ''} pdfOutline={viewerActiveFile?.extension === '.pdf' ? viewerPdfOutline : null} />
+                <DocToc containerRef={mainViewerRef} pinned={docTocPinned.viewer} onPinnedChange={handleViewerTocPinned} contentKey={currentFile?.path || ''} pdfOutline={viewerActiveFile?.extension === '.pdf' ? viewerPdfOutline : null} />
               </div>
             </div>
             {/* Viewer tab bar — hidden if only Document tab */}
@@ -1295,7 +1342,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
               </div>
             )}
             {viewerSearchOpen && !(viewerActiveFile?.extension === '.url' || viewerActiveFile?.extension === '.pdf') && (
-              <PanelSearch containerRef={mainViewerRef} onClose={() => setViewerSearchOpen(false)} />
+              <PanelSearch containerRef={mainViewerRef} onClose={handleCloseViewerSearch} />
             )}
             <div style={{ flex: 1, overflow: 'hidden' }}>
               {viewerTabs[activeViewerTab]?.type === 'relations' ? (
@@ -1318,7 +1365,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
                   onScrollChanged={onScrollChanged}
                   fontSize={viewerFontSize}
                   searchOpen={viewerSearchOpen && viewerActiveFile?.extension === '.pdf'}
-                  onSearchClose={() => setViewerSearchOpen(false)}
+                  onSearchClose={handleCloseViewerSearch}
                   onPdfOutlineReady={setViewerPdfOutline}
                 />
               ) : (
@@ -1356,14 +1403,14 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
               scrollMapRef={scrollMapRef}
               onScrollChanged={onScrollChanged}
               tocPinned={docTocPinned.stage}
-              onTocPinnedChange={v => setDocTocPinned(p => ({ ...p, stage: v }))}
+              onTocPinnedChange={handleStageTocPinned}
               onOpenSnippetSource={handleOpenSnippetSource}
               highlightKeywords={highlightKeywords}
               onClearAll={handleClearStage}
               fontSize={stageFontSize}
               onFontSizeChange={setStageFontSize}
               isFullscreen={fullscreenPanel === 'stage'}
-              onToggleFullscreen={() => handleToggleFullscreen('stage')}
+              onToggleFullscreen={handleToggleStageFullscreen}
             />
           </div>)}
         </div>
@@ -1373,7 +1420,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         {/* CONSOLE — full width */}
         {panelVisibility.console && (
         <div style={{ height: `${consoleHeight}px`, overflow: 'hidden', flexShrink: 0 }}>
-          <Console projectFolder={projectPath} onOpenFile={handleFileOpen} onSearchNavigate={handleSearchNavigate} externalQuery={externalSearchQuery} telegramLog={telegramLog} onClearLog={() => setTelegramLog([])} aiConfig={aiConfig} aiChatHistory={aiChatHistory} onAiChatHistoryChange={setAiChatHistory} firebaseUser={firebaseUser} onTelegramText={(text) => setTelegramTextData(text)} onTelegramFile={handleTelegramFile} onSaveImage={handleAiSaveImage} botRunning={botStatus.running} />
+          <Console projectFolder={projectPath} onOpenFile={handleFileOpen} onSearchNavigate={handleSearchNavigate} externalQuery={externalSearchQuery} telegramLog={telegramLog} onClearLog={handleClearTelegramLog} aiConfig={aiConfig} aiChatHistory={aiChatHistory} onAiChatHistoryChange={setAiChatHistory} firebaseUser={firebaseUser} onTelegramText={handleTelegramText} onTelegramFile={handleTelegramFile} onSaveImage={handleAiSaveImage} botRunning={botStatus.running} />
         </div>
         )}
       </div>
@@ -1384,19 +1431,19 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
       {(panelVisibility.slotA || panelVisibility.slotB || panelVisibility.slotC) && (<div style={{ width: `${rightWidth}px`, display: 'flex', flexDirection: 'column', flexShrink: 0, borderLeft: '1px solid var(--border-subtle)' }}>
         {panelVisibility.slotA && (
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <SlotPanel label="A" files={slotFiles.A} isActive={activeStageSlot === 'A'} activeFileIndex={slotSelectedIndices.A} onClear={() => handleSlotClear('A')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onOpenSnippetSource={handleOpenSnippetSource} onTelegramFile={handleTelegramFile} />
+          <SlotPanel label="A" files={slotFiles.A} isActive={activeStageSlot === 'A'} activeFileIndex={slotSelectedIndices.A} onClear={handleSlotClearA} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onOpenSnippetSource={handleOpenSnippetSource} onTelegramFile={handleTelegramFile} />
         </div>
         )}
-        {panelVisibility.slotA && panelVisibility.slotB && <ResizeHandle direction="horizontal" onResize={(d) => handleSlotResize(0, d)} />}
+        {panelVisibility.slotA && panelVisibility.slotB && <ResizeHandle direction="horizontal" onResize={handleSlotResize0} />}
         {panelVisibility.slotB && (
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <SlotPanel label="B" files={slotFiles.B} isActive={activeStageSlot === 'B'} activeFileIndex={slotSelectedIndices.B} onClear={() => handleSlotClear('B')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onOpenSnippetSource={handleOpenSnippetSource} onTelegramFile={handleTelegramFile} />
+          <SlotPanel label="B" files={slotFiles.B} isActive={activeStageSlot === 'B'} activeFileIndex={slotSelectedIndices.B} onClear={handleSlotClearB} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onOpenSnippetSource={handleOpenSnippetSource} onTelegramFile={handleTelegramFile} />
         </div>
         )}
-        {(panelVisibility.slotA || panelVisibility.slotB) && panelVisibility.slotC && <ResizeHandle direction="horizontal" onResize={(d) => handleSlotResize(1, d)} />}
+        {(panelVisibility.slotA || panelVisibility.slotB) && panelVisibility.slotC && <ResizeHandle direction="horizontal" onResize={handleSlotResize1} />}
         {panelVisibility.slotC && (
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <SlotPanel label="C" files={slotFiles.C} isActive={activeStageSlot === 'C'} activeFileIndex={slotSelectedIndices.C} onClear={() => handleSlotClear('C')} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onOpenSnippetSource={handleOpenSnippetSource} onTelegramFile={handleTelegramFile} />
+          <SlotPanel label="C" files={slotFiles.C} isActive={activeStageSlot === 'C'} activeFileIndex={slotSelectedIndices.C} onClear={handleSlotClearC} onRemoveFile={handleSlotRemoveFile} onRemoveFiles={handleSlotRemoveFiles} onFileSelect={handleSlotFileSelect} onFileOpen={handleFileOpen} onOpenSnippetSource={handleOpenSnippetSource} onTelegramFile={handleTelegramFile} />
         </div>
         )}
       </div>)}

@@ -6,7 +6,7 @@ function itemKey(f) {
   return f.type === 'snippet' ? f.id : f.path;
 }
 
-export default function SlotPanel({ label, files, isActive, activeFileIndex, onClear, onRemoveFile, onRemoveFiles, onFileSelect, onFileOpen, onOpenSnippetSource, onTelegramFile }) {
+function SlotPanel({ label, files, isActive, activeFileIndex, onClear, onRemoveFile, onRemoveFiles, onFileSelect, onFileOpen, onOpenSnippetSource, onTelegramFile }) {
   const [checkedKeys, setCheckedKeys] = useState(new Set());
   const [contextMenu, setContextMenu] = useState(null);
   const ctxMenuRef = useRef(null);
@@ -266,6 +266,8 @@ export default function SlotPanel({ label, files, isActive, activeFileIndex, onC
     </div>
   );
 }
+
+export default React.memo(SlotPanel);
 
 function CtxMenuItem({ icon, label, onClick }) {
   return (

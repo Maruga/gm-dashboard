@@ -115,7 +115,7 @@ function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, togg
   );
 }
 
-export default function Explorer({
+function Explorer({
   projectFolder, activeFilePath, onFileOpen, onSlotAssign, onMediaAdd,
   expandedDirs: externalExpanded, onExpandedDirsChange,
   onTelegramFile,
@@ -302,3 +302,5 @@ export default function Explorer({
     </div>
   );
 }
+
+export default React.memo(Explorer);

@@ -721,7 +721,7 @@ function AuthDropdown({ firebaseUser, onFirebaseUserChange, onClose }) {
 
 // ─── Main component ───
 
-export default function TopMenu({
+function TopMenu({
   onChangeProject, onOpenInfo, onOpenSettings, onOpenCalendar, onOpenNotes, onOpenChecklist,
   onOpenAdventures, onOpenProjectFolder, onOpenRelationsOverlay, onOpenAiDocs,
   relationsHasFile, relationsBase,
@@ -1105,3 +1105,5 @@ export default function TopMenu({
     </div>
   );
 }
+
+export default React.memo(TopMenu);
