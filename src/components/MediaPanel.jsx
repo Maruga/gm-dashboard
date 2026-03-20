@@ -34,7 +34,6 @@ function AudioTrack({ item, onRemove, onUpdate, globalMute, stopTrigger, onConte
         volume: volume,
         loop: loop,
         rate: rate,
-        html5: true,
         onload: () => {
           if (!mountedRef.current) return;
           setDuration(howl.duration());
@@ -56,7 +55,10 @@ function AudioTrack({ item, onRemove, onUpdate, globalMute, stopTrigger, onConte
     return () => {
       mountedRef.current = false;
       clearInterval(intervalRef.current);
-      if (howl) howl.unload();
+      if (howl) {
+        try { howl.unload(); } catch (_) { /* già scaricato */ }
+      }
+      howlRef.current = null;
     };
   }, [item.url]);
 
@@ -92,7 +94,7 @@ function AudioTrack({ item, onRemove, onUpdate, globalMute, stopTrigger, onConte
   useEffect(() => {
     if (playing) {
       intervalRef.current = setInterval(() => {
-        if (howlRef.current && howlRef.current.playing()) {
+        if (mountedRef.current && howlRef.current && howlRef.current.playing()) {
           setCurrentSeek(howlRef.current.seek());
         }
       }, 500);
@@ -103,25 +105,25 @@ function AudioTrack({ item, onRemove, onUpdate, globalMute, stopTrigger, onConte
   }, [playing]);
 
   const togglePlay = useCallback(() => {
-    if (!howlRef.current) return;
-    if (playing) {
+    if (!howlRef.current || howlRef.current.state() === 'unloaded') return;
+    if (howlRef.current.playing()) {
       howlRef.current.pause();
       setPlaying(false);
     } else {
       howlRef.current.play();
       setPlaying(true);
     }
-  }, [playing]);
+  }, []);
 
   const skipBack = useCallback(() => {
-    if (!howlRef.current) return;
+    if (!howlRef.current || howlRef.current.state() === 'unloaded') return;
     const pos = Math.max(0, (howlRef.current.seek() || 0) - 10);
     howlRef.current.seek(pos);
     setCurrentSeek(pos);
   }, []);
 
   const skipForward = useCallback(() => {
-    if (!howlRef.current) return;
+    if (!howlRef.current || howlRef.current.state() === 'unloaded') return;
     const dur = howlRef.current.duration();
     const pos = Math.min(dur, (howlRef.current.seek() || 0) + 10);
     howlRef.current.seek(pos);
@@ -144,7 +146,7 @@ function AudioTrack({ item, onRemove, onUpdate, globalMute, stopTrigger, onConte
   }, [item.id, onUpdate]);
 
   const handleSeekClick = useCallback((e) => {
-    if (!howlRef.current || !duration) return;
+    if (!howlRef.current || howlRef.current.state() === 'unloaded' || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const pos = pct * duration;
@@ -158,7 +160,7 @@ function AudioTrack({ item, onRemove, onUpdate, globalMute, stopTrigger, onConte
     <button onClick={onClick} title={title} style={{
       background: 'none', border: 'none', cursor: 'pointer',
       color: highlight ? 'var(--accent)' : active ? 'var(--text-bright)' : 'var(--text-tertiary)',
-      fontSize: '11px', padding: '1px 4px', borderRadius: '2px',
+      fontSize: '14px', padding: '2px 5px', borderRadius: '2px',
       transition: 'color 0.15s', lineHeight: '1', flexShrink: 0
     }}
     onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
@@ -191,7 +193,7 @@ function AudioTrack({ item, onRemove, onUpdate, globalMute, stopTrigger, onConte
         <div style={{ flex: 1 }} />
         <input type="range" min="0" max="1" step="0.01" value={volume}
           onChange={handleVolumeChange}
-          style={{ width: '50px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+          style={{ width: '70px', accentColor: 'var(--accent)', cursor: 'pointer' }}
         />
       </div>
 

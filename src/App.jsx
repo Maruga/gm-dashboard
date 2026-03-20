@@ -91,6 +91,8 @@ export default function App() {
           <AdventuresPanel
             onClose={() => setAdventuresOpen(false)}
             onProjectOpen={(path, name) => { setAdventuresOpen(false); handleProjectOpen(path, name); }}
+            firebaseUser={firebaseUser}
+            onFirebaseUserChange={setFirebaseUser}
           />
         )}
         <BroadcastBanner />

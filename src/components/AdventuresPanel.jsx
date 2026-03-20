@@ -11,7 +11,8 @@ export default function AdventuresPanel({ onClose, onProjectOpen, projectPath, p
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{
         position: 'fixed', inset: 0, background: 'var(--overlay-dark)',
-        zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+        zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        WebkitAppRegion: 'no-drag'
       }}
     >
       <div
