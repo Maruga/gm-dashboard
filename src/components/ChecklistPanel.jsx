@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { SquareArrowOutUpRight } from 'lucide-react';
+import { SquareArrowOutUpRight, Send } from 'lucide-react';
 
 function formatTimestamp(iso) {
   if (!iso) return '';
@@ -8,12 +8,216 @@ function formatTimestamp(iso) {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onClose }) {
+/* ── Modal configurazione Telegram per un item ── */
+function TelegramConfigModal({ item, players, onSave, onCancel }) {
+  const [enabled, setEnabled] = useState(item.telegram?.enabled || false);
+  const [commonText, setCommonText] = useState(item.telegram?.commonText || '');
+  const [personalTexts, setPersonalTexts] = useState(item.telegram?.personalTexts || {});
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onCancel(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onCancel]);
+
+  const updatePersonal = (playerId, text) => {
+    setPersonalTexts(prev => ({ ...prev, [playerId]: text }));
+  };
+
+  const handleSave = () => {
+    onSave({
+      enabled,
+      commonText: commonText.trim(),
+      personalTexts,
+      sent: item.telegram?.sent || false
+    });
+  };
+
+  const textareaStyle = {
+    width: '100%',
+    padding: '6px 10px',
+    background: 'var(--bg-input)',
+    border: '1px solid var(--border-default)',
+    borderRadius: '4px',
+    color: 'var(--text-primary)',
+    fontSize: '12px',
+    outline: 'none',
+    fontFamily: 'inherit',
+    boxSizing: 'border-box',
+    resize: 'vertical'
+  };
+
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 2000,
+        background: 'var(--overlay-medium)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center'
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '500px', maxHeight: '80vh',
+          background: 'var(--bg-panel)',
+          border: '1px solid var(--border-default)',
+          borderRadius: '8px',
+          boxShadow: 'var(--shadow-panel)',
+          display: 'flex', flexDirection: 'column',
+          overflow: 'hidden'
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          padding: '12px 16px',
+          borderBottom: '1px solid var(--border-default)',
+          background: 'var(--bg-elevated)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        }}>
+          <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--accent)' }}>
+            Configura invio Telegram
+          </span>
+          <span className="close-btn" onClick={onCancel}>✕</span>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
+          {/* Item text */}
+          <div style={{
+            fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px',
+            padding: '8px', background: 'var(--bg-elevated)', borderRadius: '4px',
+            whiteSpace: 'pre-wrap', wordBreak: 'break-word'
+          }}>
+            {item.text}
+          </div>
+
+          {/* Enable toggle */}
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px',
+            color: 'var(--accent)', cursor: 'pointer', marginBottom: '14px'
+          }}>
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={e => setEnabled(e.target.checked)}
+              style={{ accentColor: 'var(--accent)' }}
+            />
+            Invia via Telegram al check
+          </label>
+
+          {enabled && (
+            <>
+              {/* Common text */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                  Testo comune (tutti i giocatori):
+                </label>
+                <textarea
+                  value={commonText}
+                  onChange={e => setCommonText(e.target.value)}
+                  placeholder="Questo testo verrà inviato a tutti i giocatori connessi..."
+                  rows={3}
+                  style={textareaStyle}
+                  onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                  onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+                />
+              </div>
+
+              {/* Per-player texts */}
+              {(players || []).length > 0 && (
+                <div>
+                  <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                    Testo personalizzato per giocatore:
+                  </label>
+                  {players.map(pg => (
+                    <div key={pg.id} style={{ marginBottom: '10px' }}>
+                      <div style={{
+                        fontSize: '11px', color: 'var(--text-primary)', marginBottom: '3px',
+                        display: 'flex', alignItems: 'center', gap: '4px'
+                      }}>
+                        {pg.characterName || pg.playerName || 'Giocatore'}
+                        {pg.playerName && pg.characterName && (
+                          <span style={{ color: 'var(--text-disabled)' }}>({pg.playerName})</span>
+                        )}
+                      </div>
+                      <textarea
+                        value={personalTexts[pg.id] || ''}
+                        onChange={e => updatePersonal(pg.id, e.target.value)}
+                        placeholder={`Testo per ${pg.characterName || pg.playerName || 'questo giocatore'}...`}
+                        rows={2}
+                        style={textareaStyle}
+                        onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                        onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {(players || []).length === 0 && (
+                <div style={{ fontSize: '11px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
+                  Nessun giocatore configurato. Aggiungi giocatori nelle Impostazioni.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: '12px 16px',
+          borderTop: '1px solid var(--border-default)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          background: 'var(--bg-elevated)'
+        }}>
+          <span style={{ fontSize: '10px', color: 'var(--text-disabled)', maxWidth: '280px' }}>
+            Al check, i messaggi saranno inviati solo ai giocatori connessi alla sessione
+          </span>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={onCancel}
+              style={{
+                background: 'none', border: '1px solid var(--border-default)',
+                borderRadius: '4px', padding: '5px 14px',
+                color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+            >
+              Annulla
+            </button>
+            <button
+              onClick={handleSave}
+              style={{
+                background: 'var(--accent-a12)', border: '1px solid var(--accent)',
+                borderRadius: '4px', padding: '5px 14px',
+                color: 'var(--accent)', fontSize: '11px', cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-a15)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'var(--accent-a12)'}
+            >
+              Salva
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── ChecklistPanel principale ── */
+export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onClose, players, onToggleCheck }) {
   const [text, setText] = useState('');
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [filter, setFilter] = useState('todo'); // 'all' | 'todo' | 'done'
   const [panelLeft, setPanelLeft] = useState(null);
+  const [configItem, setConfigItem] = useState(null); // item per la modal Telegram
+  const [confirmClear, setConfirmClear] = useState(false);
+  const confirmTimer = useRef(null);
   const inputRef = useRef(null);
   const panelRef = useRef(null);
 
@@ -31,16 +235,22 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
     }
   }, []);
 
-  // Close on click outside
+  // Close on click outside (but not when modal is open)
   useEffect(() => {
     const handler = (e) => {
+      if (configItem) return; // modal aperta, non chiudere panel
       if (panelRef.current && panelRef.current.contains(e.target)) return;
       if (e.target.closest?.('[data-checklist-toggle]')) return;
       onClose();
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
+  }, [onClose, configItem]);
+
+  // Cleanup confirm timer
+  useEffect(() => {
+    return () => { if (confirmTimer.current) clearTimeout(confirmTimer.current); };
+  }, []);
 
   const counts = useMemo(() => {
     const todo = items.filter(i => !i.checked).length;
@@ -102,7 +312,11 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
   };
 
   const toggleCheck = (id) => {
-    onItemsChange(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
+    if (onToggleCheck) {
+      onToggleCheck(id);
+    } else {
+      onItemsChange(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
+    }
   };
 
   const removeItem = (id) => {
@@ -110,8 +324,27 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
   };
 
   const clearAll = () => {
-    if (!window.confirm('Sei sicuro? Tutti gli elementi verranno eliminati.')) return;
+    if (!confirmClear) {
+      setConfirmClear(true);
+      confirmTimer.current = setTimeout(() => setConfirmClear(false), 3000);
+      return;
+    }
+    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    setConfirmClear(false);
     onItemsChange([]);
+  };
+
+  const handleSaveTelegramConfig = (itemId, telegramData) => {
+    onItemsChange(prev => prev.map(i =>
+      i.id === itemId ? { ...i, telegram: telegramData } : i
+    ));
+    setConfigItem(null);
+  };
+
+  const handleResetSent = (itemId) => {
+    onItemsChange(prev => prev.map(i =>
+      i.id === itemId ? { ...i, telegram: { ...i.telegram, sent: false } } : i
+    ));
   };
 
   const btnStyle = {
@@ -137,6 +370,13 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
     transition: 'all 0.2s',
     flexShrink: 0
   });
+
+  // Colore icona Telegram in base allo stato
+  const getTelegramIconColor = (item) => {
+    if (item.telegram?.sent) return 'var(--color-success)';
+    if (item.telegram?.enabled) return 'var(--accent)';
+    return 'var(--text-disabled)';
+  };
 
   return (
     <div ref={panelRef} style={{
@@ -173,13 +413,16 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
             <span
               onClick={clearAll}
               style={{
-                fontSize: '11px', color: 'var(--text-tertiary)', cursor: 'pointer',
-                transition: 'color 0.2s'
+                fontSize: '11px',
+                color: confirmClear ? 'var(--color-danger)' : 'var(--text-tertiary)',
+                cursor: 'pointer',
+                transition: 'color 0.2s',
+                fontWeight: confirmClear ? '600' : 'normal'
               }}
-              onMouseEnter={e => e.currentTarget.style.color = 'var(--color-danger)'}
-              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+              onMouseEnter={e => { if (!confirmClear) e.currentTarget.style.color = 'var(--color-danger)'; }}
+              onMouseLeave={e => { if (!confirmClear) e.currentTarget.style.color = 'var(--text-tertiary)'; }}
             >
-              Svuota tutto
+              {confirmClear ? 'Sicuro?' : 'Svuota tutto'}
             </span>
           )}
           <span className="close-btn" onClick={onClose}>✕</span>
@@ -293,84 +536,136 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
           </div>
         ) : (
           filtered.map(item => (
-            <div
-              key={item.id}
-              style={{
-                padding: '8px 14px',
-                borderBottom: '1px solid var(--border-subtle)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                transition: 'background 0.1s',
-                opacity: item.checked ? 0.5 : 1
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover-subtle)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-            >
-              {/* Checkbox */}
-              <span
-                onClick={() => toggleCheck(item.id)}
+            <div key={item.id}>
+              <div
                 style={{
-                  width: '16px', height: '16px', flexShrink: 0,
-                  border: `1px solid ${item.checked ? 'var(--accent)' : 'var(--text-muted-alt)'}`,
-                  borderRadius: '3px',
-                  cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: item.checked ? 'var(--accent-a15)' : 'transparent',
-                  transition: 'all 0.15s',
-                  fontSize: '11px', color: 'var(--accent)', lineHeight: '1'
+                  padding: '8px 14px',
+                  borderBottom: item.telegram?.sent ? 'none' : '1px solid var(--border-subtle)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  transition: 'background 0.1s',
+                  opacity: item.checked ? 0.5 : 1
                 }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover-subtle)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >
-                {item.checked ? '✓' : ''}
-              </span>
-
-              {/* Open source */}
-              {item.sourcePath && onOpenSource ? (
+                {/* Checkbox */}
                 <span
-                  onClick={() => onOpenSource(item)}
-                  title={`Apri ${item.source}`}
+                  onClick={() => toggleCheck(item.id)}
+                  style={{
+                    width: '16px', height: '16px', flexShrink: 0,
+                    border: `1px solid ${item.checked ? 'var(--accent)' : 'var(--text-muted-alt)'}`,
+                    borderRadius: '3px',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: item.checked ? 'var(--accent-a15)' : 'transparent',
+                    transition: 'all 0.15s',
+                    fontSize: '11px', color: 'var(--accent)', lineHeight: '1'
+                  }}
+                >
+                  {item.checked ? '✓' : ''}
+                </span>
+
+                {/* Open source */}
+                {item.sourcePath && onOpenSource ? (
+                  <span
+                    onClick={() => onOpenSource(item)}
+                    title={`Apri ${item.source}`}
+                    style={{
+                      cursor: 'pointer', flexShrink: 0,
+                      color: 'var(--accent)', transition: 'all 0.2s',
+                      padding: '3px', borderRadius: '3px',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-hover)'; e.currentTarget.style.background = 'var(--accent-a12)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <SquareArrowOutUpRight size={13} />
+                  </span>
+                ) : (
+                  <span style={{ width: '19px', flexShrink: 0 }} />
+                )}
+
+                {/* Telegram config icon */}
+                <span
+                  onClick={() => setConfigItem(item)}
+                  title={item.telegram?.sent ? 'Telegram: inviato' : item.telegram?.enabled ? 'Telegram: configurato' : 'Configura invio Telegram'}
                   style={{
                     cursor: 'pointer', flexShrink: 0,
-                    color: 'var(--accent)', transition: 'all 0.2s',
+                    color: getTelegramIconColor(item),
+                    transition: 'all 0.2s',
                     padding: '3px', borderRadius: '3px',
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-hover)'; e.currentTarget.style.background = 'var(--accent-a12)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.background = 'transparent'; }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent-a12)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
-                  <SquareArrowOutUpRight size={13} />
+                  <Send size={12} />
                 </span>
-              ) : (
-                <span style={{ width: '19px', flexShrink: 0 }} />
-              )}
 
-              {/* Text + meta */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.5',
-                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                  textDecoration: item.checked ? 'line-through' : 'none'
-                }}>
-                  {item.text}
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted-alt)' }}>
-                    {formatTimestamp(item.timestamp)}
-                  </span>
-                  {item.source && (
-                    <span style={{ fontSize: '10px', color: 'var(--text-disabled)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      da: {item.source}
+                {/* Text + meta */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.5',
+                    whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                    textDecoration: item.checked ? 'line-through' : 'none'
+                  }}>
+                    {item.text}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-muted-alt)' }}>
+                      {formatTimestamp(item.timestamp)}
                     </span>
-                  )}
+                    {item.source && (
+                      <span style={{ fontSize: '10px', color: 'var(--text-disabled)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        da: {item.source}
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {/* Delete */}
+                <span className="close-btn" onClick={() => removeItem(item.id)}>✕</span>
               </div>
 
-              {/* Delete */}
-              <span className="close-btn" onClick={() => removeItem(item.id)}>✕</span>
+              {/* Sent indicator + reset */}
+              {item.telegram?.sent && (
+                <div style={{
+                  padding: '4px 14px 6px 51px',
+                  borderBottom: '1px solid var(--border-subtle)',
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  opacity: item.checked ? 0.5 : 1
+                }}>
+                  <span style={{ fontSize: '10px', color: 'var(--color-success)' }}>Inviato via Telegram</span>
+                  <button
+                    onClick={() => handleResetSent(item.id)}
+                    style={{
+                      background: 'none', border: '1px solid var(--border-default)', borderRadius: '3px',
+                      padding: '1px 6px', color: 'var(--text-secondary)', fontSize: '9px', cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                  >
+                    Reset invio
+                  </button>
+                </div>
+              )}
             </div>
           ))
         )}
       </div>
+
+      {/* Telegram config modal */}
+      {configItem && (
+        <TelegramConfigModal
+          item={configItem}
+          players={players || []}
+          onSave={(data) => handleSaveTelegramConfig(configItem.id, data)}
+          onCancel={() => setConfigItem(null)}
+        />
+      )}
     </div>
   );
 }

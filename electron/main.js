@@ -797,7 +797,9 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
     const question = lastUserMsg?.content || '';
     const context = aiApi.buildContext(projectPath, question, options.allowedFiles || null);
     const projectName = projectState?.settings?.projectName || projectPath.split('/').pop();
-    const systemPrompt = aiApi.buildSystemPrompt(context, projectName);
+    const systemPrompt = options.systemPromptOverride
+      ? options.systemPromptOverride + (context ? '\n\n=== DOCUMENTI ATTIVI ===\n' + context : '')
+      : aiApi.buildSystemPrompt(context, projectName);
 
     // Compose full messages: system + conversation
     const fullMessages = [
@@ -806,7 +808,8 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
     ];
 
     const effort = aiConfig?.effort || undefined;
-    const result = await aiApi.chat({ provider, apiKey, model, maxTokens: 1024, effort }, fullMessages);
+    const maxTokens = options.maxTokens || 1024;
+    const result = await aiApi.chat({ provider, apiKey, model, maxTokens, effort }, fullMessages);
 
     // Increment usage if using owner key and return quota info
     if (!aiConfig?.apiKey && result.tokensUsed) {

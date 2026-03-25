@@ -163,9 +163,11 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   const [telegramFileData, setTelegramFileData] = useState(null);
   const [telegramTextData, setTelegramTextData] = useState(null);
   const [chatMessages, setChatMessages] = useState({});
+  const [aiConversations, setAiConversations] = useState({});
   const [chatOpen, setChatOpen] = useState(false);
   const [chatFlash, setChatFlash] = useState(false);
   const chatOpenRef = useRef(false);
+  const aiConversationsRef = useRef({});
   const selectedChatRef = useRef(null);
   const [textContextMenu, setTextContextMenu] = useState(null);
   const [overlayImage, setOverlayImage] = useState(null);
@@ -245,6 +247,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         setTelegramConfig(savedTg);
         setTelegramLog(savedTg.sendLog ?? []);
         setChatMessages(savedTg.chat ?? {});
+        setAiConversations(saved.aiConversations ?? {});
         const savedCal = saved.calendar ?? {};
         const startDate = saved.settings?.startDate || '2000-01-01';
         setCalendarData({
@@ -330,6 +333,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
       activeViewerTab: activeViewerTab,
       notes: notes,
       checklist: checklist,
+      aiConversations: aiConversations,
       referenceManuals: referenceManuals,
       referenceScrollPositions: referenceScrollPositions,
       referenceSelectedId: referenceSelectedId,
@@ -358,7 +362,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     saveTimer.current = setTimeout(() => {
       window.electronAPI.saveProjectState(projectPath, latestState.current);
     }, 1000);
-  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, viewerFontSize, stageFontSize, scrollVersion, aiConfig, aiChatHistory, panelVisibility, layoutPresets]);
+  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, aiConversations, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, viewerFontSize, stageFontSize, scrollVersion, aiConfig, aiChatHistory, panelVisibility, layoutPresets]);
 
   // Save immediately on unmount (project switch)
   useEffect(() => {
@@ -377,7 +381,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     const newItem = {
       id: trackIdCounter.current++,
       type: mediaType, path: entry.path, name: entry.name, url,
-      ...(mediaType === 'audio' ? { volume: 0.7, loop: true, rate: 1, autoPlay: true } : {})
+      ...(mediaType === 'audio' ? { volume: 0.7, loop: true, rate: 1, autoPlay: false } : {})
     };
     setMediaItems(prev => {
       if (prev.some(item => item.path === entry.path)) return prev;
@@ -852,13 +856,46 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           const question = isAiCommand ? data.text.replace(/^\/(ai|ia)\s+/, '') : data.text;
           // Raccogliere documenti autorizzati per questo player
           const player = playersRef.current.find(p => p.id === data.playerId);
-          const commonDocs = (ai.commonDocs || []).filter(d => d.active).map(d => d.file);
-          const playerDocs = (player?.aiDocuments || []).filter(d => d.active).map(d => d.file);
-          const allowedFiles = [...commonDocs, ...playerDocs];
-          const aiMessages = [{ role: 'user', content: question }];
-          window.electronAPI.aiChat(aiMessages, projectPath, { allowedFiles }).then(result => {
+          const allActiveDocs = [...(ai.commonDocs || []), ...(player?.aiDocuments || [])].filter(d => d.active);
+          const allowedFiles = allActiveDocs.map(d => d.file);
+
+          // Nessun documento attivo → no AI
+          if (allowedFiles.length === 0) {
+            window.electronAPI.telegramSendMessage(data.chatId, 'Nessun documento disponibile');
+            return;
+          }
+
+          // Cercare file _prompt tra i documenti attivi
+          const promptDoc = allActiveDocs.find(d => d.name?.startsWith('_prompt'));
+          const chatOpts = { allowedFiles };
+
+          (async () => {
+            if (promptDoc) {
+              const promptContent = await window.electronAPI.readFile(projectPath + '/' + promptDoc.file);
+              if (promptContent) {
+                chatOpts.allowedFiles = allowedFiles.filter(f => f !== promptDoc.file);
+                chatOpts.systemPromptOverride = promptContent;
+                chatOpts.maxTokens = 2048;
+              }
+            }
+
+            // Costruire storico AI per questo player
+            const playerId = data.playerId;
+            const prevHistory = (aiConversationsRef.current[playerId] || []).slice(-30);
+            const aiMessages = [...prevHistory, { role: 'user', content: question }];
+
+            const result = await window.electronAPI.aiChat(aiMessages, projectPath, chatOpts);
             if (result.response) {
               window.electronAPI.telegramSendReply(data.chatId, result.response);
+              // Aggiornare storico AI (separato dalla chat GM)
+              setAiConversations(prev => ({
+                ...prev,
+                [playerId]: [...(prev[playerId] || []).slice(-29),
+                  { role: 'user', content: question },
+                  { role: 'assistant', content: result.response }
+                ]
+              }));
+              // Aggiornare chat visibile
               setChatMessages(prev => ({
                 ...prev,
                 [data.chatId]: [...(prev[data.chatId] || []), {
@@ -871,7 +908,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
                 }]
               }));
             }
-          }).catch(() => {});
+          })().catch(() => {});
         }
       }
     });
@@ -880,10 +917,66 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
 
   // Keep refs in sync for the message listener
   useEffect(() => { chatOpenRef.current = chatOpen; }, [chatOpen]);
+  useEffect(() => { aiConversationsRef.current = aiConversations; }, [aiConversations]);
 
   const handleTelegramLog = useCallback((entry) => {
     setTelegramLog(prev => [...prev, entry]);
   }, []);
+
+  // Checklist toggle con auto-invio Telegram
+  const checklistRef = useRef(checklist);
+  useEffect(() => { checklistRef.current = checklist; }, [checklist]);
+
+  const handleChecklistToggle = useCallback(async (itemId) => {
+    const item = checklistRef.current.find(i => i.id === itemId);
+    if (!item) return;
+
+    const wasChecked = item.checked;
+    const willBeChecked = !wasChecked;
+
+    // Toggle immediatamente
+    setChecklist(prev => prev.map(i =>
+      i.id === itemId ? { ...i, checked: willBeChecked } : i
+    ));
+
+    // Invio Telegram solo quando si spunta (non quando si de-spunta)
+    if (willBeChecked && item.telegram?.enabled && !item.telegram?.sent && botStatus.running) {
+      const connectedPlayers = players.filter(p => p.telegramChatId);
+      if (connectedPlayers.length === 0) return;
+
+      const now = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+      const commonText = (item.telegram.commonText || '').trim();
+      const personalTexts = item.telegram.personalTexts || {};
+
+      for (const p of connectedPlayers) {
+        try {
+          if (commonText) {
+            await window.electronAPI.telegramSendMessage(p.telegramChatId, commonText);
+          }
+          const personal = (personalTexts[p.id] || '').trim();
+          if (personal) {
+            await window.electronAPI.telegramSendMessage(p.telegramChatId, personal);
+          }
+          handleTelegramLog({
+            date: now, success: true,
+            description: `Checklist "${item.text.length > 35 ? item.text.substring(0, 35) + '...' : item.text}" — inviato`,
+            recipient: p.characterName || p.playerName
+          });
+        } catch (err) {
+          handleTelegramLog({
+            date: now, success: false,
+            description: `Checklist "${item.text.length > 35 ? item.text.substring(0, 35) + '...' : item.text}" — errore`,
+            recipient: p.characterName || p.playerName,
+            error: err.message
+          });
+        }
+      }
+      // Segna come inviato
+      setChecklist(prev => prev.map(i =>
+        i.id === itemId ? { ...i, telegram: { ...i.telegram, sent: true } } : i
+      ));
+    }
+  }, [players, botStatus.running, handleTelegramLog]);
 
   const handleDisconnectAllPlayers = useCallback(() => {
     setPlayers(prev => prev.map(p => ({ ...p, telegramChatId: '' })));
@@ -1538,8 +1631,10 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         <ChecklistPanel
           items={checklist}
           onItemsChange={setChecklist}
+          onToggleCheck={handleChecklistToggle}
           onOpenSource={handleOpenChecklistSource}
           onClose={() => setChecklistOpen(false)}
+          players={players}
         />
       )}
 
@@ -1756,15 +1851,49 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           onClose={() => setChatOpen(false)}
           aiEnabled={aiConfig.telegramAiEnabled && (!!aiConfig.apiKey || !!aiConfig.provider)}
           onAiReply={async (msg, chatId) => {
-            // Raccogliere documenti autorizzati per il player di questa chat
             const player = players.find(p => p.telegramChatId === chatId);
-            const commonDocs = (aiConfig.commonDocs || []).filter(d => d.active).map(d => d.file);
-            const playerDocs = (player?.aiDocuments || []).filter(d => d.active).map(d => d.file);
-            const allowedFiles = [...commonDocs, ...playerDocs];
-            const aiMessages = [{ role: 'user', content: msg.text }];
-            const result = await window.electronAPI.aiChat(aiMessages, projectPath, { allowedFiles });
+            const allActiveDocs = [...(aiConfig.commonDocs || []), ...(player?.aiDocuments || [])].filter(d => d.active);
+            const allowedFiles = allActiveDocs.map(d => d.file);
+
+            // Nessun documento attivo → no AI
+            if (allowedFiles.length === 0) {
+              await window.electronAPI.telegramSendMessage(chatId, 'Nessun documento disponibile');
+              return;
+            }
+
+            // Cercare file _prompt tra i documenti attivi
+            const promptDoc = allActiveDocs.find(d => d.name?.startsWith('_prompt'));
+            const chatOpts = { allowedFiles };
+
+            if (promptDoc) {
+              const promptContent = await window.electronAPI.readFile(projectPath + '/' + promptDoc.file);
+              if (promptContent) {
+                chatOpts.allowedFiles = allowedFiles.filter(f => f !== promptDoc.file);
+                chatOpts.systemPromptOverride = promptContent;
+                chatOpts.maxTokens = 2048;
+              }
+            }
+
+            // Costruire storico AI per questo player
+            const playerId = player?.id;
+            const prevHistory = playerId ? (aiConversations[playerId] || []).slice(-30) : [];
+            const question = msg.text;
+            const aiMessages = [...prevHistory, { role: 'user', content: question }];
+
+            const result = await window.electronAPI.aiChat(aiMessages, projectPath, chatOpts);
             if (result.response) {
               await window.electronAPI.telegramSendReply(chatId, result.response);
+              // Aggiornare storico AI
+              if (playerId) {
+                setAiConversations(prev => ({
+                  ...prev,
+                  [playerId]: [...(prev[playerId] || []).slice(-29),
+                    { role: 'user', content: question },
+                    { role: 'assistant', content: result.response }
+                  ]
+                }));
+              }
+              // Aggiornare chat visibile
               setChatMessages(prev => ({
                 ...prev,
                 [chatId]: [...(prev[chatId] || []), {
