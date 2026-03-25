@@ -242,10 +242,10 @@ function buildContext(projectPath, question, allowedFiles = null) {
   // Sort: most relevant first, then alphabetical
   scored.sort((a, b) => b.score - a.score || a.relPath.localeCompare(b.relPath));
 
-  // Take top 5 most relevant files, cap total chars
+  // Include all allowed files (already filtered by GM), cap total chars
   let totalChars = 0;
   const parts = [];
-  for (const f of scored.slice(0, 5)) {
+  for (const f of scored) {
     const available = MAX_CHARS - totalChars;
     if (available <= 100) break;
     const text = f.content.length > available ? f.content.substring(0, available) + '\n[...troncato]' : f.content;

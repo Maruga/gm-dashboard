@@ -879,7 +879,10 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
               console.log('AI prompt read:', promptContent ? promptContent.length + ' chars' : 'NULL');
               if (promptContent) {
                 chatOpts.allowedFiles = allowedFiles.filter(f => f !== promptDoc.file);
-                chatOpts.systemPromptOverride = promptContent;
+                // Iniettare identità del giocatore nel prompt
+                const charName = player?.characterName || '';
+                const playerIdentity = charName ? `\n\n# STAI COMUNICANDO CON\n${charName}. Rivolgiti direttamente a questo operatore usando "tu". Usa le informazioni che hai su di lui nei documenti attivi.` : '';
+                chatOpts.systemPromptOverride = promptContent + playerIdentity;
                 chatOpts.maxTokens = 2048;
               }
             }
@@ -1019,6 +1022,81 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
       setTelegramLog(prev => [...prev, { date: now, success: false, description: 'Errore invio risposta', error: err.message }]);
     }
   }, [players]);
+
+  const handleAiPoke = useCallback(async (chatId, context) => {
+    const ai = aiConfigRef.current;
+    if (!ai.telegramAiEnabled) return;
+
+    const player = players.find(p => p.telegramChatId === chatId);
+    if (!player) return;
+
+    const allActiveDocs = [...(ai.commonDocs || []), ...(player.aiDocuments || [])].filter(d => d.active);
+    const allowedFiles = allActiveDocs.map(d => d.file);
+
+    if (allowedFiles.length === 0) return;
+
+    const promptDoc = allActiveDocs.find(d => d.name?.startsWith('_prompt'));
+    const chatOpts = { allowedFiles };
+
+    try {
+      if (promptDoc) {
+        const promptContent = await window.electronAPI.readFile(projectPath + '/' + promptDoc.file);
+        if (promptContent) {
+          chatOpts.allowedFiles = allowedFiles.filter(f => f !== promptDoc.file);
+          const charName = player.characterName || '';
+          const playerIdentity = charName ? `\n\n# STAI COMUNICANDO CON\n${charName}. Rivolgiti direttamente a questo operatore usando "tu". Usa le informazioni che hai su di lui nei documenti attivi.` : '';
+          chatOpts.systemPromptOverride = promptContent + playerIdentity;
+          chatOpts.maxTokens = 2048;
+        }
+      }
+
+      const playerId = player.id;
+      const prevHistory = (aiConversationsRef.current[playerId] || []).slice(-30);
+
+      const pokeInstruction = `[SISTEMA — MESSAGGIO PROATTIVO]\nNon stai rispondendo a un messaggio dell'operatore. Stai iniziando TU il contatto.\nScrivi un messaggio per aumentare tensione, suspense o curiosita.\nBasati sui documenti attivi e sullo storico della conversazione.\n${context ? 'Il GM indica: ' + context : 'Usa la tua iniziativa basandoti su cio che sai.'}`;
+
+      const aiMessages = [...prevHistory, { role: 'user', content: pokeInstruction }];
+
+      console.log('AI poke:', { player: player.characterName, context: context || '(nessuno)', messages: aiMessages.length });
+      const result = await window.electronAPI.aiChat(aiMessages, projectPath, chatOpts);
+      console.log('AI poke result:', result.response ? 'OK (' + result.response.length + ' chars)' : 'NO RESPONSE', result.error || '');
+
+      if (result.response) {
+        await window.electronAPI.telegramSendReply(chatId, result.response);
+
+        // Salva solo la risposta nello storico (non l'istruzione)
+        setAiConversations(prev => ({
+          ...prev,
+          [playerId]: [
+            ...(prev[playerId] || []),
+            { role: 'assistant', content: result.response }
+          ]
+        }));
+
+        const aiMsg = {
+          id: crypto.randomUUID(),
+          from: 'ai',
+          text: '\u{1F916} ' + result.response,
+          timestamp: new Date().toISOString(),
+          read: true
+        };
+        setChatMessages(prev => ({
+          ...prev,
+          [chatId]: [...(prev[chatId] || []), aiMsg]
+        }));
+
+        const now = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+        setTelegramLog(prev => [...prev, {
+          date: now,
+          success: true,
+          description: `AI poke a ${player.characterName}: "${result.response.length > 40 ? result.response.substring(0, 40) + '...' : result.response}"`,
+          icon: '\u{1F916}'
+        }]);
+      }
+    } catch (err) {
+      console.error('AI poke error:', err);
+    }
+  }, [players, projectPath]);
 
   const handleChatMarkRead = useCallback((chatId) => {
     setChatMessages(prev => ({
@@ -1857,6 +1935,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           })}
           onClose={() => setChatOpen(false)}
           aiEnabled={aiConfig.telegramAiEnabled && (!!aiConfig.apiKey || !!aiConfig.provider)}
+          onAiPoke={handleAiPoke}
           onAiReply={async (msg, chatId) => {
             const player = players.find(p => p.telegramChatId === chatId);
             const allActiveDocs = [...(aiConfig.commonDocs || []), ...(player?.aiDocuments || [])].filter(d => d.active);
@@ -1876,7 +1955,9 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
               const promptContent = await window.electronAPI.readFile(projectPath + '/' + promptDoc.file);
               if (promptContent) {
                 chatOpts.allowedFiles = allowedFiles.filter(f => f !== promptDoc.file);
-                chatOpts.systemPromptOverride = promptContent;
+                const charName = player?.characterName || '';
+                const playerIdentity = charName ? `\n\n# STAI COMUNICANDO CON\n${charName}. Rivolgiti direttamente a questo operatore usando "tu". Usa le informazioni che hai su di lui nei documenti attivi.` : '';
+                chatOpts.systemPromptOverride = promptContent + playerIdentity;
                 chatOpts.maxTokens = 2048;
               }
             }

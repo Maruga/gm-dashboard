@@ -8,7 +8,7 @@ function formatTime(iso) {
   } catch { return '--:--'; }
 }
 
-export default function TelegramChat({ players, chatMessages, onSendReply, onMarkRead, onSelectedChange, onClearChat, onClose, aiEnabled, onAiReply }) {
+export default function TelegramChat({ players, chatMessages, onSendReply, onMarkRead, onSelectedChange, onClearChat, onClose, aiEnabled, onAiReply, onAiPoke }) {
   const [selectedChatId, setSelectedChatId] = useState(null);
   const messagesEndRef = useRef(null);
   const [replyText, setReplyText] = useState('');
@@ -100,12 +100,24 @@ export default function TelegramChat({ players, chatMessages, onSendReply, onMar
   const handleSend = useCallback(async () => {
     const text = replyText.trim();
     if (!text || !selectedChatId || sending) return;
+
+    // Intercetta /aipoke — comando GM per AI proattiva
+    if (text.startsWith('/aipoke')) {
+      const context = text.replace(/^\/aipoke\s*/, '').trim();
+      setReplyText('');
+      setSending(true);
+      await onAiPoke?.(selectedChatId, context);
+      setSending(false);
+      textareaRef.current?.focus();
+      return;
+    }
+
     setSending(true);
     await onSendReply(selectedChatId, text);
     setReplyText('');
     setSending(false);
     textareaRef.current?.focus();
-  }, [replyText, selectedChatId, sending, onSendReply]);
+  }, [replyText, selectedChatId, sending, onSendReply, onAiPoke]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.ctrlKey && !e.shiftKey) {
