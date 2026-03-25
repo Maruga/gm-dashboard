@@ -760,7 +760,7 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
     const projectState = decryptProjectState(store.get(`projectStates.${escapedPath}`));
     const aiConfig = projectState?.aiConfig;
 
-    let provider, apiKey, model;
+    let provider, apiKey, model, usage, allowance;
 
     if (aiConfig?.apiKey && aiConfig?.provider) {
       // Utente ha la sua key
@@ -779,8 +779,8 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
         return { error: `Configurazione AI non disponibile (${detail})` };
       }
 
-      const usage = await firebase.getAiUsage(user.uid);
-      const allowance = usage.customAllowance || config.tokenAllowance || 1000000;
+      usage = await firebase.getAiUsage(user.uid);
+      allowance = usage.customAllowance || config.tokenAllowance || 1000000;
       if (usage.tokensUsed >= allowance) {
         return { error: `Quota gratuita esaurita (${usage.tokensUsed.toLocaleString()} token usati su ${allowance.toLocaleString()} disponibili). Per continuare, configura una chiave API nelle Impostazioni.` };
       }

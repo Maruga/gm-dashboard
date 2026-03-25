@@ -1,5 +1,9 @@
 import React, { useState, useCallback } from 'react';
 
+export function wrapGmText(text) {
+  return `━━━ GM ━━━━━━━━━━━━\n${text}\n━━━━━━━━━━━━━━━━━`;
+}
+
 const inputStyle = {
   width: '100%',
   padding: '8px 12px',
@@ -63,19 +67,25 @@ export function TelegramFileModal({ fileName, fileExtension, filePath, players, 
     for (const pg of recipients) {
       setResults(prev => [...prev, { name: pg.playerName || pg.characterName, status: 'pending' }]);
       try {
-        if (message.trim()) {
-          await window.electronAPI.telegramSendMessage(pg.telegramChatId, message.trim());
-        }
         let result;
         if (ext === '.md') {
           const content = await window.electronAPI.readFile(filePath);
-          result = await window.electronAPI.telegramSendMessage(pg.telegramChatId, mdToPlainText(content || ''));
-        } else if (['.html', '.htm'].includes(ext)) {
-          result = await window.electronAPI.telegramSendHtmlAsPhoto(pg.telegramChatId, filePath, fileName);
-        } else if (['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(ext)) {
-          result = await window.electronAPI.telegramSendPhoto(pg.telegramChatId, filePath, fileName);
+          const body = mdToPlainText(content || '');
+          const combined = message.trim()
+            ? `${message.trim()}\n- - - - - - - - - - - - - -\n${body}`
+            : body;
+          result = await window.electronAPI.telegramSendMessage(pg.telegramChatId, wrapGmText(combined));
         } else {
-          result = await window.electronAPI.telegramSendDocument(pg.telegramChatId, filePath, fileName);
+          if (message.trim()) {
+            await window.electronAPI.telegramSendMessage(pg.telegramChatId, wrapGmText(message.trim()));
+          }
+          if (['.html', '.htm'].includes(ext)) {
+            result = await window.electronAPI.telegramSendHtmlAsPhoto(pg.telegramChatId, filePath, fileName);
+          } else if (['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(ext)) {
+            result = await window.electronAPI.telegramSendPhoto(pg.telegramChatId, filePath, fileName);
+          } else {
+            result = await window.electronAPI.telegramSendDocument(pg.telegramChatId, filePath, fileName);
+          }
         }
         sendResults.push({ name: pg.playerName || pg.characterName, ok: result.success, error: result.error });
         setResults(prev => prev.map((r, i) => i === prev.length - 1 ? { ...r, status: result.success ? 'ok' : 'error', error: result.error } : r));
@@ -175,8 +185,10 @@ export function TelegramTextModal({ selectedText, players, botRunning, gameDate,
     for (const pg of recipients) {
       setResults(prev => [...prev, { name: pg.playerName || pg.characterName, status: 'pending' }]);
       try {
-        if (message.trim()) await window.electronAPI.telegramSendMessage(pg.telegramChatId, message.trim());
-        const result = await window.electronAPI.telegramSendMessage(pg.telegramChatId, editedText.trim());
+        const combined = message.trim()
+          ? `${message.trim()}\n- - - - - - - - - - - - - -\n${editedText.trim()}`
+          : editedText.trim();
+        const result = await window.electronAPI.telegramSendMessage(pg.telegramChatId, wrapGmText(combined));
         sendResults.push({ name: pg.playerName || pg.characterName, ok: result.success, error: result.error });
         setResults(prev => prev.map((r, i) => i === prev.length - 1 ? { ...r, status: result.success ? 'ok' : 'error', error: result.error } : r));
       } catch (err) {

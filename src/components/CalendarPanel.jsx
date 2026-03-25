@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
+import { wrapGmText } from './TelegramModal';
 
 const MONTHS_IT = [
   'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
@@ -180,7 +181,7 @@ export default function CalendarPanel({
     for (const p of recipients) {
       try {
         // Invia testo
-        await window.electronAPI.telegramSendMessage(p.telegramChatId, text);
+        await window.electronAPI.telegramSendMessage(p.telegramChatId, wrapGmText(text));
         // Invia allegato se presente
         if (linkedFile) {
           if (isImage) {

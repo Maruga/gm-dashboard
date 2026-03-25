@@ -102,7 +102,7 @@ async function chatAnthropic(apiKey, model, messages, maxTokens, effort) {
 
   const res = await httpsPost('api.anthropic.com', '/v1/messages', {
     'x-api-key': apiKey,
-    'anthropic-version': '2025-04-15'
+    'anthropic-version': '2023-06-01'
   }, body);
 
   if (res.status !== 200) {

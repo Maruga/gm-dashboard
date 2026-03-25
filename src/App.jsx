@@ -10,7 +10,7 @@ import TopMenu from './components/TopMenu';
 import DocToc from './components/DocToc';
 import SettingsPanel from './components/SettingsPanel';
 import CalendarPanel from './components/CalendarPanel';
-import { TelegramFileModal, TelegramTextModal } from './components/TelegramModal';
+import { TelegramFileModal, TelegramTextModal, wrapGmText } from './components/TelegramModal';
 import TelegramChat from './components/TelegramChat';
 import QuickReference from './components/QuickReference';
 import NotesPanel from './components/NotesPanel';
@@ -682,7 +682,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
 
         for (const p of recipients) {
           try {
-            await window.electronAPI.telegramSendMessage(p.telegramChatId, text);
+            await window.electronAPI.telegramSendMessage(p.telegramChatId, wrapGmText(text));
             if (linkedFile) {
               if (isImage) {
                 await window.electronAPI.telegramSendPhoto(p.telegramChatId, linkedFile, ev.linkedDocument.split('/').pop());
@@ -820,6 +820,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
       }
       // AI auto-reply for Telegram
       const ai = aiConfigRef.current;
+      console.log('AI check:', { enabled: ai.telegramAiEnabled, mode: ai.telegramAiMode, provider: ai.provider, hasKey: !!ai.apiKey, model: ai.model, commonDocs: ai.commonDocs?.length, playerId: data.playerId });
       if (ai.telegramAiEnabled) {
         // Comando /imagine o /immagina — genera immagine
         const isImagineCommand = /^\/(imagine|immagina)\s/.test(data.text);
@@ -852,12 +853,14 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
 
         const isAiCommand = /^\/(ai|ia)\s/.test(data.text);
         const shouldReply = ai.telegramAiMode === 'auto' || isAiCommand;
+        console.log('AI shouldReply:', shouldReply, 'isAiCommand:', isAiCommand);
         if (shouldReply) {
           const question = isAiCommand ? data.text.replace(/^\/(ai|ia)\s+/, '') : data.text;
           // Raccogliere documenti autorizzati per questo player
           const player = playersRef.current.find(p => p.id === data.playerId);
           const allActiveDocs = [...(ai.commonDocs || []), ...(player?.aiDocuments || [])].filter(d => d.active);
           const allowedFiles = allActiveDocs.map(d => d.file);
+          console.log('AI docs:', { player: !!player, playerDocs: player?.aiDocuments?.length, activeDocs: allActiveDocs.length, allowedFiles });
 
           // Nessun documento attivo → no AI
           if (allowedFiles.length === 0) {
@@ -868,10 +871,12 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           // Cercare file _prompt tra i documenti attivi
           const promptDoc = allActiveDocs.find(d => d.name?.startsWith('_prompt'));
           const chatOpts = { allowedFiles };
+          console.log('AI prompt doc:', promptDoc?.name, 'calling AI...');
 
           (async () => {
             if (promptDoc) {
               const promptContent = await window.electronAPI.readFile(projectPath + '/' + promptDoc.file);
+              console.log('AI prompt read:', promptContent ? promptContent.length + ' chars' : 'NULL');
               if (promptContent) {
                 chatOpts.allowedFiles = allowedFiles.filter(f => f !== promptDoc.file);
                 chatOpts.systemPromptOverride = promptContent;
@@ -884,7 +889,9 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
             const prevHistory = (aiConversationsRef.current[playerId] || []).slice(-30);
             const aiMessages = [...prevHistory, { role: 'user', content: question }];
 
+            console.log('AI calling aiChat, messages:', aiMessages.length);
             const result = await window.electronAPI.aiChat(aiMessages, projectPath, chatOpts);
+            console.log('AI result:', result.response ? 'OK (' + result.response.length + ' chars)' : 'NO RESPONSE', result.error || '');
             if (result.response) {
               window.electronAPI.telegramSendReply(data.chatId, result.response);
               // Aggiornare storico AI (separato dalla chat GM)
@@ -908,7 +915,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
                 }]
               }));
             }
-          })().catch(() => {});
+          })().catch(err => { console.error('AI Telegram error:', err); });
         }
       }
     });
@@ -951,11 +958,11 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
       for (const p of connectedPlayers) {
         try {
           if (commonText) {
-            await window.electronAPI.telegramSendMessage(p.telegramChatId, commonText);
+            await window.electronAPI.telegramSendMessage(p.telegramChatId, wrapGmText(commonText));
           }
           const personal = (personalTexts[p.id] || '').trim();
           if (personal) {
-            await window.electronAPI.telegramSendMessage(p.telegramChatId, personal);
+            await window.electronAPI.telegramSendMessage(p.telegramChatId, wrapGmText(personal));
           }
           handleTelegramLog({
             date: now, success: true,
@@ -985,7 +992,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   // Chat handlers
   const handleChatSendReply = useCallback(async (chatId, text) => {
     try {
-      await window.electronAPI.telegramSendReply(chatId, text);
+      await window.electronAPI.telegramSendReply(chatId, wrapGmText(text));
       const msg = {
         id: crypto.randomUUID(),
         from: 'gm',
