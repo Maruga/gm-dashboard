@@ -1037,6 +1037,15 @@ ipcMain.handle('adventure-export', async (event, projectPath, metadata, forPubli
     const adventureJsonPath = path.join(projectPath, '_adventure.json');
     fs.writeFileSync(adventureJsonPath, JSON.stringify(adventureJson, null, 2), 'utf-8');
 
+    // Save project state as portable JSON (decrypted keys in chiaro)
+    const escapedPath = projectPath.replace(/\./g, '\\.');
+    const rawState = store.get(`projectStates.${escapedPath}`);
+    if (rawState) {
+      const portableState = decryptProjectState(rawState);
+      const statePath = path.join(projectPath, '_project-state.json');
+      fs.writeFileSync(statePath, JSON.stringify(portableState, null, 2), 'utf-8');
+    }
+
     // Create zip
     const zip = new AdmZip();
 
@@ -1126,6 +1135,10 @@ ipcMain.handle('adventure-export', async (event, projectPath, metadata, forPubli
 
     zip.writeZip(zipPath);
 
+    // Cleanup: remove _project-state.json from disk (contains plaintext keys)
+    const stateCleanup = path.join(projectPath, '_project-state.json');
+    if (fs.existsSync(stateCleanup)) fs.unlinkSync(stateCleanup);
+
     const stats = fs.statSync(zipPath);
     const sizeMB = (stats.size / (1024 * 1024)).toFixed(1);
 
@@ -1170,6 +1183,20 @@ ipcMain.handle('adventure-import-from-file', async () => {
     const metaPath = path.join(extractPath, '_adventure.json');
     if (fs.existsSync(metaPath)) {
       try { metadata = JSON.parse(fs.readFileSync(metaPath, 'utf-8')); } catch (e) { logDiag('error', 'adventure-meta-parse', e.message); }
+    }
+
+    // Restore project state from _project-state.json if present
+    const stateJsonPath = path.join(extractPath, '_project-state.json');
+    if (fs.existsSync(stateJsonPath)) {
+      try {
+        const portableState = JSON.parse(fs.readFileSync(stateJsonPath, 'utf-8'));
+        const projectPathKey = extractPath.replace(/\\/g, '/');
+        const escapedKey = projectPathKey.replace(/\./g, '\\.');
+        store.set(`projectStates.${escapedKey}`, encryptProjectState(portableState));
+        // Remove plaintext state file from disk
+        fs.unlinkSync(stateJsonPath);
+        logDiag('info', 'Project state restored from _project-state.json');
+      } catch (e) { logDiag('error', 'project-state-restore', e.message); }
     }
 
     const projectPath = extractPath.replace(/\\/g, '/');
@@ -1249,6 +1276,20 @@ ipcMain.handle('adventure-download', async (event, url, adventureName) => {
     const metaPath = path.join(extractPath, '_adventure.json');
     if (fs.existsSync(metaPath)) {
       try { metadata = JSON.parse(fs.readFileSync(metaPath, 'utf-8')); } catch (e) { logDiag('error', 'adventure-meta-parse', e.message); }
+    }
+
+    // Restore project state from _project-state.json if present
+    const stateJsonPath = path.join(extractPath, '_project-state.json');
+    if (fs.existsSync(stateJsonPath)) {
+      try {
+        const portableState = JSON.parse(fs.readFileSync(stateJsonPath, 'utf-8'));
+        const projectPathKey = extractPath.replace(/\\/g, '/');
+        const escapedKey = projectPathKey.replace(/\./g, '\\.');
+        store.set(`projectStates.${escapedKey}`, encryptProjectState(portableState));
+        // Remove plaintext state file from disk
+        fs.unlinkSync(stateJsonPath);
+        logDiag('info', 'Project state restored from _project-state.json');
+      } catch (e) { logDiag('error', 'project-state-restore', e.message); }
     }
 
     const projectPath = extractPath.replace(/\\/g, '/');
