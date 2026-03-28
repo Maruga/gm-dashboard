@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { THEMES, THEME_LIST } from '../themes/themeDefinitions';
+import QRCode from 'qrcode';
 import { applyTheme, saveThemeId, getStoredThemeId, applyFontScale, saveFontScale, getStoredFontScale } from '../themes/themeEngine';
 
 const HIGHLIGHT_PALETTE = [
@@ -1217,14 +1218,21 @@ export default function SettingsPanel({
                 )}
               </div>
 
-              {/* Instructions */}
-              <div style={{
-                padding: '10px 14px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
-                borderRadius: '4px', fontSize: '11px', color: 'var(--text-tertiary)', lineHeight: '1.5'
-              }}>
-                Comunica ai giocatori di cercare il bot su Telegram e scrivere:<br />
-                <span style={{ color: 'var(--accent)', fontFamily: 'monospace' }}>/join {telegram.sessionCode || '------'}</span>
-              </div>
+              {/* QR Code + Link per connessione rapida */}
+              {telegram.botInfo?.username && telegram.sessionCode && (
+                <TelegramQRPanel
+                  botUsername={telegram.botInfo.username}
+                  sessionCode={telegram.sessionCode}
+                />
+              )}
+              {(!telegram.botInfo?.username || !telegram.sessionCode) && (
+                <div style={{
+                  padding: '10px 14px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
+                  borderRadius: '4px', fontSize: '11px', color: 'var(--text-tertiary)', lineHeight: '1.5'
+                }}>
+                  Configura il bot e genera un codice sessione per mostrare il QR code ai giocatori.
+                </div>
+              )}
 
               {/* Reset token */}
               <button onClick={() => {
@@ -1906,5 +1914,121 @@ export default function SettingsPanel({
         </div>{/* end two-column */}
       </div>
     </div>
+  );
+}
+
+function TelegramQRPanel({ botUsername, sessionCode }) {
+  const [qrSvg, setQrSvg] = useState('');
+  const [fullscreen, setFullscreen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const deepLink = `https://t.me/${botUsername}?start=${sessionCode}`;
+
+  useEffect(() => {
+    const style = getComputedStyle(document.documentElement);
+    const dark = style.getPropertyValue('--accent').trim() || '#c9a96e';
+    const light = style.getPropertyValue('--bg-main').trim() || '#1a1815';
+    QRCode.toString(deepLink, {
+      type: 'svg', margin: 1,
+      color: { dark, light }
+    }).then(svg => setQrSvg(svg)).catch(() => {});
+  }, [deepLink]);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(deepLink).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [deepLink]);
+
+  return (
+    <>
+      <div style={{
+        padding: '14px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
+        borderRadius: '6px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px'
+      }}>
+        <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '1px' }}>
+          Connessione giocatori
+        </div>
+
+        {qrSvg && (
+          <div
+            onClick={() => setFullscreen(true)}
+            style={{ width: '160px', height: '160px', borderRadius: '8px', cursor: 'pointer', border: '2px solid var(--accent)', transition: 'transform 0.2s', overflow: 'hidden' }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+            title="Clicca per ingrandire"
+            dangerouslySetInnerHTML={{ __html: qrSvg }}
+          />
+        )}
+
+        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textAlign: 'center', wordBreak: 'break-all' }}>
+          {deepLink}
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={handleCopy}
+            style={{
+              background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+              padding: '4px 12px', color: copied ? 'var(--color-success)' : 'var(--text-secondary)',
+              fontSize: '11px', cursor: 'pointer', transition: 'all 0.2s'
+            }}
+          >
+            {copied ? '✅ Copiato!' : '📋 Copia link'}
+          </button>
+          <button
+            onClick={() => setFullscreen(true)}
+            style={{
+              background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+              padding: '4px 12px', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer', transition: 'all 0.2s'
+            }}
+          >
+            🔍 Mostra grande
+          </button>
+        </div>
+
+        <div style={{ fontSize: '10px', color: 'var(--text-disabled)', textAlign: 'center', lineHeight: '1.4' }}>
+          I giocatori scansionano il QR o cliccano il link → premono Avvia → scelgono il personaggio
+        </div>
+      </div>
+
+      {/* Fullscreen QR overlay — da mostrare ai giocatori al tavolo */}
+      {fullscreen && (
+        <div
+          onClick={() => setFullscreen(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.95)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            zIndex: 99999, cursor: 'pointer'
+          }}
+        >
+          <div style={{ fontSize: '24px', fontWeight: '700', color: 'var(--accent)', letterSpacing: '4px', marginBottom: '24px' }}>
+            UNISCITI ALLA SESSIONE
+          </div>
+          {qrSvg && (
+            <div
+              style={{ width: '320px', height: '320px', borderRadius: '16px', border: '3px solid var(--accent)', overflow: 'hidden' }}
+              dangerouslySetInnerHTML={{ __html: qrSvg }}
+            />
+          )}
+          <div style={{ fontSize: '18px', color: 'var(--text-primary)', marginTop: '20px', fontFamily: 'monospace', letterSpacing: '2px' }}>
+            @{botUsername}
+          </div>
+          <div style={{ fontSize: '14px', color: 'var(--text-tertiary)', marginTop: '8px' }}>
+            Scansiona il QR code con il telefono
+          </div>
+          <div style={{ fontSize: '32px', fontWeight: '700', color: 'var(--accent)', marginTop: '16px', fontFamily: 'monospace', letterSpacing: '6px' }}>
+            {sessionCode}
+          </div>
+          <div style={{ fontSize: '12px', color: 'var(--text-disabled)', marginTop: '24px' }}>
+            oppure cerca @{botUsername} su Telegram e scrivi /join {sessionCode}
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-disabled)', marginTop: '40px' }}>
+            Clicca ovunque per chiudere
+          </div>
+        </div>
+      )}
+    </>
   );
 }

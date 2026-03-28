@@ -1,23 +1,23 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
-// Telegram send command extension: [tlg:destinatari:contenuto]
+// Telegram send command extension: [tlg|destinatari|contenuto] or [tlg::destinatari::contenuto]
 const tlgExtension = {
   name: 'tlg',
   level: 'inline',
   start(src) {
-    return src.indexOf('[tlg:');
+    return src.indexOf('[tlg');
   },
   tokenizer(src) {
-    // [tlg:target:content] where content can contain colons
-    const match = src.match(/^\[tlg:([^:\]]+):([^\]]+)\]/);
-    if (match) {
-      return {
-        type: 'tlg',
-        raw: match[0],
-        target: match[1].trim(),
-        content: match[2].trim()
-      };
+    // [tlg|target|content] — pipe separator
+    const pipeMatch = src.match(/^\[tlg\|([^|\]]+)\|([^\]]+)\]/);
+    if (pipeMatch) {
+      return { type: 'tlg', raw: pipeMatch[0], target: pipeMatch[1].trim(), content: pipeMatch[2].trim() };
+    }
+    // [tlg::target::content] — double colon separator
+    const colonMatch = src.match(/^\[tlg::([^\]]+?)::([^\]]+)\]/);
+    if (colonMatch) {
+      return { type: 'tlg', raw: colonMatch[0], target: colonMatch[1].trim(), content: colonMatch[2].trim() };
     }
   },
   renderer(token) {

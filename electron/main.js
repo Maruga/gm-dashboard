@@ -1095,6 +1095,15 @@ ipcMain.handle('adventure-export', async (event, projectPath, metadata, forPubli
     const rawState = store.get(`projectStates.${escapedPath}`);
     if (rawState) {
       const portableState = decryptProjectState(rawState);
+      // Strip sensitive keys if includeKeys is false
+      const includeKeys = metadata.includeKeys !== false; // default true
+      if (!includeKeys) {
+        if (portableState.telegram) portableState.telegram.botToken = '';
+        if (portableState.aiConfig) {
+          portableState.aiConfig.apiKey = '';
+          portableState.aiConfig.openaiImageKey = '';
+        }
+      }
       const statePath = path.join(projectPath, '_project-state.json');
       fs.writeFileSync(statePath, JSON.stringify(portableState, null, 2), 'utf-8');
     }

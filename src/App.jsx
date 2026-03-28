@@ -11,6 +11,7 @@ import DocToc from './components/DocToc';
 import SettingsPanel from './components/SettingsPanel';
 import CalendarPanel from './components/CalendarPanel';
 import { TelegramFileModal, TelegramTextModal, wrapGmText } from './components/TelegramModal';
+import TelegramSendModal from './components/TelegramSendModal';
 import TelegramChat from './components/TelegramChat';
 import QuickReference from './components/QuickReference';
 import NotesPanel from './components/NotesPanel';
@@ -173,6 +174,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   const [textContextMenu, setTextContextMenu] = useState(null);
   const [overlayImage, setOverlayImage] = useState(null);
   const [overlayVideo, setOverlayVideo] = useState(null);
+  const [tlgSendData, setTlgSendData] = useState(null); // { target, content } for Telegram send modal
   const [searchHighlight, setSearchHighlight] = useState(null);
   const [externalSearchQuery, setExternalSearchQuery] = useState(null);
   const externalSearchCounter = useRef(0);
@@ -486,6 +488,10 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
 
   const handleVideoClick = useCallback((filePath) => {
     window.electronAPI.getFileUrl(filePath).then(url => setOverlayVideo(url));
+  }, []);
+
+  const handleTlgClick = useCallback((target, content) => {
+    setTlgSendData({ target, content });
   }, []);
 
   // Viewer tab logic
@@ -852,11 +858,11 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           return;
         }
 
-        const isAiCommand = /^\/(ai|ia)\s/.test(data.text);
+        const isAiCommand = /^[./](ai|ia)\s/.test(data.text);
         const shouldReply = ai.telegramAiMode === 'auto' || isAiCommand;
         console.log('AI shouldReply:', shouldReply, 'isAiCommand:', isAiCommand);
         if (shouldReply) {
-          const question = isAiCommand ? data.text.replace(/^\/(ai|ia)\s+/, '') : data.text;
+          const question = isAiCommand ? data.text.replace(/^[./](ai|ia)\s+/, '') : data.text;
           // Raccogliere documenti autorizzati per questo player
           const player = playersRef.current.find(p => p.id === data.playerId);
           const allActiveDocs = [...(ai.commonDocs || []), ...(player?.aiDocuments || [])].filter(d => d.active);
@@ -1591,6 +1597,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
                   highlightKeywords={highlightKeywords}
                   onImageClick={handleImageClick}
                   onVideoClick={handleVideoClick}
+                  onTlgClick={handleTlgClick}
                   scrollMapRef={scrollMapRef}
                   onScrollChanged={onScrollChanged}
                   fontSize={viewerFontSize}
@@ -1626,6 +1633,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
               onTabChange={setActiveStageSlot}
               onImageClick={handleImageClick}
               onVideoClick={handleVideoClick}
+              onTlgClick={handleTlgClick}
               calFile={calFile}
               vistaContent={vistaContent}
               relationsBase={relationsBase}
@@ -1959,6 +1967,17 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           gameDate={calendarData.currentDate}
           onLog={handleTelegramLog}
           onClose={() => setTelegramTextData(null)}
+        />
+      )}
+      {tlgSendData && (
+        <TelegramSendModal
+          target={tlgSendData.target}
+          content={tlgSendData.content}
+          players={players}
+          projectPath={projectPath}
+          botRunning={botStatus.running}
+          onLog={handleTelegramLog}
+          onClose={() => setTlgSendData(null)}
         />
       )}
       {referenceOpen && (

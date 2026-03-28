@@ -21,7 +21,7 @@ const ALL_TABS = [
 
 function Stage({
   slotFiles, activeTab, selectedIndices, onTabChange,
-  onImageClick, onVideoClick,
+  onImageClick, onVideoClick, onTlgClick,
   calFile,
   vistaContent, relationsBase, relationsSession,
   scrollMapRef, onScrollChanged,
@@ -159,6 +159,7 @@ function Stage({
             html={snippetHtml}
             onOpenSource={onOpenSnippetSource}
             fontSize={fontSize}
+            onTlgClick={onTlgClick}
           />
         ) : activeItem ? (
           <Viewer
@@ -168,6 +169,7 @@ function Stage({
             highlightKeywords={highlightKeywords}
             onImageClick={onImageClick}
             onVideoClick={onVideoClick}
+            onTlgClick={onTlgClick}
             scrollMapRef={scrollMapRef}
             onScrollChanged={onScrollChanged}
             fontSize={fontSize}
@@ -190,11 +192,26 @@ function Stage({
 
 export default React.memo(Stage);
 
-const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpenSource, fontSize }, ref) {
+const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpenSource, fontSize, onTlgClick }, ref) {
   const sourceName = snippet.source || (snippet.sourcePath ? snippet.sourcePath.split('/').pop().split('\\').pop() : null);
   const contentRef = useRef(null);
 
   React.useImperativeHandle(ref, () => contentRef.current);
+
+  // Telegram send button click handler
+  React.useEffect(() => {
+    const container = contentRef.current;
+    if (!container || !onTlgClick) return;
+    const handler = (e) => {
+      const btn = e.target.closest('.tlg-send-btn');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onTlgClick(btn.dataset.tlgTarget, btn.dataset.tlgContent);
+    };
+    container.addEventListener('click', handler);
+    return () => container.removeEventListener('click', handler);
+  }, [onTlgClick]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

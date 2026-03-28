@@ -53,7 +53,7 @@ function highlightHtml(html, query, targetOffset) {
 
 const Viewer = forwardRef(function Viewer({
   currentFile, scrollKeyPrefix, searchHighlight, highlightKeywords, onImageClick, onVideoClick,
-  scrollMapRef, onScrollChanged, fontSize, searchOpen, onSearchClose, onPdfOutlineReady
+  scrollMapRef, onScrollChanged, fontSize, searchOpen, onSearchClose, onPdfOutlineReady, onTlgClick
 }, ref) {
   const [renderedHtml, setRenderedHtml] = useState('');
   const [isHtmlFile, setIsHtmlFile] = useState(false);
@@ -81,6 +81,21 @@ const Viewer = forwardRef(function Viewer({
     if (isHtmlFile) return iframeRef.current;
     return containerRef.current;
   });
+
+  // Telegram send button click handler
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !onTlgClick) return;
+    const handler = (e) => {
+      const btn = e.target.closest('.tlg-send-btn');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onTlgClick(btn.dataset.tlgTarget, btn.dataset.tlgContent);
+    };
+    container.addEventListener('click', handler);
+    return () => container.removeEventListener('click', handler);
+  }, [onTlgClick]);
 
   const makeKey = useCallback((filePath) => {
     return scrollKeyPrefix ? `${scrollKeyPrefix}:${filePath}` : filePath;

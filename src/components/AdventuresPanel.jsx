@@ -651,6 +651,7 @@ function PublishWizard({ projectPath, projectSettings, user, onClose, onPublishe
   const [progress, setProgress] = useState(null);
   const [publishError, setPublishError] = useState(null);
   const [done, setDone] = useState(false);
+  const [includeKeys, setIncludeKeys] = useState(meta.visibility !== 'public');
 
   useEffect(() => {
     const handler = (data) => setProgress(data);
@@ -663,7 +664,8 @@ function PublishWizard({ projectPath, projectSettings, user, onClose, onPublishe
       ...meta,
       ...(isUpdate ? { id: updateAdventure.id } : {}),
       tags: typeof meta.tags === 'string' ? meta.tags.split(',').map(t => t.trim()).filter(Boolean) : meta.tags,
-      exportExcludes: projectSettings?.exportExcludes || ''
+      exportExcludes: projectSettings?.exportExcludes || '',
+      includeKeys
     };
     const result = await window.electronAPI.adventureExport(projectPath, metadata, true);
     if (result.error) {
@@ -771,7 +773,7 @@ function PublishWizard({ projectPath, projectSettings, user, onClose, onPublishe
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Visibilità</label>
-                  <select value={meta.visibility} onChange={e => setMeta(p => ({ ...p, visibility: e.target.value }))} style={{ ...inputStyle, cursor: 'pointer', appearance: 'auto' }}>
+                  <select value={meta.visibility} onChange={e => { const v = e.target.value; setMeta(p => ({ ...p, visibility: v })); setIncludeKeys(v !== 'public'); }} style={{ ...inputStyle, cursor: 'pointer', appearance: 'auto' }}>
                     <option value="public">Pubblica</option>
                     <option value="private">Privata</option>
                   </select>
@@ -781,6 +783,27 @@ function PublishWizard({ projectPath, projectSettings, user, onClose, onPublishe
                 <label style={labelStyle}>Tag (virgola)</label>
                 <input value={meta.tags} onChange={e => setMeta(p => ({ ...p, tags: e.target.value }))} style={inputStyle} placeholder="investigativo, giappone" />
               </div>
+              {/* Include keys checkbox */}
+              <div style={{
+                padding: '10px 12px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
+                borderRadius: '4px', marginBottom: '12px'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', color: 'var(--text-primary)' }}>
+                  <input
+                    type="checkbox"
+                    checked={includeKeys}
+                    onChange={e => setIncludeKeys(e.target.checked)}
+                    style={{ accentColor: 'var(--accent)' }}
+                  />
+                  Includi token Telegram e chiavi AI
+                </label>
+                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px', marginLeft: '24px' }}>
+                  {includeKeys
+                    ? 'Le chiavi saranno incluse — utile per trasferimento tra i tuoi dispositivi'
+                    : 'Le chiavi verranno escluse — chi scarica dovrà configurare le proprie'}
+                </div>
+              </div>
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
                 <button
                   onClick={() => { if (meta.name && meta.author && meta.version && meta.description) setStep(2); }}

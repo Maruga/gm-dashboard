@@ -71,7 +71,13 @@ class GmDashBot extends EventEmitter {
   }
 
   _registerCommands() {
-    this.bot.onText(/\/start/, (msg) => {
+    this.bot.onText(/\/start(?:\s+(.+))?/, (msg, match) => {
+      const payload = match[1] ? match[1].trim() : '';
+      // Deep link: /start CODICE → trattalo come /join CODICE
+      if (payload && payload === this.sessionCode) {
+        this._handleJoin(msg, payload, '');
+        return;
+      }
       this.bot.sendMessage(msg.chat.id,
         '🎴 *GENKAI GM Dashboard*\n\n' +
         'Benvenuto! Per unirti a una sessione di gioco, usa il comando:\n' +
@@ -83,40 +89,7 @@ class GmDashBot extends EventEmitter {
     });
 
     this.bot.onText(/\/join\s+(\S+)(?:\s+(.+))?/, (msg, match) => {
-      const code = match[1];
-      const playerName = match[2] ? match[2].trim() : '';
-      const chatId = msg.chat.id;
-
-      if (code !== this.sessionCode) {
-        this.bot.sendMessage(chatId, '❌ Codice non valido. Controlla il codice con il tuo Game Master.');
-        return;
-      }
-
-      const existing = this.players.find(p => p.telegramChatId === String(chatId));
-      if (existing) {
-        this.bot.sendMessage(chatId, `Sei già registrato come *${existing.characterName}*.`, { parse_mode: 'Markdown' });
-        return;
-      }
-
-      const available = this.players.filter(p => !p.telegramChatId);
-      if (available.length === 0) {
-        this.bot.sendMessage(chatId, '⚠️ Tutti i personaggi sono già stati assegnati.');
-        return;
-      }
-
-      // Salva il nome del giocatore per il callback_query
-      if (playerName) {
-        this.pendingNames.set(String(chatId), playerName);
-      }
-
-      const keyboard = available.map(p => ([{
-        text: p.characterName || 'Senza nome',
-        callback_data: `join_${p.id}`
-      }]));
-
-      this.bot.sendMessage(chatId, '🎭 Scegli il tuo personaggio:', {
-        reply_markup: { inline_keyboard: keyboard }
-      });
+      this._handleJoin(msg, match[1], match[2] ? match[2].trim() : '');
     });
 
     this.bot.on('callback_query', (query) => {
@@ -144,9 +117,14 @@ class GmDashBot extends EventEmitter {
       this.pendingNames.delete(String(chatId));
 
       this.bot.answerCallbackQuery(query.id);
-      const confirmMsg = pendingName
-        ? `✅ *${pendingName}*, sei registrato come *${player.characterName || 'Senza nome'}*! Riceverai gli handout durante la sessione.`
-        : `✅ Sei registrato come *${player.characterName || 'Senza nome'}*! Riceverai gli handout durante la sessione.`;
+      const charName = player.characterName || 'Senza nome';
+      const greeting = pendingName ? `*${pendingName}*, sei` : 'Sei';
+      const confirmMsg = `✅ ${greeting} registrato come *${charName}*!\n\n`
+        + `📋 *Comandi disponibili:*\n`
+        + '`.gm messaggio` — Scrivi al GM in privato\n'
+        + '`.ai domanda` — Chiedi all\'AI\n'
+        + '`.esci` — Disconnettiti dalla sessione\n\n'
+        + `_Buona sessione!_ 🎲`;
       this.bot.sendMessage(chatId, confirmMsg, { parse_mode: 'Markdown' });
       this.bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
         chat_id: chatId,
@@ -161,46 +139,18 @@ class GmDashBot extends EventEmitter {
       });
     });
 
-    this.bot.onText(/\/leave/, (msg) => {
-      const chatId = String(msg.chat.id);
-      const player = this.players.find(p => p.telegramChatId === chatId);
-      if (!player) {
-        this.bot.sendMessage(msg.chat.id, 'Non sei registrato in nessuna sessione.');
-        return;
-      }
-      const characterName = player.characterName;
-      player.telegramChatId = '';
-      this.bot.sendMessage(msg.chat.id, '👋 Ti sei disconnesso dalla sessione.');
-      this.emit('player-left', { chatId, playerId: player.id, characterName });
-    });
-
     this.bot.onText(/\/id/, (msg) => {
       this.bot.sendMessage(msg.chat.id, `Il tuo Chat ID è: \`${msg.chat.id}\``, { parse_mode: 'Markdown' });
     });
 
-    // /ai e /ia — sinonimi per domande AI (rimpiazza /ask)
-    this.bot.onText(/\/(ai|ia)\s+(.+)/s, (msg, match) => {
-      const chatId = String(msg.chat.id);
-      const player = this.players.find(p => p.telegramChatId === chatId);
-      if (!player) return;
-      this.emit('message-received', {
-        chatId,
-        playerId: player.id,
-        characterName: player.characterName || 'Senza nome',
-        playerName: player.playerName || '',
-        text: `/ai ${match[2]}`,
-        timestamp: new Date(msg.date * 1000).toISOString()
-      });
-    });
-
-    // Listen for ALL text messages from registered players (not commands)
+    // Listen for ALL text messages from registered players (not slash commands)
     this.bot.on('message', (msg) => {
       if (!msg.text || msg.text.startsWith('/')) return;
       const chatId = String(msg.chat.id);
       const player = this.players.find(p => p.telegramChatId === chatId);
-      if (!player) return; // not a registered player, ignore
+      if (!player) return;
 
-      // Dot-commands: .gm / .dm / .master — messaggio privato al GM (AI non lo vede)
+      // .gm / .dm / .master — messaggio privato al GM (AI non lo vede)
       const gmMatch = msg.text.match(/^\.(gm|dm|master)\s+([\s\S]+)/i);
       if (gmMatch) {
         this.emit('gm-private-message', {
@@ -214,6 +164,30 @@ class GmDashBot extends EventEmitter {
         return;
       }
 
+      // .ai / .ia — domanda all'AI
+      const aiMatch = msg.text.match(/^\.(ai|ia)\s+([\s\S]+)/i);
+      if (aiMatch) {
+        this.emit('message-received', {
+          chatId,
+          playerId: player.id,
+          characterName: player.characterName || 'Senza nome',
+          playerName: player.playerName || '',
+          text: `.ai ${aiMatch[2]}`,
+          timestamp: new Date(msg.date * 1000).toISOString()
+        });
+        return;
+      }
+
+      // .leave / .esci / .bye — disconnetti dalla sessione
+      if (/^\.(leave|esci|bye)\s*$/i.test(msg.text)) {
+        const characterName = player.characterName;
+        player.telegramChatId = '';
+        this.bot.sendMessage(msg.chat.id, '👋 Ti sei disconnesso dalla sessione.');
+        this.emit('player-left', { chatId, playerId: player.id, characterName });
+        return;
+      }
+
+      // Messaggio normale
       this.emit('message-received', {
         chatId,
         playerId: player.id,
@@ -233,6 +207,40 @@ class GmDashBot extends EventEmitter {
     } catch (err) {
       return { error: err.message };
     }
+  }
+
+  _handleJoin(msg, code, playerName) {
+    const chatId = msg.chat.id;
+
+    if (code !== this.sessionCode) {
+      this.bot.sendMessage(chatId, '❌ Codice non valido. Controlla il codice con il tuo Game Master.');
+      return;
+    }
+
+    const existing = this.players.find(p => p.telegramChatId === String(chatId));
+    if (existing) {
+      this.bot.sendMessage(chatId, `Sei già registrato come *${existing.characterName}*.`, { parse_mode: 'Markdown' });
+      return;
+    }
+
+    const available = this.players.filter(p => !p.telegramChatId);
+    if (available.length === 0) {
+      this.bot.sendMessage(chatId, '⚠️ Tutti i personaggi sono già stati assegnati.');
+      return;
+    }
+
+    if (playerName) {
+      this.pendingNames.set(String(chatId), playerName);
+    }
+
+    const keyboard = available.map(p => ([{
+      text: p.characterName || 'Senza nome',
+      callback_data: `join_${p.id}`
+    }]));
+
+    this.bot.sendMessage(chatId, '🎭 Scegli il tuo personaggio:', {
+      reply_markup: { inline_keyboard: keyboard }
+    });
   }
 
   async sendPhoto(chatId, photoPathOrBuffer, caption) {
