@@ -71,6 +71,7 @@ const Viewer = forwardRef(function Viewer({
   const fadeTimerRef = useRef(null);
   const iframeReadyRef = useRef(false);
   const iframeScrollHandlerRef = useRef(null);
+  const iframeClickHandlerRef = useRef(null);
   const searchHighlightRef = useRef(searchHighlight);
   searchHighlightRef.current = searchHighlight;
   const { saveScroll, getScroll } = useScrollMemory(scrollMapRef, onScrollChanged);
@@ -82,16 +83,33 @@ const Viewer = forwardRef(function Viewer({
     return containerRef.current;
   });
 
-  // Telegram send button click handler
+  // Click handler for Telegram buttons and links
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !onTlgClick) return;
+    if (!container) return;
     const handler = (e) => {
+      // Telegram send buttons
       const btn = e.target.closest('.tlg-send-btn');
-      if (!btn) return;
-      e.preventDefault();
-      e.stopPropagation();
-      onTlgClick(btn.dataset.tlgTarget, btn.dataset.tlgContent);
+      if (btn) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onTlgClick) onTlgClick(btn.dataset.tlgTarget, btn.dataset.tlgContent);
+        return;
+      }
+      // Links
+      const link = e.target.closest('a[href]');
+      if (link) {
+        const href = link.getAttribute('href');
+        if (!href) return;
+        // Anchor links — scroll within document
+        if (href.startsWith('#')) return; // let browser handle scroll
+        e.preventDefault();
+        e.stopPropagation();
+        // External URL — open in popup browser
+        if (/^https?:\/\//i.test(href)) {
+          window.electronAPI.openPopupBrowser(href);
+        }
+      }
     };
     container.addEventListener('click', handler);
     return () => container.removeEventListener('click', handler);
@@ -118,10 +136,14 @@ const Viewer = forwardRef(function Viewer({
   useEffect(() => {
     iframeReadyRef.current = false;
 
-    // Cleanup previous iframe scroll listener
+    // Cleanup previous iframe listeners
     if (iframeScrollHandlerRef.current && iframeRef.current?.contentWindow) {
       try { iframeRef.current.contentWindow.removeEventListener('scroll', iframeScrollHandlerRef.current); } catch (_) {}
       iframeScrollHandlerRef.current = null;
+    }
+    if (iframeClickHandlerRef.current && iframeRef.current?.contentDocument) {
+      try { iframeRef.current.contentDocument.removeEventListener('click', iframeClickHandlerRef.current); } catch (_) {}
+      iframeClickHandlerRef.current = null;
     }
 
     if (!currentFile) {
@@ -386,6 +408,25 @@ const Viewer = forwardRef(function Viewer({
       };
       iframeScrollHandlerRef.current = scrollHandler;
       iframe.contentWindow.addEventListener('scroll', scrollHandler, { passive: true });
+
+      // Cleanup previous iframe click listener
+      if (iframeClickHandlerRef.current && iframeRef.current?.contentDocument) {
+        try { iframeRef.current.contentDocument.removeEventListener('click', iframeClickHandlerRef.current); } catch (_) {}
+      }
+      // Intercept link clicks in iframe HTML content
+      const clickHandler = (e) => {
+        const link = e.target.closest('a[href]');
+        if (!link) return;
+        const href = link.getAttribute('href');
+        if (!href || href.startsWith('#')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (/^https?:\/\//i.test(href)) {
+          window.electronAPI.openPopupBrowser(href);
+        }
+      };
+      iframeClickHandlerRef.current = clickHandler;
+      iframeDoc.addEventListener('click', clickHandler);
     } catch (e) { console.warn('Iframe load handler:', e.message); }
   }, [getScroll, saveScroll, applyIframeSearchHighlights]);
 

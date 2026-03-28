@@ -165,6 +165,22 @@ function createWindow() {
     }
   });
 
+  // Prevent main window navigation (link clicks in markdown would navigate away)
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    // Allow app:// protocol (internal navigation)
+    if (url.startsWith('app://')) return;
+    event.preventDefault();
+  });
+
+  // Handle target="_blank" or window.open
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      // Open in popup browser window
+      openPopupBrowser(url);
+    }
+    return { action: 'deny' };
+  });
+
   const saveBounds = () => {
     if (mainWindow.isMaximized() || mainWindow.isMinimized()) return;
     const { x, y, width, height } = mainWindow.getBounds();
@@ -293,6 +309,79 @@ app.on('window-all-closed', () => {
   app.quit();
 });
 
+// === Popup Browser Window ===
+function openPopupBrowser(url) {
+  const parent = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+  const parentBounds = parent ? parent.getBounds() : { x: 100, y: 100, width: 1200, height: 800 };
+  const popupWidth = Math.min(1100, parentBounds.width - 80);
+  const popupHeight = Math.min(750, parentBounds.height - 80);
+  const popup = new BrowserWindow({
+    width: popupWidth,
+    height: popupHeight,
+    x: parentBounds.x + Math.round((parentBounds.width - popupWidth) / 2),
+    y: parentBounds.y + Math.round((parentBounds.height - popupHeight) / 2),
+    parent,
+    modal: false,
+    autoHideMenuBar: true,
+    title: url,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      preload: path.join(__dirname, 'popupPreload.js')
+    }
+  });
+
+  // Inject toolbar bar with URL + "Open in browser" button
+  popup.webContents.on('did-finish-load', () => {
+    const currentUrl = popup.webContents.getURL();
+    popup.webContents.insertCSS(`
+      #gm-popup-bar { position: fixed; top: 0; left: 0; right: 0; height: 32px; z-index: 999999;
+        background: #1a1815; border-bottom: 1px solid #3a3530; display: flex; align-items: center;
+        padding: 0 8px; gap: 8px; font-family: -apple-system, sans-serif; }
+      #gm-popup-bar span { flex: 1; font-size: 11px; color: #8a8070; overflow: hidden;
+        text-overflow: ellipsis; white-space: nowrap; }
+      #gm-popup-bar button { background: none; border: 1px solid #3a3530; border-radius: 3px;
+        padding: 2px 10px; color: #c9a96e; font-size: 11px; cursor: pointer; flex-shrink: 0; }
+      #gm-popup-bar button:hover { background: #2a2520; border-color: #c9a96e; }
+      body { padding-top: 32px !important; }
+    `).catch(() => {});
+    const safeUrl = currentUrl.replace(/[`$\\]/g, '\\$&').replace(/'/g, "\\'");
+    popup.webContents.executeJavaScript(`
+      if (!document.getElementById('gm-popup-bar')) {
+        const bar = document.createElement('div');
+        bar.id = 'gm-popup-bar';
+        const urlSpan = document.createElement('span');
+        urlSpan.textContent = '${safeUrl}';
+        bar.appendChild(urlSpan);
+        const copyBtn = document.createElement('button');
+        copyBtn.textContent = 'Copia URL';
+        copyBtn.addEventListener('click', () => navigator.clipboard.writeText(window.location.href));
+        bar.appendChild(copyBtn);
+        const extBtn = document.createElement('button');
+        extBtn.textContent = 'Apri nel browser';
+        extBtn.addEventListener('click', () => window.__gmOpenExternal(window.location.href));
+        bar.appendChild(extBtn);
+        document.body.prepend(bar);
+      }
+    `).catch(() => {});
+  });
+
+  popup.loadURL(url);
+  // Prevent popup from navigating to non-http URLs
+  popup.webContents.on('will-navigate', (event, navUrl) => {
+    if (!navUrl.startsWith('http://') && !navUrl.startsWith('https://')) {
+      event.preventDefault();
+    }
+  });
+  popup.webContents.setWindowOpenHandler(({ url: newUrl }) => {
+    if (newUrl.startsWith('http://') || newUrl.startsWith('https://')) {
+      popup.loadURL(newUrl);
+    }
+    return { action: 'deny' };
+  });
+}
+
 // === IPC Handlers ===
 
 // Open project folder in system file explorer
@@ -304,6 +393,13 @@ ipcMain.handle('open-project-folder', async (_, folderPath) => {
 ipcMain.handle('open-external', async (_, url) => {
   if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
     await shell.openExternal(url);
+  }
+});
+
+// Open URL in popup browser window (in-app)
+ipcMain.handle('open-popup-browser', (_, url) => {
+  if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+    openPopupBrowser(url);
   }
 });
 

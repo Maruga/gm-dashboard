@@ -34,6 +34,7 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const contentRef = useRef(null);
   const iframeRef = useRef(null);
+  const iframeClickRef = useRef(null);
   const searchRef = useRef(null);
   const debounceRef = useRef(null);
   const scrollSaveRef = useRef(null);
@@ -154,6 +155,25 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
     return () => obs.disconnect();
   }, [renderedHtml, isHtmlFile]);
 
+  // Intercept link clicks in non-iframe content (markdown/text)
+  useEffect(() => {
+    const container = contentRef.current;
+    if (!container) return;
+    const handler = (e) => {
+      const link = e.target.closest('a[href]');
+      if (!link) return;
+      const href = link.getAttribute('href');
+      if (!href || href.startsWith('#')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (/^https?:\/\//i.test(href)) {
+        window.electronAPI.openPopupBrowser(href);
+      }
+    };
+    container.addEventListener('click', handler);
+    return () => container.removeEventListener('click', handler);
+  }, [renderedHtml]);
+
   // Track active heading on scroll (non-HTML only; iframe tracking in handleIframeLoad)
   useEffect(() => {
     if (headings.length === 0 || isHtmlFile) return;
@@ -256,6 +276,24 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
           if (scrollRaf) cancelAnimationFrame(scrollRaf);
         }
       };
+      // Cleanup previous click handler
+      if (iframeClickRef.current && iframeDoc) {
+        try { iframeDoc.removeEventListener('click', iframeClickRef.current); } catch (_) {}
+      }
+      // Intercept link clicks in iframe
+      const clickHandler = (e) => {
+        const link = e.target.closest('a[href]');
+        if (!link) return;
+        const href = link.getAttribute('href');
+        if (!href || href.startsWith('#')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (/^https?:\/\//i.test(href)) {
+          window.electronAPI.openPopupBrowser(href);
+        }
+      };
+      iframeClickRef.current = clickHandler;
+      iframeDoc.addEventListener('click', clickHandler);
     } catch (e) { console.warn('QR iframe load:', e.message); }
   }, [selected, scrollPositions, onScrollPositionsChange]);
 
@@ -313,6 +351,10 @@ export default function QuickReference({ manuals, projectPath, scrollPositions, 
       if (iframeScrollRef.current) {
         try { iframeScrollRef.current.cleanup(); } catch (_) {}
         iframeScrollRef.current = null;
+      }
+      if (iframeClickRef.current && iframeRef.current?.contentDocument) {
+        try { iframeRef.current.contentDocument.removeEventListener('click', iframeClickRef.current); } catch (_) {}
+        iframeClickRef.current = null;
       }
       if (scrollRafRef.current) { cancelAnimationFrame(scrollRafRef.current); scrollRafRef.current = null; }
     };

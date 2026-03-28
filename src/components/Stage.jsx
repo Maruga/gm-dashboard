@@ -198,16 +198,28 @@ const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpe
 
   React.useImperativeHandle(ref, () => contentRef.current);
 
-  // Telegram send button click handler
+  // Click handler for Telegram buttons and links
   React.useEffect(() => {
     const container = contentRef.current;
-    if (!container || !onTlgClick) return;
+    if (!container) return;
     const handler = (e) => {
       const btn = e.target.closest('.tlg-send-btn');
-      if (!btn) return;
-      e.preventDefault();
-      e.stopPropagation();
-      onTlgClick(btn.dataset.tlgTarget, btn.dataset.tlgContent);
+      if (btn) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onTlgClick) onTlgClick(btn.dataset.tlgTarget, btn.dataset.tlgContent);
+        return;
+      }
+      const link = e.target.closest('a[href]');
+      if (link) {
+        const href = link.getAttribute('href');
+        if (!href || href.startsWith('#')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (/^https?:\/\//i.test(href)) {
+          window.electronAPI.openPopupBrowser(href);
+        }
+      }
     };
     container.addEventListener('click', handler);
     return () => container.removeEventListener('click', handler);

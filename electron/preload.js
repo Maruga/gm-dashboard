@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openProjectFolder: (folderPath) => ipcRenderer.invoke('open-project-folder', folderPath),
   // Open URL in system default browser
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  openPopupBrowser: (url) => ipcRenderer.invoke('open-popup-browser', url),
 
   // File system
   readDirectory: (dirPath) => ipcRenderer.invoke('read-directory', dirPath),
