@@ -199,6 +199,21 @@ class GmDashBot extends EventEmitter {
       const chatId = String(msg.chat.id);
       const player = this.players.find(p => p.telegramChatId === chatId);
       if (!player) return; // not a registered player, ignore
+
+      // Dot-commands: .gm / .dm / .master — messaggio privato al GM (AI non lo vede)
+      const gmMatch = msg.text.match(/^\.(gm|dm|master)\s+([\s\S]+)/i);
+      if (gmMatch) {
+        this.emit('gm-private-message', {
+          chatId,
+          playerId: player.id,
+          characterName: player.characterName || 'Senza nome',
+          playerName: player.playerName || '',
+          text: gmMatch[2].trim(),
+          timestamp: new Date(msg.date * 1000).toISOString()
+        });
+        return;
+      }
+
       this.emit('message-received', {
         chatId,
         playerId: player.id,

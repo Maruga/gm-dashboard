@@ -272,6 +272,7 @@ export default function TelegramChat({ players, chatMessages, onSendReply, onMar
           ) : (
             currentMessages.map((msg) => {
               const isGm = msg.from === 'gm';
+              const isPrivate = msg.from === 'gm-private';
               return (
                 <div key={msg.id} style={{
                   marginBottom: '6px',
@@ -283,15 +284,16 @@ export default function TelegramChat({ players, chatMessages, onSendReply, onMar
                     maxWidth: '80%',
                     padding: '6px 10px',
                     borderRadius: isGm ? '10px 10px 2px 10px' : '10px 10px 10px 2px',
-                    background: isGm ? 'var(--chat-gm-bg)' : 'var(--bg-main)',
-                    border: isGm ? '1px solid var(--chat-gm-border)' : '1px solid var(--border-subtle)'
+                    background: isPrivate ? 'var(--color-warning-bg, rgba(232,163,62,0.1))' : isGm ? 'var(--chat-gm-bg)' : 'var(--bg-main)',
+                    border: isPrivate ? '1px solid var(--color-warning)' : isGm ? '1px solid var(--chat-gm-border)' : '1px solid var(--border-subtle)'
                   }}>
                     <div style={{
                       fontSize: '10px', marginBottom: '2px',
                       display: 'flex', alignItems: 'center', gap: '6px'
                     }}>
                       <span style={{ color: 'var(--text-tertiary)' }}>[{formatTime(msg.timestamp)}]</span>
-                      <span style={{ fontWeight: '600', color: isGm ? 'var(--text-primary)' : 'var(--accent)' }}>
+                      {isPrivate && <span title="Messaggio privato al GM">&#128274;</span>}
+                      <span style={{ fontWeight: '600', color: isPrivate ? 'var(--color-warning)' : isGm ? 'var(--text-primary)' : 'var(--accent)' }}>
                         {isGm ? 'GM' : msg.characterName || 'Giocatore'}
                       </span>
                     </div>
@@ -302,7 +304,7 @@ export default function TelegramChat({ players, chatMessages, onSendReply, onMar
                       {msg.text}
                     </div>
                   </div>
-                  {!isGm && (
+                  {!isGm && !isPrivate && (
                     <span
                       title={aiEnabled ? 'Rispondi con AI' : 'AI non configurata'}
                       onClick={() => {

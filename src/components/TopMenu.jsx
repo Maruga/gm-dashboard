@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   ChevronLeft, ChevronRight, Bell, Calendar,
   Timer, Play, Pause, RotateCcw,
-  Users, StickyNote, CheckSquare, Highlighter, Network, MessageCircle, FileText,
+  Users, StickyNote, CheckSquare, Highlighter, Network, MessageCircle, MessageCircleWarning, FileText,
   BookOpen, Monitor, Eye, Search, UserCircle,
   Info, Settings, Globe, FolderOpen, FolderRoot,
   Minus, Square, X, LayoutGrid
@@ -340,7 +340,7 @@ const Separator = () => (
   <div style={{ width: '1px', background: 'var(--border-default)', height: '18px', flexShrink: 0, margin: '0 8px' }} />
 );
 
-function IconBtn({ Icon, tooltip, onClick, active, disabled, size, children }) {
+function IconBtn({ Icon, tooltip, onClick, active, disabled, size, children, colorOverride }) {
   return (
     <button
       onClick={disabled ? undefined : onClick}
@@ -352,7 +352,7 @@ function IconBtn({ Icon, tooltip, onClick, active, disabled, size, children }) {
         borderRadius: '4px',
         padding: '4px 6px',
         cursor: disabled ? 'not-allowed' : 'pointer',
-        color: disabled ? 'var(--text-disabled)' : active ? 'var(--accent)' : 'var(--text-primary)',
+        color: colorOverride || (disabled ? 'var(--text-disabled)' : active ? 'var(--accent)' : 'var(--text-primary)'),
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -728,7 +728,7 @@ function TopMenu({
   onOpenRelationsViewer, onOpenRelationsStage,
   gameDate, onPrevDay, onNextDay, onSetGameDate, hasEvents,
   players, onOpenCharacterSheet, calendarEvents, botRunning,
-  chatMessages, chatOpen, chatFlash, onToggleChat,
+  chatMessages, chatOpen, chatFlash, gmPrivateAlert, onClearGmPrivateAlert, onToggleChat,
   onOpenReference, referenceOpen,
   highlightEnabled, onToggleHighlight,
   firebaseUser, onFirebaseUserChange,
@@ -984,8 +984,17 @@ function TopMenu({
           </div>
 
           {/* Chat with unread badge + bot status dot */}
-          <span data-chat-toggle style={{ position: 'relative', display: 'inline-flex', WebkitAppRegion: 'no-drag' }}>
-            <IconBtn Icon={MessageCircle} tooltip="Chat Telegram" onClick={onToggleChat} active={chatOpen} />
+          <span data-chat-toggle style={{
+            position: 'relative', display: 'inline-flex', WebkitAppRegion: 'no-drag',
+            ...(gmPrivateAlert ? { animation: 'gmPrivatePulse 1.5s ease-in-out infinite' } : {})
+          }}>
+            <IconBtn
+              Icon={gmPrivateAlert ? MessageCircleWarning : MessageCircle}
+              tooltip={gmPrivateAlert ? 'Messaggio privato da un giocatore!' : 'Chat Telegram'}
+              onClick={() => { onToggleChat(); if (gmPrivateAlert) onClearGmPrivateAlert(); }}
+              active={gmPrivateAlert ? false : chatOpen}
+              colorOverride={gmPrivateAlert ? 'var(--color-warning)' : undefined}
+            />
             {/* Unread badge */}
             {totalUnread > 0 && (
               <span style={{

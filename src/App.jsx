@@ -166,6 +166,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   const [aiConversations, setAiConversations] = useState({});
   const [chatOpen, setChatOpen] = useState(false);
   const [chatFlash, setChatFlash] = useState(false);
+  const [gmPrivateAlert, setGmPrivateAlert] = useState(false);
   const chatOpenRef = useRef(false);
   const aiConversationsRef = useRef({});
   const selectedChatRef = useRef(null);
@@ -922,7 +923,53 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         }
       }
     });
-    return () => { unsubJoined(); unsubLeft(); unsubMsg(); };
+    const unsubGmPrivate = window.electronAPI.onTelegramGmPrivate((data) => {
+      const msg = {
+        id: crypto.randomUUID(),
+        from: 'gm-private',
+        characterName: data.characterName,
+        text: data.text,
+        timestamp: data.timestamp,
+        read: false
+      };
+      setChatMessages(prev => ({
+        ...prev,
+        [data.chatId]: [...(prev[data.chatId] || []), msg]
+      }));
+      // Log in console
+      const now = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+      setTelegramLog(prev => [...prev, {
+        date: now,
+        success: true,
+        description: `Messaggio privato da ${data.characterName}: "${data.text.length > 40 ? data.text.substring(0, 40) + '...' : data.text}"`,
+        icon: '\u{1F512}'
+      }]);
+      // Alert + flash
+      setGmPrivateAlert(true);
+      setChatFlash(true);
+      setTimeout(() => setChatFlash(false), 1000);
+      // Beep (doppio, più evidente)
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = 800; gain.gain.value = 0.2;
+        osc.start(); osc.stop(ctx.currentTime + 0.08);
+        setTimeout(() => {
+          const osc2 = ctx.createOscillator();
+          const gain2 = ctx.createGain();
+          osc2.connect(gain2); gain2.connect(ctx.destination);
+          osc2.frequency.value = 1000; gain2.gain.value = 0.2;
+          osc2.start(); osc2.stop(ctx.currentTime + 0.08);
+        }, 120);
+      } catch (e) { /* ignore audio errors */ }
+      // Auto-clear alert when chat is opened on this player
+      if (chatOpenRef.current && selectedChatRef.current === data.chatId) {
+        setGmPrivateAlert(false);
+      }
+    });
+    return () => { unsubJoined(); unsubLeft(); unsubMsg(); unsubGmPrivate(); };
   }, []);
 
   // Keep refs in sync for the message listener
@@ -1308,7 +1355,10 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   const handleToggleChecklist = useCallback(() => setChecklistOpen(v => !v), []);
   const handlePrevDay = useCallback(() => changeGameDate(-1), [changeGameDate]);
   const handleNextDay = useCallback(() => changeGameDate(1), [changeGameDate]);
-  const handleToggleChat = useCallback(() => setChatOpen(v => !v), []);
+  const handleToggleChat = useCallback(() => {
+    setChatOpen(v => !v);
+    setGmPrivateAlert(false);
+  }, []);
   const handleToggleReference = useCallback(() => setReferenceOpen(v => !v), []);
   const handleToggleHighlight = useCallback(() => setHighlightKeywords(prev => ({ ...prev, enabled: !prev.enabled })), []);
   const handleOpenAdventures = useCallback(() => setAdventuresOpen(true), []);
@@ -1376,6 +1426,8 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         chatMessages={chatMessages}
         chatOpen={chatOpen}
         chatFlash={chatFlash}
+        gmPrivateAlert={gmPrivateAlert}
+        onClearGmPrivateAlert={() => setGmPrivateAlert(false)}
         onToggleChat={handleToggleChat}
         onOpenReference={handleToggleReference}
         referenceOpen={referenceOpen}
@@ -2226,6 +2278,22 @@ function GlobalStyles() {
       .viewer-content th, .viewer-content td { border: 1px solid var(--border-default); padding: 6px 10px; text-align: left; }
       .viewer-content th { background: var(--bg-elevated); color: var(--accent); }
       .viewer-content img { max-width: 100%; border-radius: 4px; }
+      /* Telegram send buttons in markdown */
+      .tlg-send-btn {
+        display: inline-flex; align-items: center; gap: 8px;
+        background: var(--bg-elevated); border: 1px solid var(--accent);
+        border-radius: 6px; padding: 6px 12px; margin: 4px 0;
+        cursor: pointer; transition: all 0.2s; font-family: inherit;
+        max-width: 100%; color: var(--text-primary);
+      }
+      .tlg-send-btn:hover {
+        background: var(--accent-a10); border-color: var(--accent);
+        box-shadow: 0 0 8px var(--accent-a20);
+      }
+      .tlg-icon { font-size: 18px; flex-shrink: 0; }
+      .tlg-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; text-align: left; }
+      .tlg-type { font-size: 10px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
+      .tlg-preview { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .ai-response-md p { margin: 0.3em 0; }
       .ai-response-md strong { color: var(--accent); }
       .ai-response-md em { color: var(--accent-dim); }
@@ -2259,6 +2327,10 @@ function GlobalStyles() {
         0% { outline: 0px solid var(--accent-a55); outline-offset: 0; }
         50% { outline: 3px solid var(--accent-a35); outline-offset: 2px; }
         100% { outline: 0px solid var(--accent-a04); outline-offset: 0; }
+      }
+      @keyframes gmPrivatePulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.6; transform: scale(1.15); }
       }
       @keyframes timerExpired {
         0%, 100% { opacity: 1; }

@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onTelegramPlayerJoined: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('telegram-player-joined', h); return () => ipcRenderer.removeListener('telegram-player-joined', h); },
   onTelegramPlayerLeft: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('telegram-player-left', h); return () => ipcRenderer.removeListener('telegram-player-left', h); },
   onTelegramMessageReceived: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('telegram-message-received', h); return () => ipcRenderer.removeListener('telegram-message-received', h); },
+  onTelegramGmPrivate: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('telegram-gm-private', h); return () => ipcRenderer.removeListener('telegram-gm-private', h); },
 
   // Broadcast
   fetchBroadcast: () => ipcRenderer.invoke('fetch-broadcast'),
@@ -72,6 +73,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   firebaseResetPassword: (email) => ipcRenderer.invoke('firebase-reset-password', email),
   firebaseUpdateVisibility: (adventureId, visibility) => ipcRenderer.invoke('firebase-update-visibility', adventureId, visibility),
   firebaseFetchMyAdventures: (userId) => ipcRenderer.invoke('firebase-fetch-my-adventures', userId),
+
+  // AI — Global config
+  getGlobalAiConfig: () => ipcRenderer.invoke('get-global-ai-config'),
+  setGlobalAiConfig: (config) => ipcRenderer.invoke('set-global-ai-config', config),
 
   // AI
   aiChat: (messages, projectPath, options) => ipcRenderer.invoke('ai-chat', messages, projectPath, options),

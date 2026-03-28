@@ -76,7 +76,12 @@ const store = new Store({
 
 const globalStore = new Store({
   name: 'global-settings',
-  defaults: { firebaseCredentials: null, downloadQuota: { date: '', bytesUsed: 0 }, dismissedBroadcastId: '' }
+  defaults: {
+    firebaseCredentials: null,
+    downloadQuota: { date: '', bytesUsed: 0 },
+    dismissedBroadcastId: '',
+    globalAiConfig: { enabled: false, provider: '', apiKey: '', openaiImageKey: '', model: '', effort: 'medium' }
+  }
 });
 
 // ── safeStorage helpers per credenziali/API key ──
@@ -116,7 +121,7 @@ function decryptProjectState(state) {
 }
 
 // ── Download quota (100 MB/giorno) ──
-const DAILY_DOWNLOAD_LIMIT = 100 * 1024 * 1024;
+const DAILY_DOWNLOAD_LIMIT = 1024 * 1024 * 1024; // 1 GB/giorno
 
 function getDownloadQuota() {
   const today = new Date().toISOString().split('T')[0];
@@ -700,6 +705,11 @@ ipcMain.handle('telegram-start-bot', async (event, token, sessionCode, players) 
       mainWindow.webContents.send('telegram-message-received', data);
     }
   });
+  gmBot.on('gm-private-message', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('telegram-gm-private', data);
+    }
+  });
   try {
     const result = await gmBot.start(token, sessionCode, players);
     logDiag('info', 'Telegram bot avviato');
@@ -752,6 +762,34 @@ ipcMain.handle('telegram-get-bot-info', () => {
 
 // === AI ===
 
+// Global AI config (encrypted in global-settings store)
+ipcMain.handle('get-global-ai-config', () => {
+  const config = globalStore.get('globalAiConfig');
+  if (!config) return { enabled: false, provider: '', apiKey: '', openaiImageKey: '', model: '', effort: 'medium' };
+  return { ...config, apiKey: safeDecrypt(config.apiKey), openaiImageKey: safeDecrypt(config.openaiImageKey) };
+});
+
+ipcMain.handle('set-global-ai-config', (event, config) => {
+  const encrypted = {
+    ...config,
+    apiKey: config.apiKey ? safeEncrypt(config.apiKey) : '',
+    openaiImageKey: config.openaiImageKey ? safeEncrypt(config.openaiImageKey) : ''
+  };
+  globalStore.set('globalAiConfig', encrypted);
+  return true;
+});
+
+// Helper: resolve effective AI config (project → global → Firebase)
+function getEffectiveAiConfig(projectAiConfig) {
+  if (projectAiConfig?.apiKey && projectAiConfig?.provider) return projectAiConfig;
+  const global = globalStore.get('globalAiConfig');
+  if (global?.enabled && global?.apiKey) {
+    const decrypted = { ...global, apiKey: safeDecrypt(global.apiKey), openaiImageKey: safeDecrypt(global.openaiImageKey) };
+    return decrypted;
+  }
+  return null; // fallback to Firebase owner key
+}
+
 ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => {
   logDiag('info', `AI chat richiesta (${messages.length} messaggi)`);
   try {
@@ -760,13 +798,16 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
     const projectState = decryptProjectState(store.get(`projectStates.${escapedPath}`));
     const aiConfig = projectState?.aiConfig;
 
+    // Resolve: project key → global key → Firebase owner key
+    const effectiveConfig = getEffectiveAiConfig(aiConfig);
+
     let provider, apiKey, model, usage, allowance;
 
-    if (aiConfig?.apiKey && aiConfig?.provider) {
-      // Utente ha la sua key
-      provider = aiConfig.provider;
-      apiKey = aiConfig.apiKey;
-      model = aiConfig.model || (provider === 'anthropic' ? 'claude-sonnet-4-6' : 'gpt-5-mini');
+    if (effectiveConfig) {
+      // Usa key personale (progetto o globale)
+      provider = effectiveConfig.provider;
+      apiKey = effectiveConfig.apiKey;
+      model = effectiveConfig.model || aiConfig?.model || (provider === 'anthropic' ? 'claude-sonnet-4-6' : 'gpt-5-mini');
     } else {
       // Usa key owner da Firebase
       const user = firebase.getCurrentUser();
@@ -807,12 +848,12 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
       ...messages
     ];
 
-    const effort = aiConfig?.effort || undefined;
+    const effort = effectiveConfig?.effort || aiConfig?.effort || undefined;
     const maxTokens = options.maxTokens || 1024;
     const result = await aiApi.chat({ provider, apiKey, model, maxTokens, effort }, fullMessages);
 
-    // Increment usage if using owner key and return quota info
-    if (!aiConfig?.apiKey && result.tokensUsed) {
+    // Increment usage if using owner key (no personal/global key) and return quota info
+    if (!effectiveConfig && result.tokensUsed) {
       const user = firebase.getCurrentUser();
       if (user) {
         await firebase.incrementAiUsage(user.uid, result.tokensUsed);
@@ -865,7 +906,7 @@ ipcMain.handle('ai-generate-image', async (event, prompt, projectPath, options =
     const projectState = decryptProjectState(store.get(`projectStates.${escapedPath}`));
     const aiConfig = projectState?.aiConfig;
 
-    // Cascata key OpenAI per immagini
+    // Cascata key OpenAI per immagini: progetto → globale → Firebase owner
     let apiKey = null;
     let usingOwnerKey = false;
 
@@ -874,6 +915,18 @@ ipcMain.handle('ai-generate-image', async (event, prompt, projectPath, options =
     } else if (aiConfig?.openaiImageKey) {
       apiKey = aiConfig.openaiImageKey;
     } else {
+      // Try global config
+      const globalCfg = globalStore.get('globalAiConfig');
+      if (globalCfg?.enabled) {
+        if (globalCfg.provider === 'openai' && globalCfg.apiKey) {
+          apiKey = safeDecrypt(globalCfg.apiKey);
+        } else if (globalCfg.openaiImageKey) {
+          apiKey = safeDecrypt(globalCfg.openaiImageKey);
+        }
+      }
+    }
+
+    if (!apiKey) {
       // Fallback: owner key da Firebase
       const user = firebase.getCurrentUser();
       if (!user) return { error: 'Per generare immagini serve una chiave OpenAI o il login' };
