@@ -158,12 +158,14 @@ function createWindow() {
 
   mainWindow.loadURL('app://local/index.html');
 
-  // Open DevTools with F12
-  mainWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.key === 'F12') {
-      mainWindow.webContents.toggleDevTools();
-    }
-  });
+  // Open DevTools with F12 (solo in sviluppo)
+  if (isDev) {
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      if (input.key === 'F12') {
+        mainWindow.webContents.toggleDevTools();
+      }
+    });
+  }
 
   // Prevent main window navigation (link clicks in markdown would navigate away)
   mainWindow.webContents.on('will-navigate', (event, url) => {
@@ -386,14 +388,16 @@ function openPopupBrowser(url) {
 
 // Open project folder in system file explorer
 ipcMain.handle('open-project-folder', async (_, folderPath) => {
-  await shell.openPath(folderPath);
+  try { await shell.openPath(folderPath); } catch (e) { console.error('open-project-folder:', e.message); }
 });
 
 // Open URL in system default browser (solo http/https)
 ipcMain.handle('open-external', async (_, url) => {
-  if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
-    await shell.openExternal(url);
-  }
+  try {
+    if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+      await shell.openExternal(url);
+    }
+  } catch (e) { console.error('open-external:', e.message); }
 });
 
 // Open URL in popup browser window (in-app)

@@ -13,41 +13,29 @@ class GmDashBot extends EventEmitter {
   }
 
   async start(token, sessionCode, players) {
-    console.log('[BOT] start() chiamato, running:', this.running, 'bot:', !!this.bot);
-    if (this.running) {
-      console.log('[BOT] Era già running, fermo prima...');
-      await this.stop();
-    }
+    if (this.running) await this.stop();
     if (!TelegramBotLib) TelegramBotLib = require('node-telegram-bot-api');
 
     this.sessionCode = sessionCode;
     this.players = JSON.parse(JSON.stringify(players));
 
     try {
-      console.log('[BOT] Creo istanza (polling: false)...');
       this.bot = new TelegramBotLib(token, { polling: false });
 
       this.bot.on('polling_error', (err) => {
         console.error('[BOT] polling_error:', err.message);
       });
 
-      console.log('[BOT] Chiamo getMe()...');
       this.botInfo = await this.bot.getMe();
-      console.log('[BOT] getMe() ok:', this.botInfo.username);
-
-      console.log('[BOT] Registro comandi...');
       this._registerCommands();
-
-      console.log('[BOT] Avvio polling...');
       await this.bot.startPolling();
 
       this.running = true;
-      console.log('[BOT] Avviato con successo');
       return { success: true, botInfo: { username: this.botInfo.username, firstName: this.botInfo.first_name } };
     } catch (err) {
       console.error('[BOT] Errore start:', err.message);
       if (this.bot) {
-        try { await this.bot.stopPolling(); } catch (e) { console.warn('[bot-stop-polling]', e.message); }
+        try { await this.bot.stopPolling(); } catch (e) { /* ignore */ }
       }
       this.bot = null;
       return { error: err.message };
@@ -55,14 +43,12 @@ class GmDashBot extends EventEmitter {
   }
 
   async stop() {
-    console.log('[BOT] stop() chiamato, running:', this.running, 'bot:', !!this.bot);
     if (this.bot) {
       try { await this.bot.stopPolling(); } catch (e) { console.error('[BOT] stopPolling error:', e.message); }
       this.bot = null;
     }
     this.running = false;
     this.botInfo = null;
-    console.log('[BOT] Fermato');
   }
 
   updateSession(sessionCode, players) {

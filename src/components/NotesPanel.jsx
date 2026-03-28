@@ -13,6 +13,8 @@ export default function NotesPanel({ notes, onNotesChange, onOpenSource, onClose
   const [panelLeft, setPanelLeft] = useState(null);
   const inputRef = useRef(null);
   const panelRef = useRef(null);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
+  const confirmClearTimer = useRef(null);
 
   useEffect(() => {
     if (inputRef.current) inputRef.current.focus();
@@ -64,7 +66,14 @@ export default function NotesPanel({ notes, onNotesChange, onOpenSource, onClose
   };
 
   const clearAll = () => {
-    if (!window.confirm('Sei sicuro? Tutte le note verranno eliminate.')) return;
+    if (!confirmClearAll) {
+      setConfirmClearAll(true);
+      if (confirmClearTimer.current) clearTimeout(confirmClearTimer.current);
+      confirmClearTimer.current = setTimeout(() => setConfirmClearAll(false), 3000);
+      return;
+    }
+    setConfirmClearAll(false);
+    if (confirmClearTimer.current) clearTimeout(confirmClearTimer.current);
     onNotesChange([]);
   };
 
@@ -109,7 +118,7 @@ export default function NotesPanel({ notes, onNotesChange, onOpenSource, onClose
               onMouseEnter={e => e.currentTarget.style.color = 'var(--color-danger)'}
               onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
             >
-              Svuota tutto
+              {confirmClearAll ? 'Sicuro?' : 'Svuota tutto'}
             </span>
           )}
           <span className="close-btn" onClick={onClose}>✕</span>

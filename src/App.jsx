@@ -830,7 +830,6 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
       }
       // AI auto-reply for Telegram
       const ai = aiConfigRef.current;
-      console.log('AI check:', { enabled: ai.telegramAiEnabled, mode: ai.telegramAiMode, provider: ai.provider, hasKey: !!ai.apiKey, model: ai.model, commonDocs: ai.commonDocs?.length, playerId: data.playerId });
       if (ai.telegramAiEnabled) {
         // Comando /imagine o /immagina — genera immagine
         const isImagineCommand = /^\/(imagine|immagina)\s/.test(data.text);
@@ -863,14 +862,12 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
 
         const isAiCommand = /^[./](ai|ia)\s/.test(data.text);
         const shouldReply = ai.telegramAiMode === 'auto' || isAiCommand;
-        console.log('AI shouldReply:', shouldReply, 'isAiCommand:', isAiCommand);
         if (shouldReply) {
           const question = isAiCommand ? data.text.replace(/^[./](ai|ia)\s+/, '') : data.text;
           // Raccogliere documenti autorizzati per questo player
           const player = playersRef.current.find(p => p.id === data.playerId);
           const allActiveDocs = [...(ai.commonDocs || []), ...(player?.aiDocuments || [])].filter(d => d.active);
           const allowedFiles = allActiveDocs.map(d => d.file);
-          console.log('AI docs:', { player: !!player, playerDocs: player?.aiDocuments?.length, activeDocs: allActiveDocs.length, allowedFiles });
 
           // Nessun documento attivo → no AI
           if (allowedFiles.length === 0) {
@@ -881,12 +878,10 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           // Cercare file _prompt tra i documenti attivi
           const promptDoc = allActiveDocs.find(d => d.name?.startsWith('_prompt'));
           const chatOpts = { allowedFiles };
-          console.log('AI prompt doc:', promptDoc?.name, 'calling AI...');
 
           (async () => {
             if (promptDoc) {
               const promptContent = await window.electronAPI.readFile(projectPath + '/' + promptDoc.file);
-              console.log('AI prompt read:', promptContent ? promptContent.length + ' chars' : 'NULL');
               if (promptContent) {
                 chatOpts.allowedFiles = allowedFiles.filter(f => f !== promptDoc.file);
                 // Iniettare identità del giocatore nel prompt
@@ -902,9 +897,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
             const prevHistory = (aiConversationsRef.current[playerId] || []).slice(-30);
             const aiMessages = [...prevHistory, { role: 'user', content: question }];
 
-            console.log('AI calling aiChat, messages:', aiMessages.length);
             const result = await window.electronAPI.aiChat(aiMessages, projectPath, chatOpts);
-            console.log('AI result:', result.response ? 'OK (' + result.response.length + ' chars)' : 'NO RESPONSE', result.error || '');
             if (result.response) {
               window.electronAPI.telegramSendReply(data.chatId, result.response);
               // Aggiornare storico AI (separato dalla chat GM)
@@ -1237,9 +1230,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
 
       const aiMessages = [...prevHistory, { role: 'user', content: pokeInstruction }];
 
-      console.log('AI poke:', { player: player.characterName, context: context || '(nessuno)', messages: aiMessages.length });
       const result = await window.electronAPI.aiChat(aiMessages, projectPath, chatOpts);
-      console.log('AI poke result:', result.response ? 'OK (' + result.response.length + ' chars)' : 'NO RESPONSE', result.error || '');
 
       if (result.response) {
         await window.electronAPI.telegramSendReply(chatId, result.response);

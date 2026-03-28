@@ -120,6 +120,12 @@ export default function SettingsPanel({
   const [section, setSection] = useState(initialSection || 'aspetto');
   const [presetName, setPresetName] = useState('');
   const [confirmDeletePreset, setConfirmDeletePreset] = useState(null);
+  const [confirmRemovePlayer, setConfirmRemovePlayer] = useState(null);
+  const confirmRemovePlayerTimer = useRef(null);
+  const [confirmResetToken, setConfirmResetToken] = useState(false);
+  const confirmResetTokenTimer = useRef(null);
+  const [confirmRemoveManual, setConfirmRemoveManual] = useState(null);
+  const confirmRemoveManualTimer = useRef(null);
   const confirmDeletePresetTimer = useRef(null);
 
   // Load Firebase user on mount
@@ -166,7 +172,14 @@ export default function SettingsPanel({
   };
 
   const removePlayer = (id) => {
-    if (!window.confirm('Rimuovere questo personaggio?')) return;
+    if (confirmRemovePlayer !== id) {
+      setConfirmRemovePlayer(id);
+      if (confirmRemovePlayerTimer.current) clearTimeout(confirmRemovePlayerTimer.current);
+      confirmRemovePlayerTimer.current = setTimeout(() => setConfirmRemovePlayer(prev => prev === id ? null : prev), 3000);
+      return;
+    }
+    setConfirmRemovePlayer(null);
+    if (confirmRemovePlayerTimer.current) clearTimeout(confirmRemovePlayerTimer.current);
     onPlayersChange(prev => prev.filter(p => p.id !== id));
   };
 
@@ -542,6 +555,7 @@ export default function SettingsPanel({
                       clearTimeout(confirmWordsTimer.current);
                     } else {
                       setConfirmClearWords(true);
+                      if (confirmWordsTimer.current) clearTimeout(confirmWordsTimer.current);
                       confirmWordsTimer.current = setTimeout(() => setConfirmClearWords(false), 3000);
                     }
                   }}
@@ -1026,7 +1040,7 @@ export default function SettingsPanel({
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-bg)'; e.currentTarget.style.borderColor = 'var(--color-danger)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.borderColor = 'var(--color-danger-bg)'; }}
                 >
-                  Rimuovi
+                  {confirmRemovePlayer === pg.id ? 'Sicuro?' : 'Rimuovi'}
                 </button>
               </div>
             </div>
@@ -1236,17 +1250,24 @@ export default function SettingsPanel({
 
               {/* Reset token */}
               <button onClick={() => {
-                if (window.confirm('Rimuovere il token e riconfigurare?')) {
-                  if (botStatus?.running) onStopBot();
-                  onTelegramChange({ botToken: '', configured: false, sessionCode: '', botActive: false, botInfo: null });
+                if (!confirmResetToken) {
+                  setConfirmResetToken(true);
+                  if (confirmResetTokenTimer.current) clearTimeout(confirmResetTokenTimer.current);
+                  confirmResetTokenTimer.current = setTimeout(() => setConfirmResetToken(false), 3000);
+                  return;
                 }
+                setConfirmResetToken(false);
+                if (confirmResetTokenTimer.current) clearTimeout(confirmResetTokenTimer.current);
+                if (botStatus?.running) onStopBot();
+                onTelegramChange({ botToken: '', configured: false, sessionCode: '', botActive: false, botInfo: null });
               }} style={{
-                background: 'none', border: 'none', padding: '8px 0', color: 'var(--text-disabled)',
+                background: 'none', border: 'none', padding: '8px 0',
+                color: confirmResetToken ? 'var(--color-danger)' : 'var(--text-disabled)',
                 fontSize: '11px', cursor: 'pointer', marginTop: '8px'
               }}
-              onMouseEnter={e => e.currentTarget.style.color = 'var(--color-danger)'}
-              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-disabled)'}
-              >🗑️ Rimuovi token e riconfigura</button>
+              onMouseEnter={e => { if (!confirmResetToken) e.currentTarget.style.color = 'var(--color-danger)'; }}
+              onMouseLeave={e => { if (!confirmResetToken) e.currentTarget.style.color = 'var(--text-disabled)'; }}
+              >{confirmResetToken ? 'Sicuro? Clicca di nuovo' : '🗑️ Rimuovi token e riconfigura'}</button>
             </>
           )}
 
@@ -1737,9 +1758,15 @@ export default function SettingsPanel({
               {/* Remove */}
               <button
                 onClick={() => {
-                  if (window.confirm(`Rimuovere "${manual.name}"?`)) {
-                    onReferenceChange(prev => prev.filter(m => m.id !== manual.id));
+                  if (confirmRemoveManual !== manual.id) {
+                    setConfirmRemoveManual(manual.id);
+                    if (confirmRemoveManualTimer.current) clearTimeout(confirmRemoveManualTimer.current);
+                    confirmRemoveManualTimer.current = setTimeout(() => setConfirmRemoveManual(prev => prev === manual.id ? null : prev), 3000);
+                    return;
                   }
+                  setConfirmRemoveManual(null);
+                  if (confirmRemoveManualTimer.current) clearTimeout(confirmRemoveManualTimer.current);
+                  onReferenceChange(prev => prev.filter(m => m.id !== manual.id));
                 }}
                 style={{
                   background: 'none', border: '1px solid var(--color-danger-bg)', borderRadius: '3px',
@@ -1749,7 +1776,7 @@ export default function SettingsPanel({
                 onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-bg)'; }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
               >
-                ✕
+                {confirmRemoveManual === manual.id ? 'Sicuro?' : '✕'}
               </button>
             </div>
           ))}

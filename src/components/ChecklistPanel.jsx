@@ -326,6 +326,7 @@ export default function ChecklistPanel({ items, onItemsChange, onOpenSource, onC
   const clearAll = () => {
     if (!confirmClear) {
       setConfirmClear(true);
+      if (confirmTimer.current) clearTimeout(confirmTimer.current);
       confirmTimer.current = setTimeout(() => setConfirmClear(false), 3000);
       return;
     }

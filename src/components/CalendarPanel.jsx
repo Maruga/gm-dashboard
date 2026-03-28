@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { wrapGmText } from './TelegramModal';
 
 const MONTHS_IT = [
@@ -55,6 +55,8 @@ export default function CalendarPanel({
   const [viewYear, setViewYear] = useState(curY);
   const [viewMonth, setViewMonth] = useState(curM);
   const [selectedDay, setSelectedDay] = useState(currentDate);
+  const [confirmDeleteEvent, setConfirmDeleteEvent] = useState(null);
+  const confirmDeleteTimer = useRef(null);
 
   const events = calendarData.events || {};
 
@@ -125,7 +127,14 @@ export default function CalendarPanel({
   };
 
   const removeEvent = (eventId) => {
-    if (!window.confirm('Eliminare questo evento?')) return;
+    if (confirmDeleteEvent !== eventId) {
+      setConfirmDeleteEvent(eventId);
+      if (confirmDeleteTimer.current) clearTimeout(confirmDeleteTimer.current);
+      confirmDeleteTimer.current = setTimeout(() => setConfirmDeleteEvent(null), 3000);
+      return;
+    }
+    setConfirmDeleteEvent(null);
+    if (confirmDeleteTimer.current) clearTimeout(confirmDeleteTimer.current);
     onCalendarChange(prev => {
       const filtered = (prev.events[selectedDay] || []).filter(ev => ev.id !== eventId);
       const newEvents = { ...prev.events };
@@ -569,7 +578,7 @@ export default function CalendarPanel({
                     onMouseEnter={e => { e.currentTarget.style.background = 'var(--border-danger)'; e.currentTarget.style.borderColor = 'var(--color-danger)'; }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.borderColor = 'var(--border-danger)'; }}
                   >
-                    🗑️ Elimina
+                    {confirmDeleteEvent === ev.id ? 'Sicuro?' : '🗑️ Elimina'}
                   </button>
                 </div>
               </div>
