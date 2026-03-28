@@ -59,6 +59,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onTelegramPlayerLeft: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('telegram-player-left', h); return () => ipcRenderer.removeListener('telegram-player-left', h); },
   onTelegramMessageReceived: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('telegram-message-received', h); return () => ipcRenderer.removeListener('telegram-message-received', h); },
   onTelegramGmPrivate: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('telegram-gm-private', h); return () => ipcRenderer.removeListener('telegram-gm-private', h); },
+  onTelegramManualSearch: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('telegram-manual-search', h); return () => ipcRenderer.removeListener('telegram-manual-search', h); },
+  onTelegramManualSelect: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('telegram-manual-select', h); return () => ipcRenderer.removeListener('telegram-manual-select', h); },
 
   // Broadcast
   fetchBroadcast: () => ipcRenderer.invoke('fetch-broadcast'),

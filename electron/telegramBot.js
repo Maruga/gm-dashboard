@@ -123,6 +123,7 @@ class GmDashBot extends EventEmitter {
         + `📋 *Comandi disponibili:*\n`
         + '`.gm messaggio` — Scrivi al GM in privato\n'
         + '`.ai domanda` — Chiedi all\'AI\n'
+        + '`.manuale ricerca` — Cerca nei manuali di gioco\n'
         + '`.esci` — Disconnettiti dalla sessione\n\n'
         + `_Buona sessione!_ 🎲`;
       this.bot.sendMessage(chatId, confirmMsg, { parse_mode: 'Markdown' });
@@ -178,6 +179,34 @@ class GmDashBot extends EventEmitter {
         return;
       }
 
+      // .manuale / .manual / .regole / .rules / .man — ricerca nei manuali
+      const manualMatch = msg.text.match(/^\.(manuale|manual|regole|rules|man)\s+([\s\S]+)/i);
+      if (manualMatch) {
+        this.emit('manual-search', {
+          chatId,
+          playerId: player.id,
+          characterName: player.characterName || 'Senza nome',
+          playerName: player.playerName || '',
+          query: manualMatch[2].trim(),
+          timestamp: new Date(msg.date * 1000).toISOString()
+        });
+        return;
+      }
+
+      // Risposta numerata per selezione risultato manuale
+      if (/^\d+$/.test(msg.text.trim())) {
+        this.emit('manual-select', {
+          chatId,
+          playerId: player.id,
+          characterName: player.characterName || 'Senza nome',
+          playerName: player.playerName || '',
+          text: msg.text.trim(),
+          selection: parseInt(msg.text.trim(), 10),
+          timestamp: new Date(msg.date * 1000).toISOString()
+        });
+        return; // consumato — se non c'è ricerca pendente, App.jsx lo re-emette come messaggio
+      }
+
       // .leave / .esci / .bye — disconnetti dalla sessione
       if (/^\.(leave|esci|bye)\s*$/i.test(msg.text)) {
         const characterName = player.characterName;
@@ -229,9 +258,8 @@ class GmDashBot extends EventEmitter {
       return;
     }
 
-    if (playerName) {
-      this.pendingNames.set(String(chatId), playerName);
-    }
+    // Sempre sovrascrivere: se nome presente lo setta, se assente lo svuota
+    this.pendingNames.set(String(chatId), playerName || '');
 
     const keyboard = available.map(p => ([{
       text: p.characterName || 'Senza nome',

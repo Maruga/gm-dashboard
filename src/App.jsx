@@ -172,6 +172,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   const aiConversationsRef = useRef({});
   const selectedChatRef = useRef(null);
   const [textContextMenu, setTextContextMenu] = useState(null);
+  const manualSearchResults = useRef({}); // { chatId: [{ manual, heading, text }] }
   const [overlayImage, setOverlayImage] = useState(null);
   const [overlayVideo, setOverlayVideo] = useState(null);
   const [tlgSendData, setTlgSendData] = useState(null); // { target, content } for Telegram send modal
@@ -206,6 +207,8 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   useEffect(() => { aiConfigRef.current = aiConfig; }, [aiConfig]);
   const playersRef = useRef(players);
   useEffect(() => { playersRef.current = players; }, [players]);
+  const referenceManualsRef = useRef(referenceManuals);
+  useEffect(() => { referenceManualsRef.current = referenceManuals; }, [referenceManuals]);
 
   const mainViewerRef = useRef(null);
   const leftColRef = useRef(null);
@@ -975,7 +978,131 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         setGmPrivateAlert(false);
       }
     });
-    return () => { unsubJoined(); unsubLeft(); unsubMsg(); unsubGmPrivate(); };
+
+    // .manuale — ricerca nei manuali di riferimento
+    const unsubManualSearch = window.electronAPI.onTelegramManualSearch(async (data) => {
+      const manuals = referenceManualsRef.current;
+      if (!manuals || manuals.length === 0) {
+        window.electronAPI.telegramSendMessage(data.chatId, 'Nessun manuale disponibile.');
+        return;
+      }
+
+      const ai = aiConfigRef.current;
+      const effectiveHasAi = !!(ai?.apiKey && ai?.provider && ai?.telegramAiEnabled);
+
+      if (effectiveHasAi) {
+        // Modalità AI — legge i manuali e risponde
+        try {
+          const manualContents = [];
+          for (const m of manuals) {
+            const fullPath = projectPath + '/' + m.file;
+            const content = await window.electronAPI.readFile(fullPath);
+            if (content) manualContents.push(`=== ${m.name} ===\n${content.substring(0, 8000)}`);
+          }
+          if (manualContents.length === 0) {
+            window.electronAPI.telegramSendMessage(data.chatId, 'Impossibile leggere i manuali.');
+            return;
+          }
+          const systemPrompt = `Sei un assistente che risponde SOLO usando i manuali di gioco forniti. Rispondi in modo chiaro e conciso, citando la sezione del manuale quando possibile. Se la risposta non è nei manuali, dillo.\n\n${manualContents.join('\n\n')}`;
+          const messages = [{ role: 'user', content: data.query }];
+          const result = await window.electronAPI.aiChat(messages, projectPath, {
+            systemPromptOverride: systemPrompt,
+            maxTokens: 1024
+          });
+          if (result.response) {
+            window.electronAPI.telegramSendMessage(data.chatId, `📖 ${result.response}`);
+          } else {
+            window.electronAPI.telegramSendMessage(data.chatId, result.error || 'Errore nella ricerca.');
+          }
+        } catch (err) {
+          window.electronAPI.telegramSendMessage(data.chatId, 'Errore nella ricerca AI.');
+        }
+      } else {
+        // Modalità testuale — ricerca paragrafi
+        try {
+          const results = [];
+          const queryLower = data.query.toLowerCase();
+          const queryWords = queryLower.split(/\s+/).filter(w => w.length >= 2);
+
+          for (const m of manuals) {
+            const fullPath = projectPath + '/' + m.file;
+            const content = await window.electronAPI.readFile(fullPath);
+            if (!content) continue;
+
+            // Dividi in sezioni per heading
+            const sections = content.split(/^(#{1,3}\s+.+)$/m);
+            let currentHeading = m.name;
+            for (let i = 0; i < sections.length; i++) {
+              const section = sections[i];
+              if (/^#{1,3}\s+/.test(section)) {
+                currentHeading = section.replace(/^#+\s+/, '').trim();
+                continue;
+              }
+              const text = section.trim();
+              if (!text || text.length < 20) continue;
+              const textLower = text.toLowerCase();
+              const matchCount = queryWords.filter(w => textLower.includes(w)).length;
+              if (matchCount > 0) {
+                const preview = text.replace(/[*_`#]/g, '').substring(0, 80).trim();
+                results.push({ manual: m.name, heading: currentHeading, text, preview, score: matchCount });
+              }
+            }
+          }
+
+          if (results.length === 0) {
+            window.electronAPI.telegramSendMessage(data.chatId, `📖 Nessun risultato per "${data.query}".`);
+            return;
+          }
+
+          // Ordina per rilevanza e prendi i top 5
+          results.sort((a, b) => b.score - a.score);
+          const top = results.slice(0, 5);
+          manualSearchResults.current[data.chatId] = top;
+
+          let msg = `📖 Trovati ${results.length} risultati per "${data.query}":\n\n`;
+          top.forEach((r, i) => {
+            msg += `*${i + 1}.* [${r.manual}] §${r.heading}\n_${r.preview}..._\n\n`;
+          });
+          msg += 'Rispondi con il numero per leggere il paragrafo completo.';
+          window.electronAPI.telegramSendMessage(data.chatId, msg);
+        } catch (err) {
+          window.electronAPI.telegramSendMessage(data.chatId, 'Errore nella ricerca.');
+        }
+      }
+    });
+
+    // Selezione risultato manuale (giocatore risponde con numero)
+    const unsubManualSelect = window.electronAPI.onTelegramManualSelect((data) => {
+      const pending = manualSearchResults.current[data.chatId];
+      if (!pending || pending.length === 0) {
+        // Nessuna ricerca pendente — tratta come messaggio normale (re-inject nel flusso chat)
+        const msg = {
+          id: crypto.randomUUID(),
+          from: 'player',
+          characterName: data.characterName,
+          playerName: data.playerName || '',
+          text: data.text,
+          timestamp: data.timestamp,
+          read: false
+        };
+        setChatMessages(prev => ({
+          ...prev,
+          [data.chatId]: [...(prev[data.chatId] || []), msg]
+        }));
+        return;
+      }
+      const idx = data.selection - 1;
+      if (idx < 0 || idx >= pending.length) {
+        window.electronAPI.telegramSendMessage(data.chatId, `Scegli un numero tra 1 e ${pending.length}.`);
+        return;
+      }
+      const result = pending[idx];
+      const fullText = result.text.replace(/[*_`]/g, '').substring(0, 4000);
+      window.electronAPI.telegramSendMessage(data.chatId, `📖 *${result.manual}* — §${result.heading}\n\n${fullText}`);
+      delete manualSearchResults.current[data.chatId];
+    });
+
+    return () => { unsubJoined(); unsubLeft(); unsubMsg(); unsubGmPrivate(); unsubManualSearch(); unsubManualSelect(); };
   }, []);
 
   // Keep refs in sync for the message listener

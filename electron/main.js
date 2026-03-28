@@ -710,6 +710,16 @@ ipcMain.handle('telegram-start-bot', async (event, token, sessionCode, players) 
       mainWindow.webContents.send('telegram-gm-private', data);
     }
   });
+  gmBot.on('manual-search', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('telegram-manual-search', data);
+    }
+  });
+  gmBot.on('manual-select', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('telegram-manual-select', data);
+    }
+  });
   try {
     const result = await gmBot.start(token, sessionCode, players);
     logDiag('info', 'Telegram bot avviato');
