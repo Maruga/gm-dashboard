@@ -21,7 +21,7 @@ const ALL_TABS = [
 
 function Stage({
   slotFiles, activeTab, selectedIndices, onTabChange,
-  onImageClick, onVideoClick, onTlgClick,
+  onImageClick, onImageOverlay, onVideoClick, onTlgClick,
   calFile,
   vistaContent, relationsBase, relationsSession,
   scrollMapRef, onScrollChanged,
@@ -160,6 +160,7 @@ function Stage({
             onOpenSource={onOpenSnippetSource}
             fontSize={fontSize}
             onTlgClick={onTlgClick}
+            onImageOverlay={onImageOverlay}
           />
         ) : activeItem ? (
           <Viewer
@@ -168,6 +169,7 @@ function Stage({
             scrollKeyPrefix={activeTab}
             highlightKeywords={highlightKeywords}
             onImageClick={onImageClick}
+            onImageOverlay={onImageOverlay}
             onVideoClick={onVideoClick}
             onTlgClick={onTlgClick}
             scrollMapRef={scrollMapRef}
@@ -192,13 +194,13 @@ function Stage({
 
 export default React.memo(Stage);
 
-const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpenSource, fontSize, onTlgClick }, ref) {
+const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpenSource, fontSize, onTlgClick, onImageOverlay }, ref) {
   const sourceName = snippet.source || (snippet.sourcePath ? snippet.sourcePath.split('/').pop().split('\\').pop() : null);
   const contentRef = useRef(null);
 
   React.useImperativeHandle(ref, () => contentRef.current);
 
-  // Click handler for Telegram buttons and links
+  // Click handler for Telegram buttons, links, and images
   React.useEffect(() => {
     const container = contentRef.current;
     if (!container) return;
@@ -208,6 +210,12 @@ const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpe
         e.preventDefault();
         e.stopPropagation();
         if (onTlgClick) onTlgClick(btn.dataset.tlgTarget, btn.dataset.tlgContent);
+        return;
+      }
+      if (e.target.tagName === 'IMG' && e.target.src) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onImageOverlay) onImageOverlay(e.target.src);
         return;
       }
       const link = e.target.closest('a[href]');
@@ -223,7 +231,7 @@ const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpe
     };
     container.addEventListener('click', handler);
     return () => container.removeEventListener('click', handler);
-  }, [onTlgClick]);
+  }, [onTlgClick, onImageOverlay]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

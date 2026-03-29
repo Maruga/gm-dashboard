@@ -1585,6 +1585,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
             onFileOpen={handleFileOpen}
             onSlotAssign={handleSlotAssign}
             onMediaAdd={handleMediaAdd}
+            onImageClick={handleImageClick}
             expandedDirs={expandedDirs}
             onExpandedDirsChange={setExpandedDirs}
             onTelegramFile={handleTelegramFile}
@@ -1714,6 +1715,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
                   searchHighlight={searchHighlight}
                   highlightKeywords={highlightKeywords}
                   onImageClick={handleImageClick}
+                  onImageOverlay={handleOverlayImage}
                   onVideoClick={handleVideoClick}
                   onTlgClick={handleTlgClick}
                   scrollMapRef={scrollMapRef}
@@ -1750,6 +1752,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
               selectedIndices={slotSelectedIndices}
               onTabChange={setActiveStageSlot}
               onImageClick={handleImageClick}
+              onImageOverlay={handleOverlayImage}
               onVideoClick={handleVideoClick}
               onTlgClick={handleTlgClick}
               calFile={calFile}

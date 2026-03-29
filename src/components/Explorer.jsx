@@ -116,7 +116,7 @@ function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, togg
 }
 
 function Explorer({
-  projectFolder, activeFilePath, onFileOpen, onSlotAssign, onMediaAdd,
+  projectFolder, activeFilePath, onFileOpen, onSlotAssign, onMediaAdd, onImageClick,
   expandedDirs: externalExpanded, onExpandedDirsChange,
   onTelegramFile,
   hiddenExtensions,
@@ -145,12 +145,14 @@ function Explorer({
 
   const handleFileClick = useCallback((entry) => {
     const type = getFileType(entry.extension);
-    if (type === FILE_TYPES.AUDIO || type === FILE_TYPES.IMAGE || type === FILE_TYPES.VIDEO) {
+    if (type === FILE_TYPES.IMAGE) {
+      onImageClick(entry.path);
+    } else if (type === FILE_TYPES.AUDIO || type === FILE_TYPES.VIDEO) {
       onMediaAdd(entry);
     } else {
       onFileOpen(entry);
     }
-  }, [onFileOpen, onMediaAdd]);
+  }, [onFileOpen, onMediaAdd, onImageClick]);
 
   const handleContextMenu = useCallback((e, entry) => {
     setContextMenu({

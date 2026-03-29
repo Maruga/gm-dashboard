@@ -52,7 +52,7 @@ function highlightHtml(html, query, targetOffset) {
 }
 
 const Viewer = forwardRef(function Viewer({
-  currentFile, scrollKeyPrefix, searchHighlight, highlightKeywords, onImageClick, onVideoClick,
+  currentFile, scrollKeyPrefix, searchHighlight, highlightKeywords, onImageClick, onImageOverlay, onVideoClick,
   scrollMapRef, onScrollChanged, fontSize, searchOpen, onSearchClose, onPdfOutlineReady, onTlgClick
 }, ref) {
   const [renderedHtml, setRenderedHtml] = useState('');
@@ -83,7 +83,7 @@ const Viewer = forwardRef(function Viewer({
     return containerRef.current;
   });
 
-  // Click handler for Telegram buttons and links
+  // Click handler for Telegram buttons, links, and images
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -96,16 +96,21 @@ const Viewer = forwardRef(function Viewer({
         if (onTlgClick) onTlgClick(btn.dataset.tlgTarget, btn.dataset.tlgContent);
         return;
       }
+      // Images — left click → fullscreen overlay
+      if (e.target.tagName === 'IMG' && e.target.src) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onImageOverlay) onImageOverlay(e.target.src);
+        return;
+      }
       // Links
       const link = e.target.closest('a[href]');
       if (link) {
         const href = link.getAttribute('href');
         if (!href) return;
-        // Anchor links — scroll within document
-        if (href.startsWith('#')) return; // let browser handle scroll
+        if (href.startsWith('#')) return;
         e.preventDefault();
         e.stopPropagation();
-        // External URL — open in popup browser
         if (/^https?:\/\//i.test(href)) {
           window.electronAPI.openPopupBrowser(href);
         }
@@ -113,7 +118,7 @@ const Viewer = forwardRef(function Viewer({
     };
     container.addEventListener('click', handler);
     return () => container.removeEventListener('click', handler);
-  }, [onTlgClick]);
+  }, [onTlgClick, onImageOverlay]);
 
   const makeKey = useCallback((filePath) => {
     return scrollKeyPrefix ? `${scrollKeyPrefix}:${filePath}` : filePath;
