@@ -14,23 +14,48 @@ export default function TelegramSendModal({ target, content, players, projectPat
 
   const typeLabel = isImage ? 'Foto' : isAudio ? 'Audio' : isHtml ? 'HTML → Foto' : isMd ? 'Testo (da .md)' : isFile ? 'File' : 'Messaggio';
 
+  // Parse random target: caso:N, random:N, caso:metà, caso:meta, random:half, caso:tutti-1, random:all-1
+  const parseRandomTarget = (t, connected) => {
+    const m = t.match(/^(casuale|random)(?::(.+))?$/i);
+    if (!m) return null;
+    const param = (m[2] || '1').toLowerCase();
+    const total = connected.length;
+    if (!total) return 0;
+    if (param === 'metà' || param === 'meta' || param === 'half') return Math.max(1, Math.ceil(total / 2));
+    if (param === 'tutti-1' || param === 'all-1') return Math.max(1, total - 1);
+    const n = parseInt(param, 10);
+    return isNaN(n) ? 1 : Math.min(n, total);
+  };
+
+  const pickRandom = (connected, count) => {
+    const shuffled = [...connected].sort(() => Math.random() - 0.5);
+    const s = {};
+    shuffled.slice(0, count).forEach(p => { s[p.id] = true; });
+    return s;
+  };
+
   // Pre-select players based on target
   const [selected, setSelected] = useState(() => {
     const s = {};
     const targetLower = target.toLowerCase();
     const isAll = targetLower === 'all' || targetLower === '*' || targetLower === 'tutti';
-    const targetNames = isAll ? null : target.split(',').map(n => n.trim().toLowerCase());
+    const connected = (players || []).filter(p => p.telegramChatId);
 
-    (players || []).forEach(p => {
-      if (!p.telegramChatId) return;
-      if (isAll) {
+    // Check random target
+    const randomCount = parseRandomTarget(targetLower, connected);
+    if (randomCount !== null) return pickRandom(connected, randomCount);
+
+    if (isAll) {
+      connected.forEach(p => { s[p.id] = true; });
+      return s;
+    }
+
+    const targetNames = target.split(',').map(n => n.trim().toLowerCase());
+    connected.forEach(p => {
+      const charLower = (p.characterName || '').toLowerCase();
+      const playerLower = (p.playerName || '').toLowerCase();
+      if (targetNames.some(t => charLower.includes(t) || playerLower.includes(t))) {
         s[p.id] = true;
-      } else if (targetNames) {
-        const charLower = (p.characterName || '').toLowerCase();
-        const playerLower = (p.playerName || '').toLowerCase();
-        if (targetNames.some(t => charLower.includes(t) || playerLower.includes(t))) {
-          s[p.id] = true;
-        }
       }
     });
     return s;
@@ -48,6 +73,20 @@ export default function TelegramSendModal({ target, content, players, projectPat
     setSelected(s);
   };
   const selectNone = () => setSelected({});
+  const selectRandom = () => {
+    const connected = (players || []).filter(p => p.telegramChatId);
+    const selectedCount = connected.filter(p => selected[p.id]).length;
+    // If all selected → clear and pick 1
+    if (selectedCount >= connected.length) {
+      setSelected(pickRandom(connected, 1));
+      return;
+    }
+    // Pick 1 random from unselected, add to current
+    const unselected = connected.filter(p => !selected[p.id]);
+    if (unselected.length === 0) return;
+    const pick = unselected[Math.floor(Math.random() * unselected.length)];
+    setSelected(prev => ({ ...prev, [pick.id]: true }));
+  };
 
   const connectedPlayers = useMemo(() => (players || []).filter(p => p.telegramChatId), [players]);
   const recipients = connectedPlayers.filter(p => selected[p.id]);
@@ -163,6 +202,7 @@ export default function TelegramSendModal({ target, content, players, projectPat
             <div style={{ display: 'flex', gap: '8px' }}>
               <span onClick={selectAll} style={{ fontSize: '11px', color: 'var(--accent)', cursor: 'pointer' }}>Tutti</span>
               <span onClick={selectNone} style={{ fontSize: '11px', color: 'var(--text-tertiary)', cursor: 'pointer' }}>Nessuno</span>
+              <span onClick={selectRandom} style={{ fontSize: '11px', color: 'var(--color-warning)', cursor: 'pointer' }}>Casuale</span>
             </div>
           </div>
 

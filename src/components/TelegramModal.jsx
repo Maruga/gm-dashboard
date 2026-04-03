@@ -46,6 +46,17 @@ export function TelegramFileModal({ fileName, fileExtension, filePath, players, 
   const [results, setResults] = useState([]);
 
   const toggle = (id) => setSelected(prev => ({ ...prev, [id]: !prev[id] }));
+  const connected = (players || []).filter(p => p.telegramChatId);
+  const selectAll = () => { const s = {}; connected.forEach(p => { s[p.id] = true; }); setSelected(s); };
+  const selectNone = () => setSelected({});
+  const selectRandom = () => {
+    const selectedCount = connected.filter(p => selected[p.id]).length;
+    if (selectedCount >= connected.length) { const pick = connected[Math.floor(Math.random() * connected.length)]; setSelected({ [pick.id]: true }); return; }
+    const unselected = connected.filter(p => !selected[p.id]);
+    if (unselected.length === 0) return;
+    const pick = unselected[Math.floor(Math.random() * unselected.length)];
+    setSelected(prev => ({ ...prev, [pick.id]: true }));
+  };
 
   const getFormatNote = () => {
     const ext = (fileExtension || '').toLowerCase();
@@ -117,14 +128,21 @@ export function TelegramFileModal({ fileName, fileExtension, filePath, players, 
           <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Messaggio accompagnatorio</label>
           <textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Opzionale..." rows={3} style={{ ...inputStyle, marginBottom: '16px' }} />
 
-          <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>Destinatari</label>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Destinatari</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <span onClick={selectAll} style={{ fontSize: '11px', color: 'var(--accent)', cursor: 'pointer' }}>Tutti</span>
+              <span onClick={selectNone} style={{ fontSize: '11px', color: 'var(--text-tertiary)', cursor: 'pointer' }}>Nessuno</span>
+              <span onClick={selectRandom} style={{ fontSize: '11px', color: 'var(--color-warning)', cursor: 'pointer' }}>Casuale</span>
+            </div>
+          </div>
           {(!players || players.length === 0) ? (
             <div style={{ fontSize: '12px', color: 'var(--text-disabled)', fontStyle: 'italic', marginBottom: '12px' }}>Nessun PG configurato</div>
           ) : (
             <div style={{ marginBottom: '16px' }}>
               {players.map(pg => (
                 <label key={pg.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', fontSize: '13px', color: pg.telegramChatId ? 'var(--text-primary)' : 'var(--text-disabled)', cursor: pg.telegramChatId ? 'pointer' : 'not-allowed' }}>
-                  <input type="checkbox" checked={selected[pg.id] || false} onChange={() => toggle(pg.id)} disabled={!pg.telegramChatId} />
+                  <input type="checkbox" checked={selected[pg.id] || false} onChange={() => toggle(pg.id)} disabled={!pg.telegramChatId} style={{ accentColor: 'var(--accent)' }} />
                   <span style={{ color: pg.telegramChatId ? 'var(--accent)' : 'var(--text-disabled)' }}>{pg.characterName || 'Senza nome'}</span>
                   {pg.playerName && <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>({pg.playerName})</span>}
                   {!pg.telegramChatId && <span style={{ fontSize: '10px', color: 'var(--text-disabled)' }}>— non connesso</span>}
@@ -175,6 +193,17 @@ export function TelegramTextModal({ selectedText, players, botRunning, gameDate,
   const [results, setResults] = useState([]);
 
   const toggle = (id) => setSelected(prev => ({ ...prev, [id]: !prev[id] }));
+  const connected = (players || []).filter(p => p.telegramChatId);
+  const selectAll = () => { const s = {}; connected.forEach(p => { s[p.id] = true; }); setSelected(s); };
+  const selectNone = () => setSelected({});
+  const selectRandom = () => {
+    const selectedCount = connected.filter(p => selected[p.id]).length;
+    if (selectedCount >= connected.length) { const pick = connected[Math.floor(Math.random() * connected.length)]; setSelected({ [pick.id]: true }); return; }
+    const unselected = connected.filter(p => !selected[p.id]);
+    if (unselected.length === 0) return;
+    const pick = unselected[Math.floor(Math.random() * unselected.length)];
+    setSelected(prev => ({ ...prev, [pick.id]: true }));
+  };
   const recipients = (players || []).filter(p => selected[p.id] && p.telegramChatId);
   const canSend = botRunning && recipients.length > 0 && !sending && editedText.trim().length > 0;
 
@@ -219,14 +248,21 @@ export function TelegramTextModal({ selectedText, players, botRunning, gameDate,
           <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Messaggio aggiuntivo</label>
           <textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Opzionale..." rows={2} style={{ ...inputStyle, marginBottom: '16px' }} />
 
-          <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>Destinatari</label>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Destinatari</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <span onClick={selectAll} style={{ fontSize: '11px', color: 'var(--accent)', cursor: 'pointer' }}>Tutti</span>
+              <span onClick={selectNone} style={{ fontSize: '11px', color: 'var(--text-tertiary)', cursor: 'pointer' }}>Nessuno</span>
+              <span onClick={selectRandom} style={{ fontSize: '11px', color: 'var(--color-warning)', cursor: 'pointer' }}>Casuale</span>
+            </div>
+          </div>
           {(!players || players.length === 0) ? (
             <div style={{ fontSize: '12px', color: 'var(--text-disabled)', fontStyle: 'italic', marginBottom: '12px' }}>Nessun PG configurato</div>
           ) : (
             <div style={{ marginBottom: '16px' }}>
               {players.map(pg => (
                 <label key={pg.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', fontSize: '13px', color: pg.telegramChatId ? 'var(--text-primary)' : 'var(--text-disabled)', cursor: pg.telegramChatId ? 'pointer' : 'not-allowed' }}>
-                  <input type="checkbox" checked={selected[pg.id] || false} onChange={() => toggle(pg.id)} disabled={!pg.telegramChatId} />
+                  <input type="checkbox" checked={selected[pg.id] || false} onChange={() => toggle(pg.id)} disabled={!pg.telegramChatId} style={{ accentColor: 'var(--accent)' }} />
                   <span style={{ color: pg.telegramChatId ? 'var(--accent)' : 'var(--text-disabled)' }}>{pg.characterName || 'Senza nome'}</span>
                   {pg.playerName && <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>({pg.playerName})</span>}
                   {!pg.telegramChatId && <span style={{ fontSize: '10px', color: 'var(--text-disabled)' }}>— non connesso</span>}

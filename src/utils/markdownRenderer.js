@@ -38,7 +38,12 @@ const tlgExtension = {
 
     // Target display
     let targetLabel = target;
-    if (target.toLowerCase() === 'all' || target === '*') targetLabel = 'Tutti';
+    const tl = target.toLowerCase();
+    if (tl === 'all' || tl === '*' || tl === 'tutti') targetLabel = 'Tutti';
+    else if (/^(casuale|random)(:.+)?$/i.test(tl)) {
+      const param = tl.split(':')[1] || '1';
+      targetLabel = `Casuale (${param === 'meta' || param === 'metà' || param === 'half' ? 'metà' : param === 'tutti-1' || param === 'all-1' ? 'tutti-1' : param})`;
+    }
 
     const escaped = content.replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const targetEscaped = target.replace(/"/g, '&quot;');
