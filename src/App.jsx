@@ -287,6 +287,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         setLayoutPresets(saved.layoutPresets ?? []);
         setAiConfig(saved.aiConfig ?? { provider: '', apiKey: '', model: '', configured: false, telegramAiEnabled: true, telegramAiMode: 'manual' });
         setAiChatHistory(saved.aiChatHistory ?? []);
+        setCombatData(saved.combatData ?? null);
         // Restore media items (audio paused, re-resolve URLs)
         const savedMedia = saved.savedMediaItems || saved.savedAudioTracks;
         if (savedMedia && savedMedia.length > 0) {
@@ -361,7 +362,8 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
       aiConfig: aiConfig,
       aiChatHistory: aiChatHistory,
       panelVisibility: panelVisibility,
-      layoutPresets: layoutPresets
+      layoutPresets: layoutPresets,
+      combatData: combatData
     };
   });
 
@@ -371,7 +373,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     saveTimer.current = setTimeout(() => {
       window.electronAPI.saveProjectState(projectPath, latestState.current);
     }, 1000);
-  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, aiConversations, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, viewerFontSize, stageFontSize, scrollVersion, aiConfig, aiChatHistory, panelVisibility, layoutPresets]);
+  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, aiConversations, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, viewerFontSize, stageFontSize, scrollVersion, aiConfig, aiChatHistory, panelVisibility, layoutPresets, combatData]);
 
   // Save immediately on unmount (project switch)
   useEffect(() => {
@@ -2119,7 +2121,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         />
       )}
       {combatTrackerOpen && (
-        <CombatTrackerPanel combatData={combatData} onCombatDataChange={setCombatData} onClose={() => setCombatTrackerOpen(false)} />
+        <CombatTrackerPanel combatData={combatData} onCombatDataChange={setCombatData} players={players} projectPath={projectPath} onClose={() => setCombatTrackerOpen(false)} />
       )}
       {chatOpen && (
         <TelegramChat

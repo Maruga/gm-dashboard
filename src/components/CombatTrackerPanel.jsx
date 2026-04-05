@@ -1,64 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 
-// ── Mock Data ──
-const mockPCs = [
-  { id: 'pc1', name: 'Kael il Guerriero', hp: 32, hpMax: 45, initiative: 18, effects: [],
-    sheet: 'Classe: Guerriero Lv.5\nHP: 32/45\nCA: 16\nTHAC0: 16\nAtt: Spada lunga 1d8+2\nTS: Morte 11, Bacch. 12\nNote: Resist. veleno' },
-  { id: 'pc2', name: 'Lyra Maga', hp: 18, hpMax: 22, initiative: 13, effects: [{ name: 'Avvelenato', rounds: 2 }],
-    sheet: 'Classe: Maga Lv.4\nHP: 18/22\nCA: 12\nTHAC0: 19\nAtt: Bastone 1d4\nInc: Dardo incantato, Scudo, Sonno' },
-  { id: 'pc3', name: 'Dorin Chierico', hp: 8, hpMax: 28, initiative: 10,
-    effects: [{ name: 'Stordito', rounds: 1 }, { name: 'Prono', rounds: 0 }, { name: 'Cieco', rounds: 3 }],
-    sheet: 'Classe: Chierico Lv.4\nHP: 8/28\nCA: 14\nTHAC0: 18\nAtt: Mazza 1d6+1\nInc: Cura ferite leggere, Benedizione' },
-  { id: 'pc4', name: 'Finn Ladro', hp: 0, hpMax: 20, initiative: 5, effects: [],
-    sheet: 'Classe: Ladro Lv.3\nHP: 0/20\nCA: 13\nTHAC0: 19\nAtt: Pugnale 1d4+2\nAbilità: Scassinare, Nascondersi, Backstab x2' }
-];
-
-const mockMonsters = [
-  { id: 'mon1', name: 'Necromante', hp: 45, hpMax: 45, initiative: 15, effects: [],
-    sheet: 'Tipo: Umano\nHP: 45/45\nCA: 11\nTHAC0: 17\nAtt: Bastone 1d4 / Raggio necrotico 2d6\nInc: Animare morti, Tocco gelido, Scudo\nNote: Concentrazione su animazione scheletri' },
-  { id: 'mon2', name: 'Scheletro 1', hp: 8, hpMax: 12, initiative: 13,
-    effects: [{ name: 'Stordito', rounds: 1 }],
-    sheet: 'Tipo: Non-morto\nHP: 8/12\nCA: 13\nTHAC0: 19\nAtt: Artiglio 1d6\nImmun: Veleno, Sonno\nVuln: Contundente\nNote: Rianima in 1d4r se necromante vivo' },
-  { id: 'mon3', name: 'Scheletro 2', hp: 12, hpMax: 12, initiative: 13, effects: [],
-    sheet: 'Tipo: Non-morto\nHP: 12/12\nCA: 13\nTHAC0: 19\nAtt: Artiglio 1d6\nImmun: Veleno, Sonno\nVuln: Contundente' },
-  { id: 'mon4', name: 'Scheletro 3', hp: 12, hpMax: 12, initiative: 8, effects: [],
-    sheet: 'Tipo: Non-morto\nHP: 12/12\nCA: 13\nTHAC0: 19\nAtt: Artiglio 1d6\nImmun: Veleno, Sonno\nVuln: Contundente' },
-  { id: 'mon5', name: 'Scheletro 4', hp: 0, hpMax: 12, initiative: 8, effects: [],
-    sheet: 'Tipo: Non-morto\nHP: 0/12\nCA: 13\nTHAC0: 19\nAtt: Artiglio 1d6\nImmun: Veleno, Sonno\nVuln: Contundente\nNote: Distrutto' }
-];
-
-const mockEnvironment = {
-  name: 'Cripta sotterranea',
-  effects: [{ name: 'Buio', rounds: 0 }, { name: 'Acqua', rounds: 0 }, { name: 'Veleno nell\'aria', rounds: 2 }]
-};
-
-const mockLog = [
-  { round: 3, turn: 3, text: 'Lyra lancia Dardo incantato su Scheletro 1 — 7 danni — Scheletro 1: 8/12 HP' },
-  { round: 3, turn: 2, text: 'Necromante lancia Raggio Necrotico su Dorin — 6 danni — Dorin: 8/28 HP' },
-  { round: 3, turn: 1, text: 'Kael attacca Scheletro 1 — Taglio — 4 danni — Scheletro 1: 12/12→8/12 HP' },
-  { round: 2, turn: 5, text: 'Scheletro 3 attacca Finn — 12 danni — Finn: 0/20 HP — KO' },
-  { round: 2, turn: 4, text: 'Dorin usa Cura su sé stesso — +8 HP — Dorin: 14/28 HP' },
-  { round: 2, turn: 3, text: 'Lyra applica Avvelenato a Scheletro 1 — 3 round' }
-];
-
-// ── Initial State ──
-const INITIAL_STATE = {
-  pcs: mockPCs,
-  monsters: mockMonsters,
-  environment: mockEnvironment,
-  log: mockLog,
-  round: 3,
-  turn: 3,
-  currentInit: 13,
-  selectedId: 'pc2',
-  targetIds: ['mon2'],
-  actedInits: [18, 15],
-  skippedIds: [],
-  initMin: 0,
-  initMax: 20,
-  descending: true
-};
-
 const CONDITIONS = ['Stordito', 'Avvelenato', 'Accecato', 'Spaventato', 'Paralizzato', 'Prono', 'Afferrato', 'Invisibile', 'Incosciente'];
 
 // ── Helpers ──
@@ -69,15 +10,13 @@ function hpColor(hp, hpMax) {
   return 'var(--color-danger)';
 }
 
-function getInitBands() {
-  const all = [...mockPCs, ...mockMonsters];
-  const initSet = new Set(all.map(c => c.initiative));
-  return [...initSet].sort((a, b) => b - a); // discendente
-}
-
 // ── Sub-components ──
 
-function TopBar({ round, turn, onRoundChange, onTurnChange, onClose }) {
+function TopBar({ encounterName, round, turn, initMin, initMax, descending, onRoundChange, onTurnChange, onInitRangeChange, onToggleDescending, onRollMonsters, onReset, onBack, onComplete, onClose }) {
+  const [confirmReset, setConfirmReset] = useState(false);
+  const confirmResetTimer = useRef(null);
+  const [confirmComplete, setConfirmComplete] = useState(false);
+  const confirmCompleteTimer = useRef(null);
   const stepperStyle = {
     display: 'inline-flex', alignItems: 'center', gap: '4px',
     background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
@@ -96,8 +35,13 @@ function TopBar({ round, turn, onRoundChange, onTurnChange, onClose }) {
       padding: '6px 12px', borderBottom: '1px solid var(--border-default)',
       background: 'var(--bg-panel)', flexShrink: 0
     }}>
+      {/* Back */}
+      <span onClick={onBack} style={{
+        fontSize: '14px', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px 4px', userSelect: 'none'
+      }}>←</span>
+
       <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-secondary)', marginRight: '8px' }}>
-        Combat Tracker
+        {encounterName || 'Combat Tracker'}
       </span>
 
       {/* Round + Turno */}
@@ -124,42 +68,77 @@ function TopBar({ round, turn, onRoundChange, onTurnChange, onClose }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
         <span style={labelStyle}>Init</span>
         <div style={stepperStyle}>
-          <span style={stepBtn}>−</span>
-          <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>0</span>
-          <span style={stepBtn}>+</span>
+          <span style={stepBtn} onClick={() => onInitRangeChange?.('min', -1)}>−</span>
+          <span style={{ color: 'var(--text-primary)', fontWeight: '500', minWidth: '16px', textAlign: 'center' }}>{initMin}</span>
+          <span style={stepBtn} onClick={() => onInitRangeChange?.('min', 1)}>+</span>
         </div>
         <span style={{ fontSize: '11px', color: 'var(--text-disabled)' }}>a</span>
         <div style={stepperStyle}>
-          <span style={stepBtn}>−</span>
-          <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>20</span>
-          <span style={stepBtn}>+</span>
+          <span style={stepBtn} onClick={() => onInitRangeChange?.('max', -1)}>−</span>
+          <span style={{ color: 'var(--text-primary)', fontWeight: '500', minWidth: '16px', textAlign: 'center' }}>{initMax}</span>
+          <span style={stepBtn} onClick={() => onInitRangeChange?.('max', 1)}>+</span>
         </div>
       </div>
 
-      {/* Disc/Asc */}
+      {/* Disc/Asc + Roll mostri */}
       <div style={{
-        fontSize: '11px', padding: '3px 8px', borderRadius: '4px',
-        background: 'var(--color-info-bg)', color: 'var(--color-info)',
-        border: '1px solid var(--color-info)', cursor: 'pointer', fontWeight: '500'
+        display: 'flex', alignItems: 'center', gap: '0',
+        border: '1px solid var(--color-info)', borderRadius: '4px', overflow: 'hidden'
       }}>
-        Disc.
+        <div onClick={onToggleDescending} style={{
+          fontSize: '11px', padding: '3px 8px',
+          background: 'var(--color-info-bg)', color: 'var(--color-info)',
+          cursor: 'pointer', fontWeight: '500'
+        }}>
+          {descending ? 'Disc.' : 'Asc.'}
+        </div>
+        <div style={{ width: '1px', height: '18px', background: 'var(--color-info)' }} />
+        <div onClick={onRollMonsters} style={{
+          fontSize: '11px', padding: '3px 8px',
+          background: 'transparent', color: 'var(--color-info)',
+          cursor: 'pointer', fontWeight: '500'
+        }}>
+          Roll mostri
+        </div>
       </div>
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
 
-      {/* Azioni */}
-      <button style={{
-        background: 'none', border: '1px solid var(--color-info)',
+      {/* Completato */}
+      <button onClick={() => {
+        if (!confirmComplete) {
+          setConfirmComplete(true);
+          if (confirmCompleteTimer.current) clearTimeout(confirmCompleteTimer.current);
+          confirmCompleteTimer.current = setTimeout(() => setConfirmComplete(false), 3000);
+        } else {
+          setConfirmComplete(false);
+          if (confirmCompleteTimer.current) clearTimeout(confirmCompleteTimer.current);
+          onComplete?.();
+        }
+      }} style={{
+        background: confirmComplete ? 'var(--color-success-bg)' : 'none',
+        border: '1px solid var(--color-success)',
         borderRadius: '4px', padding: '3px 10px', fontSize: '11px',
-        color: 'var(--color-info)', cursor: 'pointer', fontWeight: '500'
-      }}>Roll mostri</button>
+        color: 'var(--color-success)', cursor: 'pointer', fontWeight: confirmComplete ? '600' : '500'
+      }}>{confirmComplete ? 'Sicuro?' : 'Completato'}</button>
 
-      <button style={{
-        background: 'none', border: '1px solid var(--color-danger)',
+      <button onClick={() => {
+        if (!confirmReset) {
+          setConfirmReset(true);
+          if (confirmResetTimer.current) clearTimeout(confirmResetTimer.current);
+          confirmResetTimer.current = setTimeout(() => setConfirmReset(false), 3000);
+        } else {
+          setConfirmReset(false);
+          if (confirmResetTimer.current) clearTimeout(confirmResetTimer.current);
+          onReset?.();
+        }
+      }} style={{
+        background: confirmReset ? 'var(--color-danger-bg)' : 'none',
+        border: '1px solid var(--color-danger)',
         borderRadius: '4px', padding: '3px 10px', fontSize: '11px',
-        color: 'var(--color-danger)', cursor: 'pointer', fontWeight: '500'
-      }}>Reset</button>
+        color: 'var(--color-danger)', cursor: 'pointer', fontWeight: confirmReset ? '600' : '500'
+      }}>{confirmReset ? 'Sicuro?' : 'Reset'}</button>
 
       {/* Close */}
       <button onClick={onClose} style={{
@@ -233,7 +212,7 @@ function NumPadCol({ hasTarget, undoCount, onModifier, onDigit, onClear, onUndo 
   );
 }
 
-function CombatantCard({ c, isPC, isActive, isTarget, hasActed, isSkipped, currentInit, hpSelected, onSelect, onTargetToggle, onHpChange, onHpSelect, onSkipToggle }) {
+function CombatantCard({ c, isPC, isActive, isTarget, hasActed, isSkipped, currentInit, hpSelected, initSelected, onSelect, onTargetToggle, onHpChange, onHpSelect, onSkipToggle, onEffectClick }) {
   const isDead = c.hp <= 0;
   const selected = isActive && !isDead;
   const hpC = hpColor(c.hp, c.hpMax);
@@ -295,7 +274,7 @@ function CombatantCard({ c, isPC, isActive, isTarget, hasActed, isSkipped, curre
       <div style={{ flex: 1, minWidth: 0, alignSelf: 'center' }} onClick={() => onSelect?.(c.id)}>
         <div style={{
           fontSize: '12px', fontWeight: '500', textDecoration: textDeco,
-          color: isDead ? 'var(--text-secondary)' : 'var(--text-primary)',
+          color: isDead ? 'var(--text-secondary)' : initSelected ? 'var(--accent)' : 'var(--text-primary)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
         }}>
           {c.name}
@@ -303,7 +282,7 @@ function CombatantCard({ c, isPC, isActive, isTarget, hasActed, isSkipped, curre
         {c.effects.length > 0 && !isDead && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', marginTop: '2px' }}>
             {c.effects.map((e, i) => (
-              <span key={i} style={{
+              <span key={i} onClick={(ev) => { ev.stopPropagation(); onEffectClick?.(c.id, i); }} style={{
                 fontSize: '10px', padding: '0 3px', borderRadius: '3px',
                 background: 'var(--color-warning-bg)', color: 'var(--color-warning)',
                 cursor: 'pointer', whiteSpace: 'nowrap'
@@ -367,11 +346,21 @@ function CombatantCard({ c, isPC, isActive, isTarget, hasActed, isSkipped, curre
   );
 }
 
-function EnvironmentCard() {
+function EnvironmentCard({ environment, onEffectClick, onAddEffect }) {
+  const [addForm, setAddForm] = useState(null); // null | { name: '', rounds: '0' }
+
   const tagColor = (effect) => {
-    if (effect.name === 'Buio') return { bg: 'var(--color-warning-bg)', color: 'var(--color-warning)' };
-    if (effect.name === 'Acqua') return { bg: 'var(--color-info-bg)', color: 'var(--color-info)' };
+    const name = effect.name.toLowerCase();
+    if (name.includes('buio') || name.includes('oscur')) return { bg: 'var(--color-warning-bg)', color: 'var(--color-warning)' };
+    if (name.includes('acqua') || name.includes('pioggia')) return { bg: 'var(--color-info-bg)', color: 'var(--color-info)' };
     return { bg: 'var(--color-danger-bg)', color: 'var(--color-danger)' };
+  };
+
+  const handleSubmit = () => {
+    if (addForm?.name?.trim()) {
+      onAddEffect?.(addForm.name.trim(), parseInt(addForm.rounds, 10) || 0);
+    }
+    setAddForm(null);
   };
 
   return (
@@ -379,16 +368,16 @@ function EnvironmentCard() {
       padding: '5px 10px', background: 'var(--color-info-bg)',
       border: '0.5px solid var(--color-info)', borderRadius: '4px',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      gap: '8px', marginBottom: '6px'
+      gap: '8px', marginBottom: '6px', flexWrap: 'wrap'
     }}>
       <span style={{ fontSize: '12px', fontWeight: '500', color: 'var(--color-info)', whiteSpace: 'nowrap' }}>
-        {mockEnvironment.name}
+        {environment.name}
       </span>
       <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
-        {mockEnvironment.effects.map((e, i) => {
+        {environment.effects.map((e, i) => {
           const tc = tagColor(e);
           return (
-            <span key={i} style={{
+            <span key={i} onClick={() => onEffectClick?.(i)} style={{
               fontSize: '11px', padding: '1px 5px', borderRadius: '3px',
               background: tc.bg, color: tc.color, cursor: 'pointer', whiteSpace: 'nowrap'
             }}>
@@ -396,17 +385,61 @@ function EnvironmentCard() {
             </span>
           );
         })}
-        <span style={{
-          fontSize: '11px', padding: '1px 5px', borderRadius: '3px',
-          border: '0.5px solid var(--color-info)', color: 'var(--color-info)',
-          cursor: 'pointer'
-        }}>+</span>
+        {addForm === null ? (
+          <span onClick={() => setAddForm({ name: '', rounds: '0' })} style={{
+            fontSize: '11px', padding: '1px 5px', borderRadius: '3px',
+            border: '0.5px solid var(--color-info)', color: 'var(--color-info)',
+            cursor: 'pointer'
+          }}>+</span>
+        ) : (
+          <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
+            <input
+              autoFocus
+              value={addForm.name}
+              onChange={e => setAddForm(prev => ({ ...prev, name: e.target.value }))}
+              onKeyDown={e => { if (e.key === 'Enter') handleSubmit(); if (e.key === 'Escape') setAddForm(null); }}
+              placeholder="Effetto"
+              style={{
+                width: '80px', padding: '1px 5px', fontSize: '11px', minHeight: '22px',
+                background: 'var(--bg-input)', border: '1px solid var(--accent)',
+                borderRadius: '3px', color: 'var(--text-primary)', outline: 'none'
+              }}
+            />
+            <input
+              value={addForm.rounds}
+              onChange={e => setAddForm(prev => ({ ...prev, rounds: e.target.value.replace(/\D/g, '') }))}
+              onKeyDown={e => { if (e.key === 'Enter') handleSubmit(); if (e.key === 'Escape') setAddForm(null); }}
+              placeholder="r"
+              title="Durata in round (0 = permanente)"
+              style={{
+                width: '28px', padding: '1px 3px', fontSize: '11px', minHeight: '22px',
+                background: 'var(--bg-input)', border: '1px solid var(--accent)',
+                borderRadius: '3px', color: 'var(--text-primary)', outline: 'none', textAlign: 'center'
+              }}
+            />
+            <span onClick={handleSubmit} style={{
+              fontSize: '11px', color: 'var(--color-info)', cursor: 'pointer', fontWeight: '500', padding: '0 3px'
+            }}>OK</span>
+            <span onClick={() => setAddForm(null)} style={{
+              fontSize: '13px', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0 2px'
+            }}>✕</span>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function ConditionsRow() {
+function ConditionsRow({ selectedId, activeEffects, duration, onDurationChange, onApplyCondition }) {
+  const [customInput, setCustomInput] = useState(null); // null = hidden, '' = showing
+
+  const handleCustomSubmit = () => {
+    if (customInput && customInput.trim()) {
+      onApplyCondition?.(customInput.trim());
+    }
+    setCustomInput(null);
+  };
+
   return (
     <div style={{
       borderTop: '0.5px solid var(--border-subtle)',
@@ -416,18 +449,42 @@ function ConditionsRow() {
       <span style={{ fontSize: '11px', fontWeight: '500', color: 'var(--text-secondary)', marginRight: '2px' }}>
         Condizioni:
       </span>
-      {CONDITIONS.map(c => (
-        <span key={c} style={{
+      {CONDITIONS.map(c => {
+        const isActive = activeEffects?.some(e => e.name === c);
+        return (
+          <span key={c} onClick={() => selectedId && onApplyCondition?.(c)} style={{
+            fontSize: '11px', padding: '1px 5px', borderRadius: '4px',
+            border: `0.5px solid ${isActive ? 'var(--color-warning)' : 'var(--border-default)'}`,
+            background: isActive ? 'var(--color-warning-bg)' : 'transparent',
+            color: isActive ? 'var(--color-warning)' : 'var(--text-tertiary)',
+            cursor: selectedId ? 'pointer' : 'default',
+            opacity: selectedId ? 1 : 0.5
+          }}>{c}</span>
+        );
+      })}
+
+      {customInput === null ? (
+        <span onClick={() => selectedId && setCustomInput('')} style={{
           fontSize: '11px', padding: '1px 5px', borderRadius: '4px',
-          border: '0.5px solid var(--color-warning)', color: 'var(--color-warning)',
-          cursor: 'pointer'
-        }}>{c}</span>
-      ))}
-      <span style={{
-        fontSize: '11px', padding: '1px 5px', borderRadius: '4px',
-        border: '0.5px solid var(--color-info)', color: 'var(--color-info)',
-        cursor: 'pointer'
-      }}>+ Custom</span>
+          border: '0.5px solid var(--color-info)', color: 'var(--color-info)',
+          cursor: selectedId ? 'pointer' : 'default',
+          opacity: selectedId ? 1 : 0.5
+        }}>+ Custom</span>
+      ) : (
+        <input
+          autoFocus
+          value={customInput}
+          onChange={e => setCustomInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleCustomSubmit(); if (e.key === 'Escape') setCustomInput(null); }}
+          onBlur={handleCustomSubmit}
+          placeholder="Nome..."
+          style={{
+            width: '90px', padding: '1px 5px', fontSize: '11px',
+            background: 'var(--bg-input)', border: '1px solid var(--accent)',
+            borderRadius: '4px', color: 'var(--text-primary)', outline: 'none'
+          }}
+        />
+      )}
 
       <div style={{ flex: 1 }} />
 
@@ -437,11 +494,11 @@ function ConditionsRow() {
         background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
         borderRadius: '4px', padding: '1px 5px', fontSize: '11px'
       }}>
-        <span style={{ color: 'var(--text-tertiary)', cursor: 'pointer' }}>−</span>
-        <span style={{ color: 'var(--text-primary)', fontWeight: '500', minWidth: '14px', textAlign: 'center' }}>3</span>
-        <span style={{ color: 'var(--text-tertiary)', cursor: 'pointer' }}>+</span>
+        <span onClick={() => onDurationChange?.(-1)} style={{ color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0 2px', userSelect: 'none' }}>−</span>
+        <span style={{ color: 'var(--text-primary)', fontWeight: '500', minWidth: '14px', textAlign: 'center' }}>{duration}</span>
+        <span onClick={() => onDurationChange?.(1)} style={{ color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0 2px', userSelect: 'none' }}>+</span>
       </div>
-      <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>round</span>
+      <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{duration === 0 ? 'perm.' : 'round'}</span>
     </div>
   );
 }
@@ -471,39 +528,238 @@ function DetailSheet({ title, data }) {
   );
 }
 
-function CombatLog() {
-  const last = mockLog[0];
+function CombatLog({ log }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!log || log.length === 0) {
+    return (
+      <div style={{
+        borderTop: '1px solid var(--border-default)',
+        background: 'var(--bg-elevated)', padding: '5px 12px',
+        flexShrink: 0, fontSize: '11px', color: 'var(--text-disabled)', fontStyle: 'italic'
+      }}>Nessun evento registrato</div>
+    );
+  }
+
+  const last = log[0];
+
   return (
     <div style={{
       borderTop: '1px solid var(--border-default)',
-      background: 'var(--bg-elevated)', padding: '5px 12px',
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      flexShrink: 0, fontSize: '11px'
+      background: 'var(--bg-elevated)', flexShrink: 0, fontSize: '11px'
     }}>
-      <div>
-        <span style={{ color: 'var(--text-tertiary)' }}>R{last.round} T{last.turn}</span>
-        <span style={{ color: 'var(--text-secondary)' }}> — {last.text}</span>
-      </div>
-      <span style={{ color: 'var(--text-tertiary)', cursor: 'pointer', marginLeft: '12px', flexShrink: 0 }}>espandi</span>
+      {expanded ? (
+        <div style={{ maxHeight: '150px', overflowY: 'auto', padding: '5px 12px' }}>
+          {log.map((entry, i) => (
+            <div key={i} style={{ padding: '1px 0' }}>
+              <span style={{ color: 'var(--text-tertiary)' }}>R{entry.round} T{entry.turn}</span>
+              <span style={{ color: 'var(--text-secondary)' }}> — {entry.text}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ padding: '5px 12px' }}>
+          <span style={{ color: 'var(--text-tertiary)' }}>R{last.round} T{last.turn}</span>
+          <span style={{ color: 'var(--text-secondary)' }}> — {last.text}</span>
+        </div>
+      )}
+      <div
+        onClick={() => setExpanded(v => !v)}
+        style={{
+          textAlign: 'right', padding: '2px 12px 4px',
+          color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '10px'
+        }}
+      >{expanded ? 'comprimi' : 'espandi'}</div>
     </div>
   );
 }
 
-// ── Main Component ──
-export default function CombatTrackerPanel({ combatData, onCombatDataChange, onClose }) {
-  const [state, setState] = useState(() => combatData || INITIAL_STATE);
+// ── Encounter List ──
+
+function EncounterList({ encounters, onCreateEncounter, onOpenEncounter, onDeleteEncounter, onClose }) {
+  const [showForm, setShowForm] = useState(false);
+  const [formName, setFormName] = useState('');
+  const [formDesc, setFormDesc] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const confirmDeleteTimer = useRef(null);
+
+  const handleCreate = () => {
+    if (!formName.trim()) return;
+    onCreateEncounter(formName.trim(), formDesc.trim());
+    setFormName('');
+    setFormDesc('');
+    setShowForm(false);
+  };
+
+  const handleDelete = (id) => {
+    if (confirmDeleteId === id) {
+      onDeleteEncounter(id);
+      setConfirmDeleteId(null);
+      if (confirmDeleteTimer.current) clearTimeout(confirmDeleteTimer.current);
+    } else {
+      setConfirmDeleteId(id);
+      if (confirmDeleteTimer.current) clearTimeout(confirmDeleteTimer.current);
+      confirmDeleteTimer.current = setTimeout(() => setConfirmDeleteId(null), 3000);
+    }
+  };
+
+  const statusLabel = (s) => {
+    if (s === 'completed') return { text: 'Completato', color: 'var(--color-success)' };
+    if (s === 'in_progress') return { text: 'In corso', color: 'var(--color-warning)' };
+    return { text: 'Nuovo', color: 'var(--text-tertiary)' };
+  };
+
+  const inputStyle = {
+    width: '100%', padding: '6px 10px', fontSize: '13px', minHeight: '32px',
+    background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+    borderRadius: '4px', color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box'
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'var(--overlay-dark)',
+      zIndex: 3500, display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: '520px', maxHeight: '80vh', background: 'var(--bg-panel)',
+        border: '1px solid var(--border-default)', borderRadius: '8px',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden'
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '14px 20px', borderBottom: '1px solid var(--border-default)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+        }}>
+          <span style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)' }}>
+            Incontri
+          </span>
+          <button onClick={onClose} style={{
+            background: 'none', border: 'none', color: 'var(--text-tertiary)',
+            fontSize: '16px', cursor: 'pointer', padding: '2px 6px'
+          }}>✕</button>
+        </div>
+
+        {/* Content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+          {/* New encounter button / form */}
+          {!showForm ? (
+            <div
+              onClick={() => setShowForm(true)}
+              style={{
+                padding: '10px', borderRadius: '6px', marginBottom: '16px',
+                border: '1px dashed var(--accent)', color: 'var(--accent)',
+                fontSize: '13px', fontWeight: '500', textAlign: 'center',
+                cursor: 'pointer', transition: 'background 0.15s'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-a04)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >+ Nuovo incontro</div>
+          ) : (
+            <div style={{
+              padding: '14px', borderRadius: '6px', marginBottom: '16px',
+              border: '1px solid var(--accent)', background: 'var(--accent-a04)'
+            }}>
+              <input
+                autoFocus
+                value={formName}
+                onChange={e => setFormName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && formName.trim()) handleCreate(); if (e.key === 'Escape') setShowForm(false); }}
+                placeholder="Nome incontro (obbligatorio)"
+                style={{ ...inputStyle, marginBottom: '8px' }}
+              />
+              <textarea
+                value={formDesc}
+                onChange={e => setFormDesc(e.target.value)}
+                placeholder="Descrizione ambiente (opzionale)"
+                rows={2}
+                style={{ ...inputStyle, marginBottom: '10px', resize: 'vertical' }}
+              />
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <span onClick={() => setShowForm(false)} style={{
+                  fontSize: '12px', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '6px 12px'
+                }}>Annulla</span>
+                <span onClick={handleCreate} style={{
+                  fontSize: '12px', fontWeight: '600', padding: '6px 16px', borderRadius: '4px',
+                  background: 'var(--accent)', color: 'var(--bg-main)', cursor: 'pointer',
+                  opacity: formName.trim() ? 1 : 0.5
+                }}>Crea</span>
+              </div>
+            </div>
+          )}
+
+          {/* Encounter list */}
+          {encounters.length === 0 && !showForm && (
+            <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-disabled)', fontSize: '13px', fontStyle: 'italic' }}>
+              Nessun incontro creato. Clicca "+ Nuovo incontro" per iniziare.
+            </div>
+          )}
+
+          {encounters.map(enc => {
+            const st = statusLabel(enc.status);
+            const pcCount = (enc.pcs || []).filter(p => p.hp > 0).length;
+            const monCount = (enc.monsters || []).filter(m => m.hp > 0).length;
+            return (
+              <div key={enc.id} style={{
+                padding: '12px 14px', borderRadius: '6px', marginBottom: '8px',
+                border: '1px solid var(--border-default)', background: 'var(--bg-main)',
+                transition: 'border-color 0.15s'
+              }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)' }}>{enc.name}</span>
+                  <span style={{ fontSize: '11px', color: st.color, fontWeight: '500' }}>
+                    {st.text}{enc.status === 'in_progress' ? ` R${enc.round}` : ''}
+                  </span>
+                </div>
+                {enc.description && (
+                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '6px', lineHeight: '1.4' }}>
+                    {enc.description.length > 80 ? enc.description.slice(0, 80) + '...' : enc.description}
+                  </div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                    {pcCount} PG, {monCount} Mostri
+                  </span>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <span onClick={() => onOpenEncounter(enc.id)} style={{
+                      fontSize: '11px', fontWeight: '500', color: 'var(--accent)', cursor: 'pointer',
+                      padding: '3px 10px', borderRadius: '3px', border: '1px solid var(--accent)'
+                    }}>Apri</span>
+                    <span onClick={() => handleDelete(enc.id)} style={{
+                      fontSize: '11px', fontWeight: '500', cursor: 'pointer', padding: '3px 10px', borderRadius: '3px',
+                      color: confirmDeleteId === enc.id ? 'var(--color-danger)' : 'var(--text-tertiary)',
+                      border: `1px solid ${confirmDeleteId === enc.id ? 'var(--color-danger)' : 'var(--border-subtle)'}`,
+                      background: confirmDeleteId === enc.id ? 'var(--color-danger-bg)' : 'transparent'
+                    }}>{confirmDeleteId === enc.id ? 'Sicuro?' : 'Cancella'}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Combat View (was Main Component) ──
+function CombatView({ encounter, onEncounterChange, onBack, onComplete, onClose }) {
+  const [state, setState] = useState(encounter);
   const initialRender = useRef(true);
-  const [numpadTarget, setNumpadTarget] = useState(null); // { id, field: 'hp' }
+  const [numpadTarget, setNumpadTarget] = useState(null); // { id, field: 'hp'|'init' }
   const [numpadTyping, setNumpadTyping] = useState(false); // true after first digit typed
   const [undoStack, setUndoStack] = useState([]); // max 5 entries: [{ id, field, value }]
+  const [addMonsterForm, setAddMonsterForm] = useState(null); // null | { name: '', hp: '' }
 
-  // Sync state to parent for persistence across close/reopen (skip first render)
+  // Sync state to parent for persistence
   useEffect(() => {
     if (initialRender.current) {
       initialRender.current = false;
       return;
     }
-    onCombatDataChange?.(state);
+    onEncounterChange?.(state);
   }, [state]);
 
   const allCombatants = useMemo(() => [...state.pcs, ...state.monsters], [state.pcs, state.monsters]);
@@ -524,7 +780,14 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
   // ── Handlers ──
 
   const handleSelect = (id) => {
+    const deselecting = state.selectedId === id;
     setState(prev => ({ ...prev, selectedId: prev.selectedId === id ? null : id }));
+    if (deselecting) {
+      setNumpadTarget(null);
+    } else {
+      setNumpadTarget({ id, field: 'init' });
+    }
+    setNumpadTyping(false);
   };
 
   const handleTargetToggle = (id) => {
@@ -552,15 +815,29 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
     });
   };
 
-  const pushUndo = (id, value) => {
-    setUndoStack(prev => [{ id, field: 'hp', value }, ...prev].slice(0, 5));
+  const pushUndo = (id, field, value) => {
+    setUndoStack(prev => [{ id, field, value }, ...prev].slice(0, 5));
+  };
+
+  const updateCombatantInit = (id, newInit) => {
+    setState(prev => {
+      const updateList = (list) => list.map(c => c.id === id ? { ...c, initiative: newInit } : c);
+      const inPcs = prev.pcs.some(p => p.id === id);
+      return {
+        ...prev,
+        pcs: inPcs ? updateList(prev.pcs) : prev.pcs,
+        monsters: inPcs ? prev.monsters : updateList(prev.monsters)
+      };
+    });
   };
 
   const handleHpChange = (id, delta) => {
     const c = allCombatants.find(x => x.id === id);
     if (!c) return;
-    pushUndo(id, c.hp);
-    updateCombatantHp(id, c.hp + delta);
+    pushUndo(id, 'hp', c.hp);
+    const newHp = Math.max(0, c.hp + delta);
+    updateCombatantHp(id, newHp);
+    addLogEntry(`${c.name}: ${c.hp}→${newHp} HP (${delta > 0 ? '+' : ''}${delta})`);
   };
 
   const handleHpSelect = (id) => {
@@ -571,7 +848,7 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
       setNumpadTarget({ id, field: 'hp' });
       setNumpadTyping(false);
       const c = allCombatants.find(x => x.id === id);
-      if (c) pushUndo(id, c.hp);
+      if (c) pushUndo(id, 'hp', c.hp);
     }
   };
 
@@ -579,8 +856,13 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
     if (!numpadTarget) return;
     const c = allCombatants.find(x => x.id === numpadTarget.id);
     if (!c) return;
-    pushUndo(c.id, c.hp);
-    updateCombatantHp(c.id, c.hp + delta);
+    if (numpadTarget.field === 'hp') {
+      pushUndo(c.id, 'hp', c.hp);
+      updateCombatantHp(c.id, c.hp + delta);
+    } else if (numpadTarget.field === 'init') {
+      pushUndo(c.id, 'init', c.initiative);
+      updateCombatantInit(c.id, c.initiative + delta);
+    }
     setNumpadTyping(false);
   };
 
@@ -588,35 +870,36 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
     if (!numpadTarget) return;
     const c = allCombatants.find(x => x.id === numpadTarget.id);
     if (!c) return;
+    const currentVal = numpadTarget.field === 'hp' ? c.hp : c.initiative;
     let newStr;
     if (!numpadTyping) {
-      // First digit: replace HP entirely
+      pushUndo(c.id, numpadTarget.field, currentVal);
       newStr = String(digit);
       setNumpadTyping(true);
     } else {
-      // Subsequent digits: append
-      newStr = String(c.hp) + String(digit);
+      newStr = String(currentVal) + String(digit);
     }
-    const newHp = parseInt(newStr, 10) || 0;
-    updateCombatantHp(c.id, newHp);
+    const newVal = parseInt(newStr, 10) || 0;
+    if (numpadTarget.field === 'hp') updateCombatantHp(c.id, newVal);
+    else updateCombatantInit(c.id, newVal);
   };
 
   const handleNumpadClear = () => {
     if (!numpadTarget) return;
     const c = allCombatants.find(x => x.id === numpadTarget.id);
     if (!c) return;
-    const currentStr = String(c.hp);
-    if (currentStr.length <= 1) {
-      updateCombatantHp(c.id, 0);
-    } else {
-      updateCombatantHp(c.id, parseInt(currentStr.slice(0, -1), 10));
-    }
+    const currentVal = numpadTarget.field === 'hp' ? c.hp : c.initiative;
+    const currentStr = String(currentVal);
+    const newVal = currentStr.length <= 1 ? 0 : parseInt(currentStr.slice(0, -1), 10);
+    if (numpadTarget.field === 'hp') updateCombatantHp(c.id, newVal);
+    else updateCombatantInit(c.id, newVal);
   };
 
   const handleNumpadUndo = () => {
     if (undoStack.length === 0) return;
     const [last, ...rest] = undoStack;
-    updateCombatantHp(last.id, last.value);
+    if (last.field === 'hp') updateCombatantHp(last.id, last.value);
+    else if (last.field === 'init') updateCombatantInit(last.id, last.value);
     setUndoStack(rest);
   };
 
@@ -638,14 +921,17 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
         // Decrement effects on all PCs and monsters
         const decrementEffects = (list) => list.map(c => ({
           ...c,
-          effects: c.effects
-            .map(e => e.rounds > 0 ? { ...e, rounds: e.rounds - 1 } : e)
-            .filter(e => e.rounds !== 0) // remove expired (rounds was 1, now 0)
+          effects: c.effects.reduce((acc, e) => {
+            if (e.rounds === 0) { acc.push(e); return acc; }  // permanente, tieni
+            if (e.rounds > 1) { acc.push({ ...e, rounds: e.rounds - 1 }); return acc; }
+            return acc;  // rounds === 1 → scaduto, rimuovi
+          }, [])
         }));
-        // Decrement environment effects
-        const newEnvEffects = prev.environment.effects
-          .map(e => e.rounds > 0 ? { ...e, rounds: e.rounds - 1 } : e)
-          .filter(e => e.rounds !== 0);
+        const newEnvEffects = prev.environment.effects.reduce((acc, e) => {
+          if (e.rounds === 0) { acc.push(e); return acc; }
+          if (e.rounds > 1) { acc.push({ ...e, rounds: e.rounds - 1 }); return acc; }
+          return acc;
+        }, []);
         return {
           ...prev,
           round: newRound,
@@ -655,7 +941,8 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
           skippedIds: [],
           pcs: decrementEffects(prev.pcs),
           monsters: decrementEffects(prev.monsters),
-          environment: { ...prev.environment, effects: newEnvEffects }
+          environment: { ...prev.environment, effects: newEnvEffects },
+          log: [{ round: newRound, turn: 1, text: `Round ${newRound}` }, ...prev.log].slice(0, 50)
         };
       }
       return { ...prev, round: newRound };
@@ -663,17 +950,23 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
   };
 
   const handleTurnChange = (delta) => {
+    if (delta > 0) {
+      const currentIdx = initBands.indexOf(state.currentInit);
+      if (currentIdx >= initBands.length - 1) {
+        // Last band — auto Round+1
+        handleRoundChange(1);
+        return;
+      }
+    }
     setState(prev => {
       const currentIdx = initBands.indexOf(prev.currentInit);
       const newIdx = currentIdx + delta;
-      if (newIdx < 0 || newIdx >= initBands.length) return prev; // can't go beyond bounds
+      if (newIdx < 0) return prev;
       const newInit = initBands[newIdx];
       let newActed;
       if (delta > 0) {
-        // Moving forward: add current band to acted
         newActed = [...prev.actedInits, prev.currentInit];
       } else {
-        // Moving backward: remove the band we're going back to from acted
         newActed = prev.actedInits.filter(i => i !== newInit);
       }
       return {
@@ -683,6 +976,158 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
         actedInits: newActed
       };
     });
+  };
+
+  // ── Initiative / Monsters ──
+
+  const handleInitRangeChange = (field, delta) => {
+    setState(prev => {
+      const key = field === 'min' ? 'initMin' : 'initMax';
+      return { ...prev, [key]: Math.max(-100, Math.min(100, prev[key] + delta)) };
+    });
+  };
+
+  const handleToggleDescending = () => {
+    setState(prev => ({ ...prev, descending: !prev.descending }));
+  };
+
+  const handleRollMonsters = () => {
+    setState(prev => {
+      const lo = Math.min(prev.initMin, prev.initMax);
+      const hi = Math.max(prev.initMin, prev.initMax);
+      return {
+        ...prev,
+        monsters: prev.monsters.map(m =>
+          m.hp > 0 ? { ...m, initiative: Math.floor(Math.random() * (hi - lo + 1)) + lo } : m
+        ),
+        log: [{ round: prev.round, turn: prev.turn, text: `Iniziativa mostri rollata (${lo}-${hi})` }, ...prev.log].slice(0, 50)
+      };
+    });
+  };
+
+  const handleAddMonster = () => {
+    if (!addMonsterForm?.name?.trim() || !addMonsterForm?.hp) return;
+    const hp = Math.max(1, parseInt(addMonsterForm.hp, 10) || 1);
+    const name = addMonsterForm.name.trim();
+    setState(prev => ({
+      ...prev,
+      monsters: [...prev.monsters, {
+        id: 'mon-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        name, hp, hpMax: hp, initiative: 0,
+        effects: [], sheet: ''
+      }],
+      log: [{ round: prev.round, turn: prev.turn, text: `${name} aggiunto (${hp} HP)` }, ...prev.log].slice(0, 50)
+    }));
+    setAddMonsterForm(null);
+  };
+
+  // ── Conditions ──
+
+  const handleDurationChange = (delta) => {
+    setState(prev => ({
+      ...prev,
+      conditionDuration: Math.max(0, Math.min(99, (prev.conditionDuration ?? 3) + delta))
+    }));
+  };
+
+  const handleApplyCondition = (name) => {
+    setState(prev => {
+      if (!prev.selectedId) return prev;
+      const target = [...prev.pcs, ...prev.monsters].find(c => c.id === prev.selectedId);
+      const hasIt = target?.effects.some(e => e.name === name);
+      const updateList = (list) => list.map(c => {
+        if (c.id !== prev.selectedId) return c;
+        return {
+          ...c,
+          effects: hasIt
+            ? c.effects.filter(e => e.name !== name)
+            : [...c.effects, { name, rounds: prev.conditionDuration ?? 3 }]
+        };
+      });
+      const inPcs = prev.pcs.some(p => p.id === prev.selectedId);
+      const dur = prev.conditionDuration ?? 3;
+      const logText = hasIt
+        ? `${name} rimosso da ${target?.name}`
+        : `${name} applicato a ${target?.name}${dur > 0 ? ` (${dur}r)` : ' (perm.)'}`;
+      return {
+        ...prev,
+        pcs: inPcs ? updateList(prev.pcs) : prev.pcs,
+        monsters: inPcs ? prev.monsters : updateList(prev.monsters),
+        log: [{ round: prev.round, turn: prev.turn, text: logText }, ...prev.log].slice(0, 50)
+      };
+    });
+  };
+
+  const handleEffectClick = (combatantId, effectIdx) => {
+    setState(prev => {
+      const updateList = (list) => list.map(c => {
+        if (c.id !== combatantId) return c;
+        const effects = [];
+        for (let i = 0; i < c.effects.length; i++) {
+          if (i !== effectIdx) { effects.push(c.effects[i]); continue; }
+          const e = c.effects[i];
+          if (e.rounds === 0 || e.rounds === 1) continue; // remove permanent or last round
+          effects.push({ ...e, rounds: e.rounds - 1 }); // decrement
+        }
+        return { ...c, effects };
+      });
+      const inPcs = prev.pcs.some(p => p.id === combatantId);
+      return {
+        ...prev,
+        pcs: inPcs ? updateList(prev.pcs) : prev.pcs,
+        monsters: inPcs ? prev.monsters : updateList(prev.monsters)
+      };
+    });
+  };
+
+  // ── Log, Reset, Environment ──
+
+  const addLogEntry = (text) => {
+    setState(prev => ({
+      ...prev,
+      log: [{ round: prev.round, turn: prev.turn, text }, ...prev.log].slice(0, 50)
+    }));
+  };
+
+  const handleReset = () => {
+    setState(prev => ({
+      ...prev,
+      round: 1, turn: 1, currentInit: null,
+      selectedId: null, targetIds: [], actedInits: [], skippedIds: [],
+      log: [],
+      status: 'new',
+      pcs: prev.pcs.map(p => ({ ...p, hp: p.hpInitial || p.hpMax || 10, effects: [], initiative: 0 })),
+      monsters: prev.monsters.map(m => ({ ...m, hp: m.hpInitial || m.hpMax || 10, effects: [], initiative: 0 })),
+      environment: { ...prev.environment, effects: [] }
+    }));
+    setNumpadTarget(null);
+    setNumpadTyping(false);
+    setUndoStack([]);
+    setAddMonsterForm(null);
+  };
+
+  const handleEnvEffectClick = (effectIdx) => {
+    setState(prev => {
+      const effects = [];
+      for (let i = 0; i < prev.environment.effects.length; i++) {
+        if (i !== effectIdx) { effects.push(prev.environment.effects[i]); continue; }
+        const e = prev.environment.effects[i];
+        if (e.rounds === 0 || e.rounds === 1) continue;
+        effects.push({ ...e, rounds: e.rounds - 1 });
+      }
+      return { ...prev, environment: { ...prev.environment, effects } };
+    });
+  };
+
+  const handleAddEnvEffect = (name, rounds) => {
+    setState(prev => ({
+      ...prev,
+      environment: {
+        ...prev.environment,
+        effects: [...prev.environment.effects, { name, rounds }]
+      }
+    }));
+    addLogEntry(`Ambiente: ${name} aggiunto${rounds > 0 ? ` (${rounds}r)` : ''}`);
   };
 
   // Find data for detail sheets
@@ -700,11 +1145,13 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
     isSkipped: (state.skippedIds || []).includes(c.id),
     currentInit: state.currentInit,
     hpSelected: numpadTarget?.id === c.id && numpadTarget?.field === 'hp',
+    initSelected: numpadTarget?.id === c.id && numpadTarget?.field === 'init',
     onSelect: handleSelect,
     onTargetToggle: handleTargetToggle,
     onHpChange: handleHpChange,
     onHpSelect: handleHpSelect,
-    onSkipToggle: handleSkipToggle
+    onSkipToggle: handleSkipToggle,
+    onEffectClick: handleEffectClick
   });
 
   return (
@@ -724,7 +1171,7 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
         }}
       >
         {/* Top Bar */}
-        <TopBar round={state.round} turn={state.turn} onRoundChange={handleRoundChange} onTurnChange={handleTurnChange} onClose={onClose} />
+        <TopBar encounterName={state.name} round={state.round} turn={state.turn} initMin={state.initMin} initMax={state.initMax} descending={state.descending} onRoundChange={handleRoundChange} onTurnChange={handleTurnChange} onInitRangeChange={handleInitRangeChange} onToggleDescending={handleToggleDescending} onRollMonsters={handleRollMonsters} onReset={handleReset} onBack={onBack} onComplete={onComplete} onClose={onClose} />
 
         {/* Main content */}
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
@@ -744,7 +1191,7 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
 
             {/* Environment Card */}
             <div style={{ padding: '6px 8px 0' }}>
-              <EnvironmentCard />
+              <EnvironmentCard environment={state.environment} onEffectClick={handleEnvEffectClick} onAddEffect={handleAddEnvEffect} />
             </div>
 
             {/* Column Headers */}
@@ -828,18 +1275,70 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
                 </>
               )}
 
-              {/* Add monster button */}
-              <div style={{ textAlign: 'center', padding: '8px' }}>
-                <span style={{
-                  fontSize: '11px', padding: '2px 10px', borderRadius: '4px',
-                  border: '0.5px solid var(--color-info)', color: 'var(--color-info)',
-                  cursor: 'pointer'
-                }}>+ Aggiungi mostro</span>
+              {/* Add monster */}
+              <div style={{ padding: '8px', display: 'flex', justifyContent: 'center' }}>
+                {addMonsterForm === null ? (
+                  <span
+                    onClick={() => setAddMonsterForm({ name: '', hp: '' })}
+                    style={{
+                      fontSize: '11px', padding: '4px 14px', borderRadius: '4px',
+                      border: '0.5px solid var(--color-info)', color: 'var(--color-info)',
+                      cursor: 'pointer'
+                    }}
+                  >+ Aggiungi mostro</span>
+                ) : (
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                    <input
+                      autoFocus
+                      value={addMonsterForm.name}
+                      onChange={e => setAddMonsterForm(prev => ({ ...prev, name: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') handleAddMonster(); if (e.key === 'Escape') setAddMonsterForm(null); }}
+                      placeholder="Nome"
+                      style={{
+                        width: '120px', padding: '4px 8px', fontSize: '12px', minHeight: '28px',
+                        background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+                        borderRadius: '4px', color: 'var(--text-primary)', outline: 'none'
+                      }}
+                    />
+                    <input
+                      value={addMonsterForm.hp}
+                      onChange={e => setAddMonsterForm(prev => ({ ...prev, hp: e.target.value.replace(/\D/g, '') }))}
+                      onKeyDown={e => { if (e.key === 'Enter') handleAddMonster(); if (e.key === 'Escape') setAddMonsterForm(null); }}
+                      placeholder="HP"
+                      style={{
+                        width: '50px', padding: '4px 8px', fontSize: '12px', minHeight: '28px',
+                        background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+                        borderRadius: '4px', color: 'var(--text-primary)', outline: 'none', textAlign: 'center'
+                      }}
+                    />
+                    <span
+                      onClick={handleAddMonster}
+                      style={{
+                        fontSize: '11px', padding: '4px 10px', borderRadius: '4px', minHeight: '28px',
+                        background: 'var(--color-info-bg)', border: '1px solid var(--color-info)',
+                        color: 'var(--color-info)', cursor: 'pointer', display: 'flex', alignItems: 'center',
+                        fontWeight: '500'
+                      }}
+                    >Aggiungi</span>
+                    <span
+                      onClick={() => setAddMonsterForm(null)}
+                      style={{
+                        fontSize: '14px', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px'
+                      }}
+                    >✕</span>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Conditions Row */}
-            <ConditionsRow />
+            <ConditionsRow
+              selectedId={state.selectedId}
+              activeEffects={allCombatants.find(c => c.id === state.selectedId)?.effects || []}
+              duration={state.conditionDuration ?? 3}
+              onDurationChange={handleDurationChange}
+              onApplyCondition={handleApplyCondition}
+            />
           </div>
 
           {/* Detail Sheets (right column) */}
@@ -855,8 +1354,130 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
         </div>
 
         {/* Combat Log */}
-        <CombatLog />
+        <CombatLog log={state.log} />
       </div>
     </div>
+  );
+}
+
+// ── Main Wrapper ──
+
+const EMPTY_COMBAT_DATA = { encounters: [], activeEncounterId: null };
+
+function createNewEncounter(name, description, players) {
+  // Create PG combatants from project players
+  const pcs = (players || []).filter(p => p.characterName).map(p => ({
+    id: 'pc-' + p.id,
+    sourceId: p.id,
+    type: 'pc',
+    name: p.characterName,
+    hp: 10,
+    hpMax: 10,
+    hpInitial: 10,
+    initiative: 0,
+    effects: [],
+    enabled: true,
+    sheet: p.characterName + (p.playerName ? ` (${p.playerName})` : '') + '\nHP: da impostare'
+  }));
+  return {
+    id: 'enc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+    name,
+    description,
+    status: 'new',
+    pcs,
+    monsters: [],
+    environment: { name, effects: [] },
+    log: [],
+    round: 1,
+    turn: 1,
+    currentInit: null,
+    selectedId: null,
+    targetIds: [],
+    actedInits: [],
+    skippedIds: [],
+    conditionDuration: 3,
+    initMin: 0,
+    initMax: 20,
+    descending: true
+  };
+}
+
+export default function CombatTrackerPanel({ combatData, onCombatDataChange, players, projectPath, onClose }) {
+  const [data, setData] = useState(() => combatData || EMPTY_COMBAT_DATA);
+  const initialRender = useRef(true);
+
+  // Sync to parent
+  useEffect(() => {
+    if (initialRender.current) { initialRender.current = false; return; }
+    onCombatDataChange?.(data);
+  }, [data]);
+
+  const activeEncounter = data.activeEncounterId
+    ? data.encounters.find(e => e.id === data.activeEncounterId) || null
+    : null;
+
+  const handleCreateEncounter = (name, description) => {
+    const enc = createNewEncounter(name, description, players);
+    setData(prev => ({
+      ...prev,
+      encounters: [...prev.encounters, enc],
+      activeEncounterId: enc.id
+    }));
+  };
+
+  const handleOpenEncounter = (id) => {
+    setData(prev => ({ ...prev, activeEncounterId: id }));
+  };
+
+  const handleDeleteEncounter = (id) => {
+    setData(prev => ({
+      ...prev,
+      encounters: prev.encounters.filter(e => e.id !== id),
+      activeEncounterId: prev.activeEncounterId === id ? null : prev.activeEncounterId
+    }));
+  };
+
+  const handleEncounterChange = (updatedEncounter) => {
+    setData(prev => ({
+      ...prev,
+      encounters: prev.encounters.map(e => e.id === updatedEncounter.id ? updatedEncounter : e)
+    }));
+  };
+
+  const handleBack = () => {
+    setData(prev => ({ ...prev, activeEncounterId: null }));
+  };
+
+  const handleComplete = () => {
+    setData(prev => ({
+      ...prev,
+      encounters: prev.encounters.map(e =>
+        e.id === prev.activeEncounterId ? { ...e, status: 'completed' } : e
+      ),
+      activeEncounterId: null
+    }));
+  };
+
+  if (activeEncounter) {
+    return (
+      <CombatView
+        key={activeEncounter.id}
+        encounter={activeEncounter}
+        onEncounterChange={handleEncounterChange}
+        onBack={handleBack}
+        onComplete={handleComplete}
+        onClose={onClose}
+      />
+    );
+  }
+
+  return (
+    <EncounterList
+      encounters={data.encounters}
+      onCreateEncounter={handleCreateEncounter}
+      onOpenEncounter={handleOpenEncounter}
+      onDeleteEncounter={handleDeleteEncounter}
+      onClose={onClose}
+    />
   );
 }
