@@ -57,15 +57,45 @@ export default function ProjectSelector({ onProjectOpen, onOpenAdventures }) {
       justifyContent: 'center',
       WebkitAppRegion: 'drag'
     }}>
-      {/* Window controls in top-right */}
+      {/* Top-right: settings + window controls */}
       <div style={{
         position: 'fixed',
         top: '12px',
         right: '16px',
         display: 'flex',
+        alignItems: 'center',
         gap: '4px',
         WebkitAppRegion: 'no-drag'
       }}>
+        <button
+          onClick={() => setShowGlobalSettings(true)}
+          title="Impostazioni globali"
+          style={{
+            background: 'none',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: '6px',
+            padding: '4px 10px',
+            color: 'var(--text-tertiary)',
+            fontSize: '12px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            transition: 'all 0.2s',
+            marginRight: '8px'
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.borderColor = 'var(--accent)';
+            e.currentTarget.style.color = 'var(--accent)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.borderColor = 'var(--border-subtle)';
+            e.currentTarget.style.color = 'var(--text-tertiary)';
+          }}
+        >
+          <span style={{ fontSize: '14px' }}>&#9881;</span>
+          Impostazioni
+        </button>
         <WinBtn icon="─" onClick={() => window.electronAPI?.windowMinimize()} />
         <WinBtn icon="□" onClick={() => window.electronAPI?.windowMaximize()} />
         <WinBtn icon="✕" onClick={() => window.electronAPI?.windowClose()} isClose />
@@ -200,40 +230,6 @@ export default function ProjectSelector({ onProjectOpen, onOpenAdventures }) {
           </div>
         )}
       </div>
-
-      {/* Global settings button — bottom left */}
-      <button
-        onClick={() => setShowGlobalSettings(true)}
-        title="Impostazioni globali"
-        style={{
-          position: 'fixed',
-          bottom: '16px',
-          left: '16px',
-          background: 'none',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: '8px',
-          padding: '8px 12px',
-          color: 'var(--text-tertiary)',
-          fontSize: '13px',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          transition: 'all 0.2s',
-          WebkitAppRegion: 'no-drag'
-        }}
-        onMouseEnter={e => {
-          e.currentTarget.style.borderColor = 'var(--accent)';
-          e.currentTarget.style.color = 'var(--accent)';
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.borderColor = 'var(--border-subtle)';
-          e.currentTarget.style.color = 'var(--text-tertiary)';
-        }}
-      >
-        <span style={{ fontSize: '16px' }}>&#9881;</span>
-        Impostazioni globali
-      </button>
 
       {showGlobalSettings && (
         <GlobalSettingsModal onClose={() => setShowGlobalSettings(false)} />

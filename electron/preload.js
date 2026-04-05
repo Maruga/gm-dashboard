@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onUpdateError: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('update-error', h); return () => ipcRenderer.removeListener('update-error', h); },
   installUpdate: () => ipcRenderer.invoke('install-update'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  startUpdateDownload: () => ipcRenderer.invoke('start-update-download'),
 
   // Telegram
   telegramVerifyToken: (token) => ipcRenderer.invoke('telegram-verify-token', token),

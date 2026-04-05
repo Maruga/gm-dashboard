@@ -3,7 +3,7 @@ import {
   ChevronLeft, ChevronRight, Bell, Calendar,
   Timer, Play, Pause, RotateCcw,
   Users, StickyNote, CheckSquare, Highlighter, Network, MessageCircle, MessageCircleWarning, FileText,
-  BookOpen, Monitor, Eye, Search, UserCircle,
+  BookOpen, Swords, Monitor, Eye, Search, UserCircle,
   Info, Settings, Globe, FolderOpen, FolderRoot,
   Minus, Square, X, LayoutGrid
 } from 'lucide-react';
@@ -729,7 +729,7 @@ function TopMenu({
   gameDate, onPrevDay, onNextDay, onSetGameDate, hasEvents,
   players, onOpenCharacterSheet, calendarEvents, botRunning,
   chatMessages, chatOpen, chatFlash, gmPrivateAlert, onClearGmPrivateAlert, onToggleChat,
-  onOpenReference, referenceOpen,
+  onOpenReference, referenceOpen, onOpenCombatTracker,
   highlightEnabled, onToggleHighlight,
   firebaseUser, onFirebaseUserChange,
   panelVisibility, layoutPresets, onApplyPreset, onResetLayout
@@ -1032,6 +1032,7 @@ function TopMenu({
         {/* ── Gruppo 5: RIFERIMENTO ── */}
         <Separator />
         <IconBtn Icon={BookOpen} tooltip="Manuali di riferimento" onClick={onOpenReference} active={referenceOpen} />
+        <IconBtn Icon={Swords} tooltip="Combat Tracker" onClick={onOpenCombatTracker} />
 
         {/* ── Gruppo: LAYOUT ── */}
         <Separator />

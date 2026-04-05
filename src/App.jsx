@@ -19,6 +19,7 @@ import ChecklistPanel from './components/ChecklistPanel';
 import InfoPanel from './components/InfoPanel';
 import AdventuresPanel from './components/AdventuresPanel';
 import RelationsPanel from './components/RelationsPanel';
+import CombatTrackerPanel from './components/CombatTrackerPanel';
 import RelationsView from './components/RelationsView';
 import PanelToolbar from './components/PanelToolbar';
 import PanelSearch from './components/PanelSearch';
@@ -156,6 +157,8 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   const [panelVisibility, setPanelVisibility] = useState(DEFAULT_PROJECT_STATE.panelVisibility);
   const [layoutPresets, setLayoutPresets] = useState([]);
   const [referenceOpen, setReferenceOpen] = useState(false);
+  const [combatTrackerOpen, setCombatTrackerOpen] = useState(false);
+  const [combatData, setCombatData] = useState(null);
   const [referenceManuals, setReferenceManuals] = useState([]);
   const [referenceScrollPositions, setReferenceScrollPositions] = useState({});
   const [referenceSelectedId, setReferenceSelectedId] = useState(null);
@@ -1484,6 +1487,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     setGmPrivateAlert(false);
   }, []);
   const handleToggleReference = useCallback(() => setReferenceOpen(v => !v), []);
+  const handleToggleCombatTracker = useCallback(() => setCombatTrackerOpen(v => !v), []);
   const handleToggleHighlight = useCallback(() => setHighlightKeywords(prev => ({ ...prev, enabled: !prev.enabled })), []);
   const handleOpenAdventures = useCallback(() => setAdventuresOpen(true), []);
   const handleOpenProjectFolder = useCallback(() => window.electronAPI.openProjectFolder(projectPath), [projectPath]);
@@ -1554,6 +1558,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         onClearGmPrivateAlert={() => setGmPrivateAlert(false)}
         onToggleChat={handleToggleChat}
         onOpenReference={handleToggleReference}
+        onOpenCombatTracker={handleToggleCombatTracker}
         referenceOpen={referenceOpen}
         highlightEnabled={highlightKeywords.enabled}
         onToggleHighlight={handleToggleHighlight}
@@ -2113,6 +2118,9 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           highlightKeywords={highlightKeywords}
         />
       )}
+      {combatTrackerOpen && (
+        <CombatTrackerPanel combatData={combatData} onCombatDataChange={setCombatData} onClose={() => setCombatTrackerOpen(false)} />
+      )}
       {chatOpen && (
         <TelegramChat
           players={players}
@@ -2270,39 +2278,80 @@ function BroadcastBanner() {
 }
 
 function UpdateToast() {
-  const [updateReady, setUpdateReady] = useState(null);
-  const [downloading, setDownloading] = useState(null); // { version, percent }
-  const [dismissed, setDismissed] = useState(false);
+  // Fasi: null → 'available' → 'downloading' → 'ready'
+  const [phase, setPhase] = useState(null);
+  const [version, setVersion] = useState(null);
+  const [percent, setPercent] = useState(0);
 
   useEffect(() => {
     if (!window.electronAPI) return;
     const unsub1 = window.electronAPI.onUpdateAvailable?.((data) => {
-      setDownloading({ version: data.version, percent: 0 });
+      setVersion(data.version);
+      setPhase('available');
     });
     const unsub2 = window.electronAPI.onUpdateProgress?.((data) => {
-      setDownloading(prev => prev ? { ...prev, percent: data.percent } : null);
+      setPercent(data.percent);
     });
     const unsub3 = window.electronAPI.onUpdateDownloaded?.((data) => {
-      setDownloading(null);
-      setUpdateReady(data.version);
-      setDismissed(false);
+      setVersion(data.version);
+      setPhase('ready');
     });
     return () => { unsub1?.(); unsub2?.(); unsub3?.(); };
   }, []);
 
-  // Show download progress bar
-  if (downloading && !updateReady) {
+  // Auto-install dopo 2 secondi dal download completato
+  useEffect(() => {
+    if (phase !== 'ready') return;
+    const timer = setTimeout(() => {
+      window.electronAPI?.installUpdate?.();
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [phase]);
+
+  const handleStartDownload = () => {
+    setPhase('downloading');
+    setPercent(0);
+    window.electronAPI?.startUpdateDownload?.();
+  };
+
+  if (!phase) return null;
+
+  const barBase = {
+    position: 'fixed', bottom: '0', left: '0', right: '0',
+    height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    gap: '12px', zIndex: 9999, fontSize: '13px', fontWeight: 'bold',
+    animation: 'slideUp 0.4s ease-out', WebkitAppRegion: 'no-drag', pointerEvents: 'auto'
+  };
+
+  // Fase 1: aggiornamento disponibile
+  if (phase === 'available') {
     return (
-      <div style={{
-        position: 'fixed', bottom: '0', left: '0', right: '0',
-        height: '44px', background: 'var(--bg-panel)',
-        borderTop: '2px solid var(--accent)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        gap: '12px', zIndex: 9999, fontSize: '13px', fontWeight: 'bold',
-        color: 'var(--text-primary)', animation: 'slideUp 0.4s ease-out'
-      }}>
+      <div style={{ ...barBase, background: 'var(--bg-panel)', borderTop: '2px solid var(--accent)', color: 'var(--text-primary)' }}>
         <span style={{ color: 'var(--accent)' }}>
-          Scaricando v{downloading.version}… {downloading.percent}%
+          Aggiornamento v{version} disponibile
+        </span>
+        <button
+          onClick={handleStartDownload}
+          style={{
+            background: 'var(--accent)', border: 'none', borderRadius: '4px',
+            padding: '5px 16px', color: 'var(--bg-main)', fontSize: '12px',
+            fontWeight: 'bold', cursor: 'pointer', transition: 'opacity 0.15s'
+          }}
+          onMouseEnter={e => { e.currentTarget.style.opacity = '0.85'; }}
+          onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
+        >
+          Aggiorna
+        </button>
+      </div>
+    );
+  }
+
+  // Fase 2: download in corso
+  if (phase === 'downloading') {
+    return (
+      <div style={{ ...barBase, background: 'var(--bg-panel)', borderTop: '2px solid var(--accent)', color: 'var(--text-primary)' }}>
+        <span style={{ color: 'var(--accent)' }}>
+          Scaricando v{version}… {percent}%
         </span>
         <div style={{
           width: '200px', height: '6px', borderRadius: '3px',
@@ -2310,72 +2359,23 @@ function UpdateToast() {
         }}>
           <div style={{
             height: '100%', borderRadius: '3px', background: 'var(--accent)',
-            width: `${downloading.percent}%`, transition: 'width 0.3s ease'
+            width: `${percent}%`, transition: 'width 0.3s ease'
           }} />
         </div>
       </div>
     );
   }
 
-  if (!updateReady || dismissed) return null;
+  // Fase 3: download completato, auto-install tra 2s
+  if (phase === 'ready') {
+    return (
+      <div style={{ ...barBase, background: 'var(--accent)', color: 'var(--bg-main)' }}>
+        <span>Download completato — chiudo e installo…</span>
+      </div>
+    );
+  }
 
-  return (
-    <div style={{
-      position: 'fixed',
-      bottom: '0',
-      left: '0',
-      right: '0',
-      height: '44px',
-      background: 'var(--accent)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: '12px',
-      zIndex: 9999,
-      fontSize: '13px',
-      color: 'var(--bg-main)',
-      animation: 'slideUp 0.4s ease-out'
-    }}>
-      <span style={{ fontWeight: 'bold' }}>
-        Aggiornamento v{updateReady} pronto.
-      </span>
-      <button
-        onClick={() => window.electronAPI.installUpdate()}
-        style={{
-          background: 'var(--bg-main)',
-          border: '1px solid transparent',
-          borderRadius: '4px',
-          padding: '4px 12px',
-          color: 'var(--accent)',
-          fontSize: '12px',
-          fontWeight: 'bold',
-          cursor: 'pointer',
-          transition: 'all 0.15s'
-        }}
-        onMouseEnter={e => { e.currentTarget.style.opacity = '0.85'; }}
-        onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
-      >
-        Riavvia e aggiorna
-      </button>
-      <button
-        onClick={() => setDismissed(true)}
-        style={{
-          background: 'none',
-          border: '1px solid rgba(255,255,255,0.4)',
-          borderRadius: '4px',
-          padding: '4px 12px',
-          color: 'inherit',
-          fontSize: '12px',
-          cursor: 'pointer',
-          transition: 'all 0.15s'
-        }}
-        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.7)'; }}
-        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.4)'; }}
-      >
-        Dopo
-      </button>
-    </div>
-  );
+  return null;
 }
 
 function GlobalStyles() {

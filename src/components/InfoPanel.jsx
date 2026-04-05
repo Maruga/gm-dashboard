@@ -14,20 +14,8 @@ const TECHNOLOGIES = [
   { name: 'electron-updater', version: '', desc: 'Aggiornamenti automatici' }
 ];
 
-// Update check states
-const UPDATE_IDLE = 'idle';
-const UPDATE_CHECKING = 'checking';
-const UPDATE_AVAILABLE = 'available';
-const UPDATE_DOWNLOADED = 'downloaded';
-const UPDATE_UP_TO_DATE = 'up-to-date';
-const UPDATE_ERROR = 'error';
-
 export default function InfoPanel({ onClose, onOpenSettings }) {
   const [version, setVersion] = useState('...');
-  const [updateState, setUpdateState] = useState(UPDATE_IDLE);
-  const [updateVersion, setUpdateVersion] = useState(null);
-  const [updateProgress, setUpdateProgress] = useState(0);
-  const [updateError, setUpdateError] = useState(null);
   const [diagCopied, setDiagCopied] = useState(false);
   const [diagExporting, setDiagExporting] = useState(false);
   const [diagExported, setDiagExported] = useState(false);
@@ -39,49 +27,6 @@ export default function InfoPanel({ onClose, onOpenSettings }) {
       if (v) setVersion(v);
     });
   }, []);
-
-  // Listen for update events
-  useEffect(() => {
-    if (!window.electronAPI) return;
-
-    const handleAvailable = (data) => {
-      setUpdateState(UPDATE_AVAILABLE);
-      setUpdateVersion(data.version);
-    };
-    const handleDownloaded = (data) => {
-      setUpdateState(UPDATE_DOWNLOADED);
-      setUpdateVersion(data.version);
-    };
-
-    const handleProgress = (data) => {
-      setUpdateProgress(data.percent);
-    };
-    const handleError = (data) => {
-      setUpdateState(UPDATE_ERROR);
-      setUpdateError(data.message);
-    };
-
-    window.electronAPI.onUpdateAvailable?.(handleAvailable);
-    window.electronAPI.onUpdateProgress?.(handleProgress);
-    window.electronAPI.onUpdateDownloaded?.(handleDownloaded);
-    window.electronAPI.onUpdateError?.(handleError);
-  }, []);
-
-  const handleCheckUpdate = () => {
-    if (!window.electronAPI?.checkForUpdates) return;
-    setUpdateState(UPDATE_CHECKING);
-    setUpdateError(null);
-    window.electronAPI.checkForUpdates();
-
-    // If no response in 10s, assume up-to-date
-    setTimeout(() => {
-      setUpdateState(prev => prev === UPDATE_CHECKING ? UPDATE_UP_TO_DATE : prev);
-    }, 10000);
-  };
-
-  const handleInstall = () => {
-    window.electronAPI?.installUpdate?.();
-  };
 
   const sectionTitle = {
     fontSize: '11px',
@@ -147,91 +92,6 @@ export default function InfoPanel({ onClose, onOpenSettings }) {
             Strumento per Game Master — gestione documenti, personaggi, calendario,
             note, checklist, manuali di riferimento e comunicazione con i giocatori via Telegram.
           </p>
-
-          {/* Updates */}
-          <div style={sectionTitle}>Aggiornamenti</div>
-          <div style={{
-            background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
-            borderRadius: '6px', padding: '14px 16px',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px'
-          }}>
-            <div style={{ flex: 1 }}>
-              {updateState === UPDATE_IDLE && (
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Versione corrente: <strong style={{ color: 'var(--text-primary)' }}>v{version}</strong>
-                </span>
-              )}
-              {updateState === UPDATE_CHECKING && (
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Controllo aggiornamenti in corso...
-                </span>
-              )}
-              {updateState === UPDATE_AVAILABLE && (
-                <div>
-                  <span style={{ fontSize: '12px', color: 'var(--color-warning)' }}>
-                    Versione <strong>v{updateVersion}</strong> — download in corso… {updateProgress}%
-                  </span>
-                  <div style={{
-                    marginTop: '6px', height: '4px', borderRadius: '2px',
-                    background: 'var(--border-subtle)', overflow: 'hidden'
-                  }}>
-                    <div style={{
-                      height: '100%', borderRadius: '2px',
-                      background: 'var(--accent)',
-                      width: `${updateProgress}%`,
-                      transition: 'width 0.3s ease'
-                    }} />
-                  </div>
-                </div>
-              )}
-              {updateState === UPDATE_DOWNLOADED && (
-                <span style={{ fontSize: '12px', color: 'var(--color-success)' }}>
-                  Versione <strong>v{updateVersion}</strong> pronta per l'installazione.
-                </span>
-              )}
-              {updateState === UPDATE_UP_TO_DATE && (
-                <span style={{ fontSize: '12px', color: 'var(--color-success)' }}>
-                  Sei aggiornato all'ultima versione.
-                </span>
-              )}
-              {updateState === UPDATE_ERROR && (
-                <span style={{ fontSize: '12px', color: 'var(--color-danger)' }}>
-                  Errore: {updateError || 'impossibile verificare aggiornamenti'}
-                </span>
-              )}
-            </div>
-
-            {updateState === UPDATE_DOWNLOADED ? (
-              <button onClick={handleInstall} style={{
-                background: 'none', border: '1px solid var(--color-success)',
-                borderRadius: '4px', padding: '6px 14px',
-                color: 'var(--color-success)', fontSize: '12px', fontWeight: '600',
-                cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap'
-              }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-success)'; e.currentTarget.style.color = 'var(--bg-main)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--color-success)'; }}
-              >
-                Riavvia e aggiorna
-              </button>
-            ) : (
-              <button
-                onClick={handleCheckUpdate}
-                disabled={updateState === UPDATE_CHECKING}
-                style={{
-                  background: 'none', border: '1px solid var(--border-default)',
-                  borderRadius: '4px', padding: '6px 14px',
-                  color: updateState === UPDATE_CHECKING ? 'var(--text-disabled)' : 'var(--accent)',
-                  fontSize: '12px', fontWeight: '600',
-                  cursor: updateState === UPDATE_CHECKING ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.2s', whiteSpace: 'nowrap'
-                }}
-                onMouseEnter={e => { if (updateState !== UPDATE_CHECKING) { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-elevated)'; } }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.background = 'none'; }}
-              >
-                {updateState === UPDATE_CHECKING ? '⏳ Controllo...' : 'Controlla aggiornamenti'}
-              </button>
-            )}
-          </div>
 
           {/* Credits */}
           <div style={sectionTitle}>Crediti</div>

@@ -261,7 +261,7 @@ app.whenReady().then(() => {
   if (isDev) {
     logDiag('update', 'Auto-update disabilitato in dev mode');
   } else {
-    autoUpdater.autoDownload = true;
+    autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = true;
 
     autoUpdater.on('checking-for-update', () => {
@@ -303,7 +303,7 @@ app.whenReady().then(() => {
       }
     });
 
-    setTimeout(() => autoUpdater.checkForUpdatesAndNotify(), 5000);
+    setTimeout(() => autoUpdater.checkForUpdatesAndNotify(), 500);
   }
 });
 
@@ -442,15 +442,77 @@ ipcMain.handle('remove-recent-project', (event, projectPath) => {
   return filtered;
 });
 
+// === Path conversion helpers (absolute ↔ relative for portability) ===
+function convertPath(filePath, projectPath, toRelative) {
+  if (!filePath || typeof filePath !== 'string') return filePath;
+  const normalized = filePath.replace(/\\/g, '/');
+  if (toRelative) {
+    if (!path.isAbsolute(normalized)) return normalized; // già relativo
+    return path.relative(projectPath, normalized).replace(/\\/g, '/');
+  } else {
+    if (path.isAbsolute(normalized)) return normalized; // già assoluto (retrocompat)
+    return path.resolve(projectPath, normalized).replace(/\\/g, '/');
+  }
+}
+
+function convertStatePaths(state, projectPath, toRelative) {
+  if (!state) return state;
+  const s = JSON.parse(JSON.stringify(state)); // deep clone
+  const c = (p) => convertPath(p, projectPath, toRelative);
+
+  // viewerDocument
+  if (s.viewerDocument?.path) s.viewerDocument.path = c(s.viewerDocument.path);
+
+  // calFile
+  if (s.calFile?.path) s.calFile.path = c(s.calFile.path);
+
+  // slotDocuments A/B/C
+  if (s.slotDocuments) {
+    for (const slot of ['A', 'B', 'C']) {
+      if (!Array.isArray(s.slotDocuments[slot])) continue;
+      s.slotDocuments[slot] = s.slotDocuments[slot].map(item => ({
+        ...item,
+        ...(item.path ? { path: c(item.path) } : {}),
+        ...(item.sourcePath ? { sourcePath: c(item.sourcePath) } : {})
+      }));
+    }
+  }
+
+  // notes
+  if (Array.isArray(s.notes)) {
+    s.notes = s.notes.map(n => n.sourcePath ? { ...n, sourcePath: c(n.sourcePath) } : n);
+  }
+
+  // checklist
+  if (Array.isArray(s.checklist)) {
+    s.checklist = s.checklist.map(item => item.sourcePath ? { ...item, sourcePath: c(item.sourcePath) } : item);
+  }
+
+  // viewerTabs
+  if (Array.isArray(s.viewerTabs)) {
+    s.viewerTabs = s.viewerTabs.map(tab => {
+      if (tab.file?.path) return { ...tab, file: { ...tab.file, path: c(tab.file.path) } };
+      return tab;
+    });
+  }
+
+  // savedMediaItems
+  if (Array.isArray(s.savedMediaItems)) {
+    s.savedMediaItems = s.savedMediaItems.map(item => item.path ? { ...item, path: c(item.path) } : item);
+  }
+
+  return s;
+}
+
 ipcMain.handle('get-project-state', (event, projectPath) => {
   const escapedPath = projectPath.replace(/\./g, '\\.');
   const state = store.get(`projectStates.${escapedPath}`);
-  return state ? decryptProjectState(state) : null;
+  return state ? convertStatePaths(decryptProjectState(state), projectPath, false) : null;
 });
 
 ipcMain.handle('save-project-state', (event, projectPath, state) => {
   const escapedPath = projectPath.replace(/\./g, '\\.');
-  store.set(`projectStates.${escapedPath}`, encryptProjectState(state));
+  store.set(`projectStates.${escapedPath}`, encryptProjectState(convertStatePaths(state, projectPath, true)));
 });
 
 // File system
@@ -777,6 +839,10 @@ ipcMain.handle('check-for-updates', () => {
   if (!isDev) {
     autoUpdater.checkForUpdatesAndNotify();
   }
+});
+
+ipcMain.handle('start-update-download', () => {
+  autoUpdater.downloadUpdate();
 });
 
 // === Telegram ===
