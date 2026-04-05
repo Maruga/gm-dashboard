@@ -53,6 +53,7 @@ const INITIAL_STATE = {
   selectedId: 'pc2',
   targetIds: ['mon2'],
   actedInits: [18, 15],
+  skippedIds: [],
   initMin: 0,
   initMax: 20,
   descending: true
@@ -76,7 +77,7 @@ function getInitBands() {
 
 // ── Sub-components ──
 
-function TopBar({ round, turn, onClose }) {
+function TopBar({ round, turn, onRoundChange, onTurnChange, onClose }) {
   const stepperStyle = {
     display: 'inline-flex', alignItems: 'center', gap: '4px',
     background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
@@ -84,7 +85,8 @@ function TopBar({ round, turn, onClose }) {
   };
   const stepBtn = {
     background: 'none', border: 'none', color: 'var(--text-tertiary)',
-    fontSize: '13px', cursor: 'pointer', padding: '0 2px', lineHeight: 1
+    fontSize: '15px', cursor: 'pointer', padding: '2px 4px', lineHeight: 1,
+    userSelect: 'none'
   };
   const labelStyle = { fontSize: '11px', color: 'var(--text-tertiary)', marginRight: '4px' };
 
@@ -105,16 +107,16 @@ function TopBar({ round, turn, onClose }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '3px 8px' }}>
           <span style={labelStyle}>Round</span>
-          <span style={stepBtn}>−</span>
+          <span style={stepBtn} onClick={() => onRoundChange?.(-1)}>−</span>
           <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', minWidth: '16px', textAlign: 'center' }}>{round}</span>
-          <span style={stepBtn}>+</span>
+          <span style={stepBtn} onClick={() => onRoundChange?.(1)}>+</span>
         </div>
         <div style={{ width: '1px', height: '20px', background: 'var(--border-subtle)' }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '3px 8px' }}>
           <span style={labelStyle}>Turno</span>
-          <span style={stepBtn}>−</span>
+          <span style={stepBtn} onClick={() => onTurnChange?.(-1)}>−</span>
           <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--color-warning)', minWidth: '16px', textAlign: 'center' }}>{turn}</span>
-          <span style={stepBtn}>+</span>
+          <span style={stepBtn} onClick={() => onTurnChange?.(1)}>+</span>
         </div>
       </div>
 
@@ -231,10 +233,11 @@ function NumPadCol({ hasTarget, undoCount, onModifier, onDigit, onClear, onUndo 
   );
 }
 
-function CombatantCard({ c, isPC, isActive, isTarget, hasActed, currentInit, hpSelected, onSelect, onTargetToggle, onHpChange, onHpSelect }) {
+function CombatantCard({ c, isPC, isActive, isTarget, hasActed, isSkipped, currentInit, hpSelected, onSelect, onTargetToggle, onHpChange, onHpSelect, onSkipToggle }) {
   const isDead = c.hp <= 0;
   const selected = isActive && !isDead;
   const hpC = hpColor(c.hp, c.hpMax);
+  const dimmed = hasActed || isSkipped;
 
   // Determine card style based on priority
   let borderLeft = 'none';
@@ -246,25 +249,22 @@ function CombatantCard({ c, isPC, isActive, isTarget, hasActed, currentInit, hpS
     opacity = 0.35;
     textDeco = 'line-through';
     bg = 'var(--bg-elevated)';
-  } else if (hasActed) {
+  } else if (dimmed) {
     opacity = 0.4;
     bg = 'var(--bg-elevated)';
   }
 
   if (!isDead) {
-    // Initiative turn indicator (base layer)
-    if (c.initiative === currentInit && !hasActed) {
+    if (c.initiative === currentInit && !dimmed) {
       borderLeft = '3px solid var(--color-warning)';
       bg = 'var(--color-warning-bg)';
     }
-    // Target overrides background only (keeps warning border if on current init)
     if (isTarget) {
       bg = 'var(--color-danger-bg)';
-      if (c.initiative !== currentInit || hasActed) {
+      if (c.initiative !== currentInit || dimmed) {
         borderLeft = '3px solid var(--color-danger)';
       }
     }
-    // Selected overrides everything
     if (selected) {
       borderLeft = '3px solid var(--color-success)';
       bg = 'var(--color-success-bg)';
@@ -273,24 +273,26 @@ function CombatantCard({ c, isPC, isActive, isTarget, hasActed, currentInit, hpS
 
   return (
     <div style={{
-      display: 'flex', alignItems: 'flex-start', gap: '6px',
+      display: 'flex', alignItems: 'stretch', gap: '6px',
       padding: '4px 6px', borderRadius: '3px',
       border: borderLeft === 'none' ? '0.5px solid var(--border-subtle)' : 'none',
       borderLeft, background: bg, opacity,
-      cursor: 'pointer', transition: 'all 0.15s'
+      cursor: 'pointer', transition: 'all 0.15s',
+      minHeight: '38px'
     }}>
       {/* Target checkbox */}
       <div
         onClick={(e) => { e.stopPropagation(); onTargetToggle?.(c.id); }}
         style={{
-          width: '11px', height: '11px', borderRadius: '2px', flexShrink: 0, marginTop: '2px',
+          width: '11px', borderRadius: '2px', flexShrink: 0, alignSelf: 'center',
+          height: '11px',
           border: isTarget ? '1.5px solid var(--color-danger)' : '1.5px solid var(--text-tertiary)',
           background: isTarget ? 'var(--color-danger)' : 'transparent'
         }}
       />
 
       {/* Name + effects */}
-      <div style={{ flex: 1, minWidth: 0 }} onClick={() => onSelect?.(c.id)}>
+      <div style={{ flex: 1, minWidth: 0, alignSelf: 'center' }} onClick={() => onSelect?.(c.id)}>
         <div style={{
           fontSize: '12px', fontWeight: '500', textDecoration: textDeco,
           color: isDead ? 'var(--text-secondary)' : 'var(--text-primary)',
@@ -313,15 +315,16 @@ function CombatantCard({ c, isPC, isActive, isTarget, hasActed, currentInit, hpS
         )}
       </div>
 
-      {/* HP — show + on dead for revive, full controls on alive */}
+      {/* HP — stretches full card height */}
       <div style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, gap: '0'
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'space-between', flexShrink: 0
       }}>
         <div
           onClick={(e) => { e.stopPropagation(); onHpChange?.(c.id, 1); }}
           style={{
             fontSize: '20px', color: 'var(--text-tertiary)', cursor: 'pointer',
-            lineHeight: 1, padding: '2px 6px', userSelect: 'none'
+            lineHeight: 1, padding: '0 6px', userSelect: 'none'
           }}
         >+</div>
         <span
@@ -339,7 +342,7 @@ function CombatantCard({ c, isPC, isActive, isTarget, hasActed, currentInit, hpS
             onClick={(e) => { e.stopPropagation(); onHpChange?.(c.id, -1); }}
             style={{
               fontSize: '20px', color: 'var(--text-tertiary)', cursor: 'pointer',
-              lineHeight: 1, padding: '2px 6px', userSelect: 'none'
+              lineHeight: 1, padding: '0 6px', userSelect: 'none'
             }}
           >−</div>
         )}
@@ -347,12 +350,18 @@ function CombatantCard({ c, isPC, isActive, isTarget, hasActed, currentInit, hpS
 
       {/* Skip button */}
       {!isDead && (
-        <div style={{
-          width: '14px', height: '14px', borderRadius: '50%',
-          border: '0.5px solid var(--border-subtle)', flexShrink: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '9px', color: 'var(--text-tertiary)', cursor: 'pointer', marginTop: '1px'
-        }}>S</div>
+        <div
+          onClick={(e) => { e.stopPropagation(); onSkipToggle?.(c.id); }}
+          style={{
+            width: '22px', height: '22px', borderRadius: '50%', alignSelf: 'center',
+            border: isSkipped ? '1px solid var(--color-warning)' : '0.5px solid var(--border-subtle)',
+            background: isSkipped ? 'var(--color-warning-bg)' : 'transparent',
+            flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '11px', color: isSkipped ? 'var(--color-warning)' : 'var(--text-tertiary)',
+            cursor: 'pointer', fontWeight: isSkipped ? '600' : '400'
+          }}
+        >S</div>
       )}
     </div>
   );
@@ -611,6 +620,71 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
     setUndoStack(rest);
   };
 
+  // ── Round / Turn / Skip ──
+
+  const handleSkipToggle = (id) => {
+    setState(prev => ({
+      ...prev,
+      skippedIds: (prev.skippedIds || []).includes(id)
+        ? prev.skippedIds.filter(s => s !== id)
+        : [...(prev.skippedIds || []), id]
+    }));
+  };
+
+  const handleRoundChange = (delta) => {
+    setState(prev => {
+      const newRound = Math.max(1, prev.round + delta);
+      if (delta > 0) {
+        // Decrement effects on all PCs and monsters
+        const decrementEffects = (list) => list.map(c => ({
+          ...c,
+          effects: c.effects
+            .map(e => e.rounds > 0 ? { ...e, rounds: e.rounds - 1 } : e)
+            .filter(e => e.rounds !== 0) // remove expired (rounds was 1, now 0)
+        }));
+        // Decrement environment effects
+        const newEnvEffects = prev.environment.effects
+          .map(e => e.rounds > 0 ? { ...e, rounds: e.rounds - 1 } : e)
+          .filter(e => e.rounds !== 0);
+        return {
+          ...prev,
+          round: newRound,
+          turn: 1,
+          currentInit: initBands[0] ?? prev.currentInit,
+          actedInits: [],
+          skippedIds: [],
+          pcs: decrementEffects(prev.pcs),
+          monsters: decrementEffects(prev.monsters),
+          environment: { ...prev.environment, effects: newEnvEffects }
+        };
+      }
+      return { ...prev, round: newRound };
+    });
+  };
+
+  const handleTurnChange = (delta) => {
+    setState(prev => {
+      const currentIdx = initBands.indexOf(prev.currentInit);
+      const newIdx = currentIdx + delta;
+      if (newIdx < 0 || newIdx >= initBands.length) return prev; // can't go beyond bounds
+      const newInit = initBands[newIdx];
+      let newActed;
+      if (delta > 0) {
+        // Moving forward: add current band to acted
+        newActed = [...prev.actedInits, prev.currentInit];
+      } else {
+        // Moving backward: remove the band we're going back to from acted
+        newActed = prev.actedInits.filter(i => i !== newInit);
+      }
+      return {
+        ...prev,
+        turn: Math.max(1, prev.turn + delta),
+        currentInit: newInit,
+        actedInits: newActed
+      };
+    });
+  };
+
   // Find data for detail sheets
   const selectedPc = state.pcs.find(p => p.id === state.selectedId) || null;
   const selectedMon = state.monsters.find(m => m.id === state.selectedId) || null;
@@ -623,12 +697,14 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
     c, isPC,
     isActive: c.id === state.selectedId,
     isTarget: state.targetIds.includes(c.id),
+    isSkipped: (state.skippedIds || []).includes(c.id),
     currentInit: state.currentInit,
     hpSelected: numpadTarget?.id === c.id && numpadTarget?.field === 'hp',
     onSelect: handleSelect,
     onTargetToggle: handleTargetToggle,
     onHpChange: handleHpChange,
-    onHpSelect: handleHpSelect
+    onHpSelect: handleHpSelect,
+    onSkipToggle: handleSkipToggle
   });
 
   return (
@@ -648,7 +724,7 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, onC
         }}
       >
         {/* Top Bar */}
-        <TopBar round={state.round} turn={state.turn} onClose={onClose} />
+        <TopBar round={state.round} turn={state.turn} onRoundChange={handleRoundChange} onTurnChange={handleTurnChange} onClose={onClose} />
 
         {/* Main content */}
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
