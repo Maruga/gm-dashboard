@@ -46,20 +46,16 @@ function TopBar({ encounterName, round, turn, initMin, initMax, descending, onRo
       display: 'flex', alignItems: 'center', gap: '12px',
       padding: '6px 12px', borderBottom: '1px solid var(--border-default)',
       background: 'var(--bg-panel)', flexShrink: 0,
-      WebkitAppRegion: 'drag'
+      WebkitAppRegion: 'no-drag'
     }}>
       {/* Back */}
       <span onClick={onBack} style={{
-        fontSize: '14px', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px 4px', userSelect: 'none',
-        WebkitAppRegion: 'no-drag'
+        fontSize: '14px', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px 4px', userSelect: 'none'
       }}>←</span>
 
-      <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-secondary)', marginRight: '8px' }}>
+      <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-secondary)', marginRight: '8px', WebkitAppRegion: 'drag', cursor: 'grab' }}>
         {encounterName || 'Combat Tracker'}
       </span>
-
-      {/* Controls — no-drag zone */}
-      <div style={{ display: 'contents', WebkitAppRegion: 'no-drag' }}>
 
       {/* Round + Turno */}
       <div style={{
@@ -164,7 +160,6 @@ function TopBar({ encounterName, round, turn, initMin, initMax, descending, onRo
         transition: 'color 0.15s'
       }}>✕</button>
 
-      </div>{/* end no-drag controls */}
     </div>
   );
 }
@@ -987,7 +982,10 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, bestiary
   const [addMonsterForm, setAddMonsterForm] = useState({ name: '', hp: '', qty: '1' });
   const [bestiarySearch, setBestiarySearch] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState(null);
-  const [addNpcForm, setAddNpcForm] = useState(null); // null | { name: '', hp: '' }
+  const [addNpcMode, setAddNpcMode] = useState(null); // null | 'choose' | 'manual' | 'bestiary'
+  const [addNpcForm, setAddNpcForm] = useState({ name: '', hp: '', qty: '1' });
+  const [npcBestiarySearch, setNpcBestiarySearch] = useState('');
+  const [npcSelectedTemplate, setNpcSelectedTemplate] = useState(null);
   const [saveToBestiaryId, setSaveToBestiaryId] = useState(null); // monster id being saved
   const [saveToBestiarySystem, setSaveToBestiarySystem] = useState('sys-generico');
   const [diceHistory, setDiceHistory] = useState([]);
@@ -1274,8 +1272,8 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, bestiary
     setAddMonsterForm({ name: '', hp: '', qty: '1' });
   };
 
-  const handleAddNpc = () => {
-    if (!addNpcForm?.name?.trim() || !addNpcForm?.hp) return;
+  const handleAddNpcManual = () => {
+    if (!addNpcForm.name?.trim() || !addNpcForm.hp) return;
     const hp = Math.max(1, parseInt(addNpcForm.hp, 10) || 1);
     const name = addNpcForm.name.trim();
     setState(prev => ({
@@ -1286,9 +1284,39 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, bestiary
         effects: [], attributes: [], templateId: null, sourceId: null,
         type: 'npc', enabled: true, sheet: ''
       }],
-      log: [{ round: prev.round, turn: prev.turn, text: `NPC ${name} aggiunto (${hp} HP)` }, ...prev.log].slice(0, 50)
+      log: [{ round: prev.round, turn: prev.turn, text: `PG/NPC ${name} aggiunto (${hp} HP)` }, ...prev.log].slice(0, 50)
     }));
-    setAddNpcForm(null);
+    setAddNpcMode(null);
+    setAddNpcForm({ name: '', hp: '', qty: '1' });
+  };
+
+  const handleAddNpcFromBestiary = () => {
+    if (!npcSelectedTemplate) return;
+    const t = npcSelectedTemplate;
+    const qty = Math.max(1, parseInt(addNpcForm.qty, 10) || 1);
+    const hpAttr = t.attributes.find(a => a.key.toLowerCase() === 'hp');
+    const hp = Math.max(1, parseInt(addNpcForm.hp || hpAttr?.value || '10', 10) || 10);
+    const baseName = addNpcForm.name?.trim() || t.name;
+    const newNpcs = [];
+    for (let i = 0; i < qty; i++) {
+      newNpcs.push({
+        id: 'npc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6) + '-' + i,
+        name: qty > 1 ? `${baseName} ${i + 1}` : baseName,
+        hp, hpMax: hp, hpInitial: hp, initiative: 0,
+        effects: [], attributes: t.attributes.map(a => ({ ...a })),
+        templateId: t.id, sourceId: null,
+        type: 'npc', enabled: true, sheet: ''
+      });
+    }
+    setState(prev => ({
+      ...prev,
+      pcs: [...prev.pcs, ...newNpcs],
+      log: [{ round: prev.round, turn: prev.turn, text: `PG/NPC ${baseName} aggiunto x${qty} (${hp} HP)` }, ...prev.log].slice(0, 50)
+    }));
+    setAddNpcMode(null);
+    setNpcSelectedTemplate(null);
+    setAddNpcForm({ name: '', hp: '', qty: '1' });
+    setNpcBestiarySearch('');
   };
 
   const handleToggleEnabled = (id) => {
@@ -1452,7 +1480,10 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, bestiary
     setBestiarySearch('');
     setSaveToBestiaryId(null);
     setSaveToBestiarySystem('sys-generico');
-    setAddNpcForm(null);
+    setAddNpcMode(null);
+    setAddNpcForm({ name: '', hp: '', qty: '1' });
+    setNpcBestiarySearch('');
+    setNpcSelectedTemplate(null);
     setDiceHistory([]);
     setLastRoll(null);
     setDiceBuffer('');
@@ -1707,52 +1738,112 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, bestiary
                 </>
               )}
 
-              {/* Add NPC + Add monster */}
-              <div style={{ display: 'flex', gap: '8px', padding: '8px', justifyContent: 'center' }}>
-                {/* Add NPC */}
-                {addNpcForm === null ? (
-                  <span onClick={() => setAddNpcForm({ name: '', hp: '' })} style={{
-                    fontSize: '11px', padding: '4px 14px', borderRadius: '4px',
-                    border: '1px dashed var(--color-info)', color: 'var(--color-info)', cursor: 'pointer'
-                  }}>+ NPC</span>
-                ) : (
-                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                    <input autoFocus value={addNpcForm.name}
-                      onChange={e => setAddNpcForm(prev => ({ ...prev, name: e.target.value }))}
-                      onKeyDown={e => { if (e.key === 'Enter') handleAddNpc(); if (e.key === 'Escape') setAddNpcForm(null); }}
-                      placeholder="Nome NPC" style={{
-                        width: '100px', padding: '4px 8px', fontSize: '12px', minHeight: '28px',
-                        background: 'var(--bg-input)', border: '1px dashed var(--border-default)',
-                        borderRadius: '4px', color: 'var(--text-primary)', outline: 'none'
-                      }} />
-                    <input value={addNpcForm.hp}
-                      onChange={e => setAddNpcForm(prev => ({ ...prev, hp: e.target.value.replace(/\D/g, '') }))}
-                      onKeyDown={e => { if (e.key === 'Enter') handleAddNpc(); if (e.key === 'Escape') setAddNpcForm(null); }}
-                      placeholder="HP" style={{
-                        width: '45px', padding: '4px', fontSize: '12px', minHeight: '28px',
-                        background: 'var(--bg-input)', border: '1px dashed var(--border-default)',
-                        borderRadius: '4px', color: 'var(--text-primary)', outline: 'none', textAlign: 'center'
-                      }} />
-                    <span onClick={handleAddNpc} style={{
-                      fontSize: '11px', padding: '4px 8px', borderRadius: '4px',
-                      background: 'var(--color-info-bg)', border: '1px solid var(--color-info)',
-                      color: 'var(--color-info)', cursor: 'pointer', fontWeight: '500'
-                    }}>OK</span>
-                    <span onClick={() => setAddNpcForm(null)} style={{ fontSize: '14px', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px' }}>✕</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Add monster */}
-              <div style={{ padding: '0 8px 8px' }}>
-                {addMonsterMode === null && (
-                  <div style={{ textAlign: 'center' }}>
+              {/* Add buttons — centered row */}
+              <div style={{ display: 'flex', gap: '0', padding: '6px 8px' }}>
+                <div style={{ width: '24px', flexShrink: 0 }} />
+                {/* Left: + PG/NPC */}
+                <div style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '2px 4px' }}>
+                  {addNpcMode === null && (
+                    <span onClick={() => setAddNpcMode('choose')} style={{
+                      fontSize: '11px', padding: '4px 14px', borderRadius: '4px',
+                      border: '1px dashed var(--color-info)', color: 'var(--color-info)', cursor: 'pointer'
+                    }}>+ PG/NPC</span>
+                  )}
+                  {addNpcMode === 'choose' && (
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <span onClick={() => setAddNpcMode('bestiary')} style={{
+                        fontSize: '11px', padding: '4px 10px', borderRadius: '4px',
+                        border: '1px solid var(--accent)', color: 'var(--accent)', cursor: 'pointer'
+                      }}>Bestiario</span>
+                      <span onClick={() => setAddNpcMode('manual')} style={{
+                        fontSize: '11px', padding: '4px 10px', borderRadius: '4px',
+                        border: '1px solid var(--border-default)', color: 'var(--text-secondary)', cursor: 'pointer'
+                      }}>Manuale</span>
+                      <span onClick={() => setAddNpcMode(null)} style={{ fontSize: '13px', color: 'var(--text-tertiary)', cursor: 'pointer' }}>✕</span>
+                    </div>
+                  )}
+                  {addNpcMode === 'manual' && (
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      <input autoFocus value={addNpcForm.name}
+                        onChange={e => setAddNpcForm(prev => ({ ...prev, name: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter') handleAddNpcManual(); if (e.key === 'Escape') setAddNpcMode(null); }}
+                        placeholder="Nome" style={{
+                          width: '100px', padding: '4px 8px', fontSize: '12px', minHeight: '28px',
+                          background: 'var(--bg-input)', border: '1px dashed var(--border-default)',
+                          borderRadius: '4px', color: 'var(--text-primary)', outline: 'none'
+                        }} />
+                      <input value={addNpcForm.hp}
+                        onChange={e => setAddNpcForm(prev => ({ ...prev, hp: e.target.value.replace(/\D/g, '') }))}
+                        onKeyDown={e => { if (e.key === 'Enter') handleAddNpcManual(); if (e.key === 'Escape') setAddNpcMode(null); }}
+                        placeholder="HP" style={{
+                          width: '45px', padding: '4px', fontSize: '12px', minHeight: '28px',
+                          background: 'var(--bg-input)', border: '1px dashed var(--border-default)',
+                          borderRadius: '4px', color: 'var(--text-primary)', outline: 'none', textAlign: 'center'
+                        }} />
+                      <span onClick={handleAddNpcManual} style={{
+                        fontSize: '11px', padding: '4px 8px', borderRadius: '4px',
+                        background: 'var(--color-info-bg)', border: '1px solid var(--color-info)',
+                        color: 'var(--color-info)', cursor: 'pointer', fontWeight: '500'
+                      }}>OK</span>
+                      <span onClick={() => setAddNpcMode(null)} style={{ fontSize: '13px', color: 'var(--text-tertiary)', cursor: 'pointer' }}>✕</span>
+                    </div>
+                  )}
+                  {addNpcMode === 'bestiary' && (
+                    <div style={{ border: '1px dashed var(--border-default)', borderRadius: '6px', overflow: 'hidden', width: '100%', maxWidth: '300px' }}>
+                      {!npcSelectedTemplate ? (
+                        <>
+                          <input value={npcBestiarySearch} autoFocus
+                            onChange={e => setNpcBestiarySearch(e.target.value)}
+                            placeholder="Cerca nel bestiario..."
+                            style={{ width: '100%', padding: '6px 10px', fontSize: '12px', boxSizing: 'border-box', background: 'var(--bg-input)', border: 'none', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-primary)', outline: 'none' }} />
+                          <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
+                            {(bestiary || []).filter(b => !npcBestiarySearch || b.name.toLowerCase().includes(npcBestiarySearch.toLowerCase())).map(b => (
+                              <div key={b.id} onClick={() => { setNpcSelectedTemplate(b); const hp = b.attributes.find(a => a.key.toLowerCase() === 'hp')?.value || ''; setAddNpcForm({ name: b.name, hp, qty: '1' }); }}
+                                style={{ padding: '6px 10px', minHeight: '32px', cursor: 'pointer', fontSize: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '0.5px solid var(--border-subtle)' }}
+                                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-elevated)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                <span style={{ color: 'var(--text-primary)' }}>{b.name}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ padding: '4px', textAlign: 'center' }}>
+                            <span onClick={() => setAddNpcMode(null)} style={{ fontSize: '11px', color: 'var(--text-tertiary)', cursor: 'pointer' }}>Annulla</span>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div style={{ fontSize: '12px', fontWeight: '500', color: 'var(--accent)' }}>{npcSelectedTemplate.name}</div>
+                          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                            <input value={addNpcForm.name} onChange={e => setAddNpcForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Nome"
+                              style={{ flex: 1, padding: '4px 8px', fontSize: '12px', minHeight: '28px', background: 'var(--bg-input)', border: '1px dashed var(--border-default)', borderRadius: '4px', color: 'var(--text-primary)', outline: 'none' }} />
+                            <input value={addNpcForm.hp} onChange={e => setAddNpcForm(prev => ({ ...prev, hp: e.target.value.replace(/\D/g, '') }))} placeholder="HP"
+                              style={{ width: '45px', padding: '4px', fontSize: '12px', minHeight: '28px', background: 'var(--bg-input)', border: '1px dashed var(--border-default)', borderRadius: '4px', color: 'var(--text-primary)', outline: 'none', textAlign: 'center' }} />
+                            <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>x</span>
+                            <input value={addNpcForm.qty} onChange={e => setAddNpcForm(prev => ({ ...prev, qty: e.target.value.replace(/\D/g, '') }))} placeholder="Qtà"
+                              style={{ width: '36px', padding: '4px', fontSize: '12px', minHeight: '28px', background: 'var(--bg-input)', border: '1px dashed var(--border-default)', borderRadius: '4px', color: 'var(--text-primary)', outline: 'none', textAlign: 'center' }} />
+                          </div>
+                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                            <span onClick={() => { setNpcSelectedTemplate(null); setNpcBestiarySearch(''); }} style={{ fontSize: '11px', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px' }}>Indietro</span>
+                            <span onClick={handleAddNpcFromBestiary} style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '4px', background: 'var(--accent)', color: 'var(--bg-main)', cursor: 'pointer', fontWeight: '500' }}>Aggiungi</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {/* Right: + Mostro */}
+                <div style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '2px 4px' }}>
+                  {addMonsterMode === null && (
                     <span onClick={() => setAddMonsterMode('choose')} style={{
                       fontSize: '11px', padding: '4px 14px', borderRadius: '4px',
                       border: '0.5px solid var(--color-info)', color: 'var(--color-info)', cursor: 'pointer'
-                    }}>+ Aggiungi mostro</span>
-                  </div>
-                )}
+                    }}>+ Mostro</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Add monster expanded (full width) */}
+              {addMonsterMode !== null && (
+              <div style={{ padding: '0 8px 8px' }}>
 
                 {addMonsterMode === 'choose' && (
                   <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
@@ -1860,6 +1951,7 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, bestiary
                           <input value={addMonsterForm.hp}
                             onChange={e => setAddMonsterForm(prev => ({ ...prev, hp: e.target.value.replace(/\D/g, '') }))}
                             placeholder="HP"
+                            title="Punti ferita"
                             style={{
                               width: '50px', padding: '4px 8px', fontSize: '12px', minHeight: '28px',
                               background: 'var(--bg-input)', border: '1px solid var(--border-default)',
@@ -1868,8 +1960,10 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, bestiary
                           <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>x</span>
                           <input value={addMonsterForm.qty}
                             onChange={e => setAddMonsterForm(prev => ({ ...prev, qty: e.target.value.replace(/\D/g, '') }))}
+                            placeholder="Qtà"
+                            title="Quantità"
                             style={{
-                              width: '36px', padding: '4px', fontSize: '12px', minHeight: '28px',
+                              width: '40px', padding: '4px', fontSize: '12px', minHeight: '28px',
                               background: 'var(--bg-input)', border: '1px solid var(--border-default)',
                               borderRadius: '4px', color: 'var(--text-primary)', outline: 'none', textAlign: 'center'
                             }} />
@@ -1888,6 +1982,7 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, bestiary
                   </div>
                 )}
               </div>
+              )}
             </div>
 
             {/* Conditions Row */}

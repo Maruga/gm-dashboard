@@ -765,8 +765,162 @@ function ConditionsTab({ conditions, gameSystems, onSave, onDelete }) {
   );
 }
 
+// ── Export/Import Logic ──
+
+const MAX_IMPORT_SIZE = 5 * 1024 * 1024; // 5MB
+
+const ALLOWED_MONSTER_KEYS = ['name', 'gameSystem', 'gameSystemName', 'attributes', 'notes'];
+const ALLOWED_ATTR_KEYS = ['key', 'value', 'description', 'isGlobal', 'defaultValue'];
+const ALLOWED_CONDITION_KEYS = ['name', 'description', 'defaultDuration', 'gameSystem', 'gameSystemName'];
+
+function sanitizeString(val) { return typeof val === 'string' ? val.trim() : ''; }
+
+function validateMonster(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const name = sanitizeString(raw.name);
+  if (!name) return null;
+  let attributes = [];
+  if (Array.isArray(raw.attributes)) {
+    attributes = raw.attributes.filter(a => a && typeof a === 'object' && typeof a.key === 'string' && a.key.trim())
+      .map(a => {
+        const clean = {};
+        ALLOWED_ATTR_KEYS.forEach(k => { if (a[k] !== undefined) clean[k] = typeof a[k] === 'string' ? a[k].trim() : a[k]; });
+        return { key: '', value: '', description: '', isGlobal: false, defaultValue: '', ...clean };
+      });
+  }
+  return {
+    id: 'beast-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+    name,
+    gameSystem: GENERICO_ID,
+    gameSystemName: sanitizeString(raw.gameSystemName) || 'Generico',
+    attributes,
+    notes: sanitizeString(raw.notes)
+  };
+}
+
+function validateCondition(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const name = sanitizeString(raw.name);
+  if (!name) return null;
+  return {
+    id: 'cond-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+    name,
+    description: sanitizeString(raw.description),
+    defaultDuration: typeof raw.defaultDuration === 'number' ? Math.max(0, raw.defaultDuration) : 3,
+    gameSystem: GENERICO_ID,
+    gameSystemName: sanitizeString(raw.gameSystemName) || 'Generico'
+  };
+}
+
+function analyzeImport(items, existingItems, type, gameSystems) {
+  const valid = [];
+  let discarded = 0;
+  const validator = type === 'bestiary' ? validateMonster : validateCondition;
+
+  for (const raw of items) {
+    const cleaned = validator(raw);
+    if (cleaned) valid.push(cleaned);
+    else discarded++;
+  }
+
+  // Map game system names to ids, find new systems needed
+  const newSystems = [];
+  const systemNameMap = {};
+  gameSystems.forEach(s => { systemNameMap[s.name.toLowerCase()] = s.id; });
+
+  for (const item of valid) {
+    const sysName = item.gameSystemName || 'Generico';
+    const sysKey = sysName.toLowerCase();
+    if (systemNameMap[sysKey]) {
+      item.gameSystem = systemNameMap[sysKey];
+    } else {
+      const newId = 'sys-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+      systemNameMap[sysKey] = newId;
+      newSystems.push({ id: newId, name: sysName });
+      item.gameSystem = newId;
+    }
+    delete item.gameSystemName;
+  }
+
+  // Find duplicates (same name + same system, case insensitive)
+  const duplicates = [];
+  const newItems = [];
+  for (const item of valid) {
+    const isDup = existingItems.some(e =>
+      e.name.toLowerCase().trim() === item.name.toLowerCase() &&
+      e.gameSystem === item.gameSystem
+    );
+    if (isDup) duplicates.push(item);
+    else newItems.push(item);
+  }
+
+  return { valid, newItems, duplicates, discarded, newSystems, total: items.length };
+}
+
+function exportToFile(data, filename) {
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function ImportDialog({ analysis, type, onMerge, onReplace, onCancel }) {
+  const { total, valid, newItems, duplicates, discarded, newSystems } = analysis;
+  const typeLabel = type === 'bestiary' ? 'mostri' : 'condizioni';
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'var(--overlay-dark)',
+      zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }} onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: '420px', background: 'var(--bg-panel)',
+        border: '1px solid var(--border-default)', borderRadius: '8px',
+        padding: '20px', boxShadow: '0 12px 40px rgba(0,0,0,0.6)'
+      }}>
+        <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '16px' }}>
+          Importa {typeLabel}
+        </div>
+        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.8', marginBottom: '16px' }}>
+          <div>{total} {typeLabel} trovati nel file</div>
+          {discarded > 0 && <div style={{ color: 'var(--color-warning)' }}>{discarded} scartati (dati incompleti)</div>}
+          <div>{valid.length} validi: <span style={{ color: 'var(--color-success)' }}>{newItems.length} nuovi</span>, <span style={{ color: 'var(--text-tertiary)' }}>{duplicates.length} già esistenti</span></div>
+          {newSystems.length > 0 && (
+            <div style={{ color: 'var(--color-info)' }}>
+              {newSystems.length} sistema{newSystems.length > 1 ? 'i' : ''} di gioco da creare: {newSystems.map(s => `"${s.name}"`).join(', ')}
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+          <span onClick={onCancel} style={{
+            fontSize: '12px', padding: '6px 14px', color: 'var(--text-tertiary)', cursor: 'pointer'
+          }}>Annulla</span>
+          {newItems.length > 0 && (
+            <span onClick={onMerge} style={{
+              fontSize: '12px', fontWeight: '600', padding: '6px 16px', borderRadius: '4px',
+              background: 'var(--accent)', color: 'var(--bg-main)', cursor: 'pointer'
+            }}>Unisci ({newItems.length})</span>
+          )}
+          <span onClick={onReplace} style={{
+            fontSize: '12px', fontWeight: '500', padding: '6px 14px', borderRadius: '4px',
+            border: '1px solid var(--color-danger)', color: 'var(--color-danger)', cursor: 'pointer'
+          }}>Sostituisci tutto ({valid.length})</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function LibrariesPanel({ librariesData, onLibrariesDataChange, onClose }) {
   const [activeTab, setActiveTab] = useState('bestiary');
+  const [importDialog, setImportDialog] = useState(null); // null | { analysis, type }
+  const [importError, setImportError] = useState(null);
+  const fileInputRef = useRef(null);
+  const importTypeRef = useRef(null);
   const [data, setData] = useState(() => {
     if (!librariesData) return DEFAULT_LIBRARIES;
     // Migrate: if conditions array is empty, populate with defaults
@@ -782,6 +936,9 @@ export default function LibrariesPanel({ librariesData, onLibrariesDataChange, o
     if (initialRender.current) { initialRender.current = false; return; }
     onLibrariesDataChange(data);
   }, [data]);
+
+  // Clear import error on tab switch
+  useEffect(() => { setImportError(null); }, [activeTab]);
 
   const updateData = (updater) => {
     setData(prev => typeof updater === 'function' ? updater(prev) : updater);
@@ -838,6 +995,111 @@ export default function LibrariesPanel({ librariesData, onLibrariesDataChange, o
       bestiary: prev.bestiary.map(m => m.gameSystem === id ? { ...m, gameSystem: GENERICO_ID } : m),
       conditions: prev.conditions.map(c => c.gameSystem === id ? { ...c, gameSystem: GENERICO_ID } : c)
     }));
+  };
+
+  // ── Export ──
+
+  const handleExportBestiary = (filterSystem) => {
+    const monsters = data.bestiary
+      .filter(m => filterSystem === 'all' || m.gameSystem === filterSystem)
+      .map(m => {
+        const sysName = data.gameSystems.find(s => s.id === m.gameSystem)?.name || 'Generico';
+        const clean = {};
+        ALLOWED_MONSTER_KEYS.forEach(k => { if (m[k] !== undefined) clean[k] = m[k]; });
+        return { ...clean, gameSystemName: sysName };
+      });
+    exportToFile({
+      version: 1, type: 'bestiary',
+      exportedAt: new Date().toISOString().split('T')[0],
+      monsters
+    }, 'bestiary.gmb');
+  };
+
+  const handleExportConditions = () => {
+    const conditions = data.conditions.map(c => {
+      const sysName = data.gameSystems.find(s => s.id === c.gameSystem)?.name || 'Generico';
+      const clean = {};
+      ALLOWED_CONDITION_KEYS.forEach(k => { if (c[k] !== undefined) clean[k] = c[k]; });
+      return { ...clean, gameSystemName: sysName };
+    });
+    exportToFile({
+      version: 1, type: 'conditions',
+      exportedAt: new Date().toISOString().split('T')[0],
+      conditions
+    }, 'conditions.gmc');
+  };
+
+  // ── Import ──
+
+  const handleImportFile = (type) => {
+    importTypeRef.current = type;
+    setImportError(null);
+    if (fileInputRef.current) { fileInputRef.current.value = ''; fileInputRef.current.click(); }
+  };
+
+  const handleFileSelected = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > MAX_IMPORT_SIZE) {
+      setImportError('File troppo grande (max 5MB)');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      let parsed;
+      try {
+        parsed = JSON.parse(evt.target.result);
+      } catch {
+        setImportError('File JSON non valido o malformato');
+        return;
+      }
+      if (typeof parsed.version !== 'number') { setImportError('File non valido: manca il campo version'); return; }
+
+      const type = importTypeRef.current;
+      if (type === 'bestiary') {
+        if (parsed.type !== 'bestiary' || !Array.isArray(parsed.monsters)) {
+          setImportError('File non valido: non è un bestiario');
+          return;
+        }
+        const analysis = analyzeImport(parsed.monsters, data.bestiary, 'bestiary', data.gameSystems);
+        setImportDialog({ analysis, type: 'bestiary' });
+      } else if (type === 'conditions') {
+        if (parsed.type !== 'conditions' || !Array.isArray(parsed.conditions)) {
+          setImportError('File non valido: non è un file condizioni');
+          return;
+        }
+        const analysis = analyzeImport(parsed.conditions, data.conditions, 'conditions', data.gameSystems);
+        setImportDialog({ analysis, type: 'conditions' });
+      }
+      setImportError(null);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImportMerge = () => {
+    if (!importDialog) return;
+    const { analysis, type } = importDialog;
+    updateData(prev => {
+      const newSystems = [...prev.gameSystems, ...analysis.newSystems];
+      if (type === 'bestiary') {
+        return { ...prev, gameSystems: newSystems, bestiary: [...prev.bestiary, ...analysis.newItems] };
+      }
+      return { ...prev, gameSystems: newSystems, conditions: [...prev.conditions, ...analysis.newItems] };
+    });
+    setImportDialog(null);
+  };
+
+  const handleImportReplace = () => {
+    if (!importDialog) return;
+    const { analysis, type } = importDialog;
+    updateData(prev => {
+      const newSystems = [...prev.gameSystems, ...analysis.newSystems.filter(ns => !prev.gameSystems.some(s => s.name.toLowerCase() === ns.name.toLowerCase()))];
+      if (type === 'bestiary') {
+        return { ...prev, gameSystems: newSystems, bestiary: analysis.valid };
+      }
+      return { ...prev, gameSystems: newSystems, conditions: analysis.valid };
+    });
+    setImportDialog(null);
   };
 
   return (
@@ -899,33 +1161,75 @@ export default function LibrariesPanel({ librariesData, onLibrariesDataChange, o
         </div>
 
         {/* Content */}
-        <div style={{ flex: 1, overflow: 'hidden', padding: '16px' }}>
-          {activeTab === 'bestiary' && (
-            <BestiaryTab
-              bestiary={data.bestiary}
-              gameSystems={data.gameSystems}
-              onSave={handleSaveMonster}
-              onDelete={handleDeleteMonster}
-            />
-          )}
-          {activeTab === 'conditions' && (
-            <ConditionsTab
-              conditions={data.conditions}
-              gameSystems={data.gameSystems}
-              onSave={handleSaveCondition}
-              onDelete={handleDeleteCondition}
-            />
-          )}
-          {activeTab === 'systems' && (
-            <GameSystemsTab
-              systems={data.gameSystems}
-              onAdd={handleAddSystem}
-              onRename={handleRenameSystem}
-              onDelete={handleDeleteSystem}
-            />
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: 1, overflow: 'hidden', padding: '16px' }}>
+            {activeTab === 'bestiary' && (
+              <BestiaryTab
+                bestiary={data.bestiary}
+                gameSystems={data.gameSystems}
+                onSave={handleSaveMonster}
+                onDelete={handleDeleteMonster}
+              />
+            )}
+            {activeTab === 'conditions' && (
+              <ConditionsTab
+                conditions={data.conditions}
+                gameSystems={data.gameSystems}
+                onSave={handleSaveCondition}
+                onDelete={handleDeleteCondition}
+              />
+            )}
+            {activeTab === 'systems' && (
+              <GameSystemsTab
+                systems={data.gameSystems}
+                onAdd={handleAddSystem}
+                onRename={handleRenameSystem}
+                onDelete={handleDeleteSystem}
+              />
+            )}
+          </div>
+
+          {/* Export/Import bar — only for bestiary and conditions */}
+          {(activeTab === 'bestiary' || activeTab === 'conditions') && (
+            <div style={{
+              padding: '8px 16px', borderTop: '1px solid var(--border-subtle)',
+              display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0
+            }}>
+              <span onClick={() => activeTab === 'bestiary' ? handleExportBestiary('all') : handleExportConditions()} style={{
+                fontSize: '12px', padding: '6px 14px', borderRadius: '4px',
+                border: '1px solid var(--border-default)', color: 'var(--text-secondary)',
+                cursor: 'pointer'
+              }}>Esporta</span>
+              <span onClick={() => handleImportFile(activeTab)} style={{
+                fontSize: '12px', padding: '6px 14px', borderRadius: '4px',
+                border: '1px solid var(--border-default)', color: 'var(--text-secondary)',
+                cursor: 'pointer'
+              }}>Importa</span>
+              {importError && (
+                <span style={{ fontSize: '11px', color: 'var(--color-danger)', marginLeft: '8px' }}>{importError}</span>
+              )}
+              <div style={{ flex: 1 }} />
+              <span style={{ fontSize: '11px', color: 'var(--text-disabled)' }}>
+                {activeTab === 'bestiary' ? `${data.bestiary.length} mostri` : `${data.conditions.length} condizioni`}
+              </span>
+            </div>
           )}
         </div>
+
+        {/* Hidden file input for import */}
+        <input ref={fileInputRef} type="file" accept={activeTab === 'bestiary' ? '.gmb,.json' : '.gmc,.json'} style={{ display: 'none' }} onChange={handleFileSelected} />
       </div>
+
+      {/* Import dialog */}
+      {importDialog && (
+        <ImportDialog
+          analysis={importDialog.analysis}
+          type={importDialog.type}
+          onMerge={handleImportMerge}
+          onReplace={handleImportReplace}
+          onCancel={() => setImportDialog(null)}
+        />
+      )}
     </div>
   );
 }
