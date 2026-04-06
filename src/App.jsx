@@ -315,7 +315,19 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         setCalendarData({ currentDate: '2000-01-01', events: {} });
       }
       setStateLoaded(true);
+
+      // Init RAG in background with saved options
+      const ragSaved = saved?.aiConfig?.rag || { chunkSize: 500, overlapPercent: 10, topK: 7, contextExpand: 1 };
+      const ragOpts = { ...ragSaved, chunkOverlap: Math.round((ragSaved.chunkSize || 500) * (ragSaved.overlapPercent || 10) / 100) };
+      window.electronAPI.ragOpen?.(projectPath, ragOpts).catch(err => {
+        console.warn('RAG init failed (fallback to keyword):', err);
+      });
     });
+
+    return () => {
+      // Close RAG on project change/unmount
+      window.electronAPI.ragClose?.().catch(() => {});
+    };
   }, [projectPath]);
 
   // Save project state (debounced)

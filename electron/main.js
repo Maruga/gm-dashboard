@@ -6,6 +6,7 @@ const { autoUpdater } = require('electron-updater');
 const { GmDashBot, verifyToken, htmlToImage } = require('./telegramBot');
 const firebase = require('./firebaseApi');
 const aiApi = require('./aiApi');
+const ragService = require('./services/rag/ragService');
 const AdmZip = require('adm-zip');
 const os = require('os');
 const Store = require('electron-store').default;
@@ -830,6 +831,65 @@ ipcMain.handle('export-diagnostics', () => {
   return { path: zipPath };
 });
 
+// === RAG IPC ===
+ipcMain.handle('rag-open', async (event, projectPath, options) => {
+  try {
+    await ragService.open(projectPath, options, (progress) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('rag-progress', progress);
+    });
+    return { success: true };
+  } catch (err) {
+    console.error('rag-open error:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('rag-close', async () => {
+  try { await ragService.close(); } catch (e) { console.warn('rag-close error:', e.message); }
+  return { success: true };
+});
+
+ipcMain.handle('rag-index-all', async (event) => {
+  try {
+    await ragService.indexAll((p) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('rag-progress', p);
+    });
+    return { success: true, stats: ragService.getStats() };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('rag-reset', async (event) => {
+  try {
+    await ragService.reset((p) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('rag-progress', p);
+    });
+    return { success: true, stats: ragService.getStats() };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('rag-apply-options', async (event, options) => {
+  return { needsReindex: ragService.applyOptions(options) };
+});
+
+ipcMain.handle('rag-get-stats', async () => ragService.getStats());
+
+ipcMain.handle('rag-get-status', async () => ({
+  ready: ragService.isReady(),
+  indexing: ragService.isIndexing()
+}));
+
+ipcMain.handle('rag-update-file', async (event, filePath) => {
+  try { await ragService.updateFile(filePath); } catch (e) { console.warn('rag-update-file error:', e.message); }
+});
+
+ipcMain.handle('rag-remove-file', async (event, filePath) => {
+  try { ragService.removeFile(filePath); } catch (e) { console.warn('rag-remove-file error:', e.message); }
+});
+
 // === Auto-Update IPC ===
 ipcMain.handle('install-update', () => {
   autoUpdater.quitAndInstall();
@@ -1013,7 +1073,20 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
     const question = lastUserMsg?.content || '';
     const contextMaxChars = aiConfig?.contextMaxChars || 48000;
-    const context = aiApi.buildContext(projectPath, question, options.allowedFiles || null, options.allowedFiles ? undefined : contextMaxChars);
+
+    // Console AI: try RAG first, fallback to keyword matching
+    // Telegram AI (with allowedFiles): always use keyword matching
+    let context = '';
+    if (!options.allowedFiles && ragService.isReady()) {
+      try {
+        context = await ragService.buildContext(question);
+      } catch (err) {
+        console.warn('RAG search failed, fallback to keyword:', err.message);
+      }
+    }
+    if (!context) {
+      context = aiApi.buildContext(projectPath, question, options.allowedFiles || null, options.allowedFiles ? undefined : contextMaxChars);
+    }
     const projectName = projectState?.settings?.projectName || projectPath.split('/').pop();
     logDiag('info', `AI context: projectPath=${projectPath}, question="${question.substring(0, 50)}", contextLength=${context.length}, allowedFiles=${options.allowedFiles ? options.allowedFiles.length : 'null'}`);
     const systemPrompt = options.systemPromptOverride

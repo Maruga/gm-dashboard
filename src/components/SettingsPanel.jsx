@@ -75,6 +75,152 @@ function formatDateISO(day, month, year) {
   return `${year}-${m}-${d}`;
 }
 
+function RagSettings({ aiConfig, onAiConfigChange }) {
+  const rag = aiConfig?.rag || { chunkSize: 500, overlapPercent: 10, topK: 7, contextExpand: 1 };
+  const [localRag, setLocalRag] = useState(rag);
+  const [ragStats, setRagStats] = useState(null);
+  const [rebuilding, setRebuilding] = useState(false);
+  const [rebuildProgress, setRebuildProgress] = useState(null);
+
+  const needsReindex = localRag.chunkSize !== rag.chunkSize || localRag.overlapPercent !== rag.overlapPercent;
+
+  useEffect(() => {
+    window.electronAPI?.ragGetStats?.().then(s => setRagStats(s)).catch(() => {});
+    const unsub = window.electronAPI?.onRagProgress?.((p) => {
+      setRebuildProgress(p);
+      if (p.phase === 'done') {
+        setRebuilding(false);
+        window.electronAPI?.ragGetStats?.().then(s => setRagStats(s)).catch(() => {});
+        setTimeout(() => setRebuildProgress(null), 3000);
+      }
+    });
+    return () => unsub?.();
+  }, []);
+
+  const updateField = (key, value) => {
+    const next = { ...localRag, [key]: value };
+    setLocalRag(next);
+    // topK and contextExpand don't need reindex — save immediately
+    if (key === 'topK' || key === 'contextExpand') {
+      onAiConfigChange(prev => ({ ...prev, rag: { ...(prev.rag || rag), [key]: value } }));
+      window.electronAPI?.ragApplyOptions?.({ [key]: value });
+    }
+  };
+
+  const handleSaveAndReindex = async () => {
+    const opts = { ...localRag, chunkOverlap: Math.round(localRag.chunkSize * (localRag.overlapPercent || 10) / 100) };
+    onAiConfigChange(prev => ({ ...prev, rag: localRag }));
+    await window.electronAPI?.ragApplyOptions?.(opts);
+    setRebuilding(true);
+    setRebuildProgress({ phase: 'indexing', message: 'Avvio ricostruzione...', progress: 0 });
+    window.electronAPI?.ragIndexAll?.().catch(err => {
+      console.error('RAG reindex failed:', err);
+      setRebuilding(false);
+    });
+  };
+
+  const inputStyle = {
+    padding: '4px 8px', fontSize: '12px', minHeight: '28px',
+    background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+    borderRadius: '4px', color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box',
+    textAlign: 'center', width: '80px'
+  };
+  const labelSt = { fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '2px', display: 'block' };
+
+  return (
+    <div style={{ marginBottom: '16px' }}>
+      {/* Status */}
+      {ragStats && (
+        <div style={{ marginBottom: '12px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{
+            width: '8px', height: '8px', borderRadius: '50%',
+            background: rebuilding ? 'var(--color-warning)' : ragStats.totalFiles > 0 ? 'var(--color-success)' : 'var(--text-disabled)'
+          }} />
+          <span style={{ color: 'var(--text-secondary)' }}>
+            {rebuilding ? 'Ricostruzione in corso...' : `${ragStats.totalFiles} file, ${ragStats.totalChunks} blocchi (${(ragStats.dbSizeBytes / 1024).toFixed(0)} KB)`}
+          </span>
+        </div>
+      )}
+
+      {/* Progress bar */}
+      {rebuildProgress && rebuildProgress.phase === 'indexing' && (
+        <div style={{ marginBottom: '12px' }}>
+          <div style={{ fontSize: '11px', color: 'var(--color-info)', marginBottom: '4px' }}>{rebuildProgress.message}</div>
+          <div style={{ height: '3px', borderRadius: '2px', background: 'var(--border-subtle)', overflow: 'hidden' }}>
+            <div style={{ height: '100%', borderRadius: '2px', background: 'var(--accent)', width: `${rebuildProgress.progress || 0}%`, transition: 'width 0.3s' }} />
+          </div>
+        </div>
+      )}
+
+      {/* Fields */}
+      <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap' }}>
+        <div>
+          <label style={labelSt}>Dimensione blocco</label>
+          <input type="number" min="100" max="2000" step="50" value={localRag.chunkSize}
+            onChange={e => updateField('chunkSize', Math.max(100, Math.min(2000, parseInt(e.target.value, 10) || 500)))}
+            style={inputStyle} />
+          <div style={{ fontSize: '9px', color: 'var(--text-disabled)', marginTop: '2px' }}>caratteri (300-800)</div>
+        </div>
+        <div>
+          <label style={labelSt}>Sovrapposizione</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <input type="number" min="0" max="30" step="1" value={localRag.overlapPercent ?? 10}
+              onChange={e => updateField('overlapPercent', Math.max(0, Math.min(30, parseInt(e.target.value, 10) || 0)))}
+              style={inputStyle} />
+            <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>%</span>
+          </div>
+          <div style={{ fontSize: '9px', color: 'var(--text-disabled)', marginTop: '2px' }}>consigliato 10-15%</div>
+        </div>
+        <div>
+          <label style={labelSt}>Risultati per ricerca</label>
+          <input type="number" min="1" max="20" value={localRag.topK}
+            onChange={e => updateField('topK', Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 7)))}
+            style={inputStyle} />
+          <div style={{ fontSize: '9px', color: 'var(--text-disabled)', marginTop: '2px' }}>blocchi (5-10)</div>
+        </div>
+        <div>
+          <label style={labelSt}>Espansione contesto</label>
+          <select value={localRag.contextExpand ?? 1}
+            onChange={e => updateField('contextExpand', parseInt(e.target.value, 10))}
+            style={{ ...inputStyle, width: '100px', cursor: 'pointer' }}>
+            <option value="0">Nessuna</option>
+            <option value="1">±1 blocco</option>
+            <option value="2">±2 blocchi</option>
+            <option value="3">±3 blocchi</option>
+            <option value="4">±4 blocchi</option>
+            <option value="5">±5 blocchi</option>
+          </select>
+          <div style={{ fontSize: '9px', color: 'var(--text-disabled)', marginTop: '2px' }}>blocchi adiacenti</div>
+        </div>
+      </div>
+
+      {/* Reindex warning + button */}
+      {needsReindex && (
+        <div style={{ fontSize: '11px', color: 'var(--color-warning)', marginBottom: '8px' }}>
+          ⚠ Le modifiche a dimensione blocco o sovrapposizione richiedono la ricostruzione dell'indice.
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <button
+          onClick={handleSaveAndReindex}
+          disabled={rebuilding}
+          style={{
+            padding: '6px 14px', fontSize: '12px', borderRadius: '4px', cursor: rebuilding ? 'default' : 'pointer',
+            border: needsReindex ? 'none' : '1px solid var(--border-default)',
+            background: needsReindex ? 'var(--accent)' : 'transparent',
+            color: needsReindex ? 'var(--bg-main)' : 'var(--text-secondary)',
+            fontWeight: needsReindex ? '600' : '400',
+            opacity: rebuilding ? 0.6 : 1
+          }}
+        >
+          {rebuilding ? 'Ricostruzione...' : needsReindex ? '🔄 Ricostruisci indice (richiesto)' : '🔄 Ricostruisci indice'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPanel({
   projectPath, defaultProjectName,
   settings, onSettingsChange,
@@ -1483,11 +1629,11 @@ export default function SettingsPanel({
             </div>
           )}
 
-          {/* Contesto documenti Console AI */}
-          <div style={{ ...sectionStyle, marginTop: '24px' }}>Console AI — Contesto documenti</div>
+          {/* Console AI settings */}
+          <div style={{ ...sectionStyle, marginTop: '24px' }}>Console AI — Ricerca documenti</div>
 
           <div style={{ marginBottom: '16px' }}>
-            <label style={labelStyle}>Dimensione contesto (caratteri)</label>
+            <label style={labelStyle}>Dimensione contesto fallback (caratteri)</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input
                 type="number"
@@ -1501,9 +1647,11 @@ export default function SettingsPanel({
               <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>caratteri</span>
             </div>
             <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-tertiary)', lineHeight: '1.5' }}>
-              Quanti caratteri di documenti del progetto passare all'AI nella Console. Modelli economici (gpt-5-mini): 16.000. Modelli avanzati (Opus, GPT-5.4): 48.000-100.000. Più alto = più contesto ma più token consumati.
+              Usato quando la ricerca semantica non è disponibile. Modelli economici: 16.000. Modelli avanzati: 48.000-100.000.
             </div>
           </div>
+
+          <RagSettings aiConfig={aiConfig} onAiConfigChange={onAiConfigChange} />
 
           {/* Telegram AI */}
           <div style={{ ...sectionStyle, marginTop: '24px' }}>Telegram AI</div>

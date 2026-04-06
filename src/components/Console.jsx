@@ -133,6 +133,20 @@ function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, t
   const [saveStatus, setSaveStatus] = useState({});
   const aiEndRef = useRef(null);
   const aiInputRef = useRef(null);
+  const [ragProgress, setRagProgress] = useState(null);
+  const ragDismissTimer = useRef(null);
+
+  // RAG progress listener
+  useEffect(() => {
+    const unsub = window.electronAPI?.onRagProgress?.((data) => {
+      setRagProgress(data);
+      if (data.phase === 'done') {
+        if (ragDismissTimer.current) clearTimeout(ragDismissTimer.current);
+        ragDismissTimer.current = setTimeout(() => setRagProgress(null), 4000);
+      }
+    });
+    return () => { unsub?.(); if (ragDismissTimer.current) clearTimeout(ragDismissTimer.current); };
+  }, []);
 
   // Load search history from localStorage
   useEffect(() => {
@@ -543,6 +557,24 @@ function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, t
         {/* AI tab content */}
         {activeTab === 'ai' && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {/* RAG progress banner */}
+            {ragProgress && (
+              <div style={{
+                padding: '4px 12px', fontSize: '11px', flexShrink: 0,
+                display: 'flex', alignItems: 'center', gap: '8px',
+                background: ragProgress.phase === 'done' ? 'color-mix(in srgb, var(--color-success) 10%, transparent)' : ragProgress.phase === 'error' ? 'var(--color-danger-bg)' : 'color-mix(in srgb, var(--color-info) 10%, transparent)',
+                color: ragProgress.phase === 'done' ? 'var(--color-success)' : ragProgress.phase === 'error' ? 'var(--color-danger)' : 'var(--color-info)',
+                borderBottom: '0.5px solid var(--border-subtle)'
+              }}>
+                <span>{ragProgress.phase === 'done' ? '✓' : ragProgress.phase === 'error' ? '⚠' : '⟳'}</span>
+                <span style={{ flex: 1 }}>{ragProgress.message}</span>
+                {ragProgress.progress != null && ragProgress.phase !== 'done' && (
+                  <div style={{ width: '60px', height: '3px', borderRadius: '2px', background: 'var(--border-subtle)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', borderRadius: '2px', background: 'currentColor', width: `${ragProgress.progress}%`, transition: 'width 0.3s' }} />
+                  </div>
+                )}
+              </div>
+            )}
             {(!aiConfig?.provider && !aiConfig?.apiKey && !firebaseUser) ? (
               <div style={{ padding: '20px 12px', textAlign: 'center', fontSize: '12px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
                 Configura l'AI nelle Impostazioni → Assistente AI<br />

@@ -82,6 +82,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getGlobalAiConfig: () => ipcRenderer.invoke('get-global-ai-config'),
   setGlobalAiConfig: (config) => ipcRenderer.invoke('set-global-ai-config', config),
 
+  // RAG
+  ragOpen: (projectPath, options) => ipcRenderer.invoke('rag-open', projectPath, options),
+  ragClose: () => ipcRenderer.invoke('rag-close'),
+  ragIndexAll: () => ipcRenderer.invoke('rag-index-all'),
+  ragReset: () => ipcRenderer.invoke('rag-reset'),
+  ragApplyOptions: (options) => ipcRenderer.invoke('rag-apply-options', options),
+  ragGetStats: () => ipcRenderer.invoke('rag-get-stats'),
+  ragGetStatus: () => ipcRenderer.invoke('rag-get-status'),
+  ragUpdateFile: (filePath) => ipcRenderer.invoke('rag-update-file', filePath),
+  ragRemoveFile: (filePath) => ipcRenderer.invoke('rag-remove-file', filePath),
+  onRagProgress: (callback) => { const h = (_, data) => callback(data); ipcRenderer.on('rag-progress', h); return () => ipcRenderer.removeListener('rag-progress', h); },
+
   // AI
   aiChat: (messages, projectPath, options) => ipcRenderer.invoke('ai-chat', messages, projectPath, options),
   aiVerifyKey: (provider, key) => ipcRenderer.invoke('ai-verify-key', provider, key),
