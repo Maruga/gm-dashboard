@@ -1483,6 +1483,28 @@ export default function SettingsPanel({
             </div>
           )}
 
+          {/* Contesto documenti Console AI */}
+          <div style={{ ...sectionStyle, marginTop: '24px' }}>Console AI — Contesto documenti</div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={labelStyle}>Dimensione contesto (caratteri)</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="number"
+                min="8000"
+                max="200000"
+                step="1000"
+                value={aiConfig?.contextMaxChars || 16000}
+                onChange={e => onAiConfigChange(prev => ({ ...prev, contextMaxChars: Math.max(8000, Math.min(200000, parseInt(e.target.value, 10) || 16000)) }))}
+                style={{ ...inputStyle, width: '100px', textAlign: 'center' }}
+              />
+              <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>caratteri</span>
+            </div>
+            <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-tertiary)', lineHeight: '1.5' }}>
+              Quanti caratteri di documenti del progetto passare all'AI nella Console. Modelli economici (gpt-5-mini): 16.000. Modelli avanzati (Opus, GPT-5.4): 48.000-100.000. Più alto = più contesto ma più token consumati.
+            </div>
+          </div>
+
           {/* Telegram AI */}
           <div style={{ ...sectionStyle, marginTop: '24px' }}>Telegram AI</div>
 

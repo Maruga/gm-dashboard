@@ -186,8 +186,8 @@ function collectProjectFiles(dirPath) {
   return files;
 }
 
-function buildContext(projectPath, question, allowedFiles = null) {
-  const MAX_CHARS = 16000;
+function buildContext(projectPath, question, allowedFiles = null, maxChars = 16000) {
+  const MAX_CHARS = Math.max(4000, Math.min(maxChars || 16000, 500000));
   let files = collectProjectFiles(projectPath);
   if (files.length === 0) return '';
 
@@ -201,8 +201,9 @@ function buildContext(projectPath, question, allowedFiles = null) {
     if (files.length === 0) return '';
   }
 
-  // Keyword scoring — split question into lowercase words
-  const keywords = (question || '').toLowerCase().split(/\s+/).filter(w => w.length > 2);
+  // Keyword scoring — split question into lowercase words (min 2 chars to keep "PG", "AI", etc.)
+  const stopWords = new Set(['il', 'lo', 'la', 'le', 'li', 'gli', 'un', 'una', 'di', 'da', 'in', 'su', 'per', 'con', 'del', 'dei', 'dal', 'nel', 'che', 'non', 'mi', 'ti', 'ci', 'si', 'me', 'te', 'se', 'ma', 'ed', 'od', 'ai', 'al']);
+  const keywords = (question || '').toLowerCase().split(/\s+/).filter(w => w.length >= 2 && !stopWords.has(w));
 
   // Read all files, score by keyword matches
   const scored = [];
@@ -257,7 +258,15 @@ function buildContext(projectPath, question, allowedFiles = null) {
 }
 
 function buildSystemPrompt(context, projectName) {
-  return `Sei l'assistente AI per l'avventura "${projectName}". Rispondi basandoti SOLO sul contenuto fornito qui sotto. Se non trovi l'informazione, dillo chiaramente. Rispondi in italiano, in modo conciso e utile per il Game Master.
+  return `Sei l'assistente AI del Game Master per l'avventura "${projectName}".
+
+ISTRUZIONI:
+- Leggi ATTENTAMENTE tutto il contenuto fornito prima di rispondere
+- Cerca l'informazione in TUTTI i documenti, non fermarti al primo
+- Se l'informazione è presente anche in forma indiretta o parziale, riportala
+- Rispondi in italiano, in modo conciso e pratico per il Game Master al tavolo
+- Se dopo aver letto tutto il contenuto l'informazione davvero non c'è, dillo — ma prima cerca bene
+- Cita il documento da cui prendi l'informazione quando possibile
 
 === CONTENUTO DELL'AVVENTURA ===
 ${context}`;
