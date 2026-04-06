@@ -1494,8 +1494,8 @@ export default function SettingsPanel({
                 min="8000"
                 max="200000"
                 step="1000"
-                value={aiConfig?.contextMaxChars || 16000}
-                onChange={e => onAiConfigChange(prev => ({ ...prev, contextMaxChars: Math.max(8000, Math.min(200000, parseInt(e.target.value, 10) || 16000)) }))}
+                value={aiConfig?.contextMaxChars || 48000}
+                onChange={e => onAiConfigChange(prev => ({ ...prev, contextMaxChars: Math.max(8000, Math.min(200000, parseInt(e.target.value, 10) || 48000)) }))}
                 style={{ ...inputStyle, width: '100px', textAlign: 'center' }}
               />
               <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>caratteri</span>

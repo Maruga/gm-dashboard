@@ -1012,7 +1012,7 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
     // Build context from project files
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
     const question = lastUserMsg?.content || '';
-    const contextMaxChars = aiConfig?.contextMaxChars || 16000;
+    const contextMaxChars = aiConfig?.contextMaxChars || 48000;
     const context = aiApi.buildContext(projectPath, question, options.allowedFiles || null, options.allowedFiles ? undefined : contextMaxChars);
     const projectName = projectState?.settings?.projectName || projectPath.split('/').pop();
     logDiag('info', `AI context: projectPath=${projectPath}, question="${question.substring(0, 50)}", contextLength=${context.length}, allowedFiles=${options.allowedFiles ? options.allowedFiles.length : 'null'}`);

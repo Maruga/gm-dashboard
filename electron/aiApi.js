@@ -186,8 +186,8 @@ function collectProjectFiles(dirPath) {
   return files;
 }
 
-function buildContext(projectPath, question, allowedFiles = null, maxChars = 16000) {
-  const MAX_CHARS = Math.max(4000, Math.min(maxChars || 16000, 500000));
+function buildContext(projectPath, question, allowedFiles = null, maxChars = 48000) {
+  const MAX_CHARS = Math.max(4000, Math.min(maxChars || 48000, 500000));
   let files = collectProjectFiles(projectPath);
   if (files.length === 0) return '';
 
@@ -201,12 +201,9 @@ function buildContext(projectPath, question, allowedFiles = null, maxChars = 160
     if (files.length === 0) return '';
   }
 
-  // Keyword scoring — split question into lowercase words (min 2 chars to keep "PG", "AI", etc.)
-  const stopWords = new Set(['il', 'lo', 'la', 'le', 'li', 'gli', 'un', 'una', 'di', 'da', 'in', 'su', 'per', 'con', 'del', 'dei', 'dal', 'nel', 'che', 'non', 'mi', 'ti', 'ci', 'si', 'me', 'te', 'se', 'ma', 'ed', 'od', 'ai', 'al']);
-  const keywords = (question || '').toLowerCase().split(/\s+/).filter(w => w.length >= 2 && !stopWords.has(w));
-
-  // Read all files, score by keyword matches
-  const scored = [];
+  // Step 1: Read all files (with cache)
+  const allFiles = [];
+  let totalSize = 0;
   for (const f of files) {
     try {
       let content;
@@ -217,7 +214,6 @@ function buildContext(projectPath, question, allowedFiles = null, maxChars = 160
       } else {
         content = fs.readFileSync(f.path, 'utf-8');
         fileCache.set(f.path, { mtimeMs: stat.mtimeMs, content });
-        // LRU eviction
         if (fileCache.size > MAX_CACHE_ENTRIES) {
           const firstKey = fileCache.keys().next().value;
           fileCache.delete(firstKey);
@@ -226,24 +222,59 @@ function buildContext(projectPath, question, allowedFiles = null, maxChars = 160
       if (f.ext === '.html' || f.ext === '.htm') {
         content = stripHtmlTags(content);
       }
-      const lower = content.toLowerCase();
-      let score = 0;
-      for (const kw of keywords) {
-        let pos = 0;
-        while ((pos = lower.indexOf(kw, pos)) !== -1) {
-          score++;
-          pos += kw.length;
+      const relPath = path.relative(projectPath, f.path).replace(/\\/g, '/');
+      allFiles.push({ relPath, content });
+      totalSize += content.length;
+    } catch (e) { console.warn('[ai-read]', e.message); }
+  }
+
+  if (allFiles.length === 0) return '';
+
+  // Step 2: If all files fit within limit → include everything (no scoring needed)
+  if (totalSize <= MAX_CHARS) {
+    return allFiles.map(f => `--- ${f.relPath} ---\n${f.content}`).join('\n\n');
+  }
+
+  // Step 3: Keyword scoring (only when we need to filter)
+  const stopWords = new Set(['il', 'lo', 'la', 'le', 'li', 'gli', 'un', 'una', 'di', 'da', 'in', 'su', 'per', 'con', 'del', 'dei', 'dal', 'nel', 'che', 'non', 'mi', 'ti', 'ci', 'si', 'me', 'te', 'se', 'ma', 'ed', 'od', 'ai', 'al']);
+  const keywords = (question || '').toLowerCase().split(/\s+/).filter(w => w.length >= 2 && !stopWords.has(w));
+
+  const scored = allFiles.map(f => {
+    const lower = f.content.toLowerCase();
+    const fileNameLower = f.relPath.toLowerCase();
+    const lines = f.content.split('\n');
+    let score = 0;
+
+    for (const kw of keywords) {
+      // Base: count occurrences in content
+      let pos = 0;
+      while ((pos = lower.indexOf(kw, pos)) !== -1) {
+        score++;
+        pos += kw.length;
+      }
+      // Bonus x5 for matches in file name/path
+      if (fileNameLower.includes(kw)) {
+        score += 5;
+      }
+      // Bonus x3 for matches in markdown headings
+      for (const line of lines) {
+        if (line.trimStart().startsWith('#') && line.toLowerCase().includes(kw)) {
+          score += 2;
         }
       }
-      const relPath = path.relative(projectPath, f.path).replace(/\\/g, '/');
-      scored.push({ relPath, content, score });
-    } catch (e) { console.warn('[ai-read-score]', e.message); }
-  }
+      // Bonus x2 for matches in first line
+      if (lines[0] && lines[0].toLowerCase().includes(kw)) {
+        score += 1;
+      }
+    }
+
+    return { ...f, score };
+  });
 
   // Sort: most relevant first, then alphabetical
   scored.sort((a, b) => b.score - a.score || a.relPath.localeCompare(b.relPath));
 
-  // Include all allowed files (already filtered by GM), cap total chars
+  // Step 4: Include files up to MAX_CHARS limit
   let totalChars = 0;
   const parts = [];
   for (const f of scored) {
