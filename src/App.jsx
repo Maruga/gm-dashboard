@@ -20,6 +20,7 @@ import InfoPanel from './components/InfoPanel';
 import AdventuresPanel from './components/AdventuresPanel';
 import RelationsPanel from './components/RelationsPanel';
 import CombatTrackerPanel from './components/CombatTrackerPanel';
+import LibrariesPanel from './components/LibrariesPanel';
 import RelationsView from './components/RelationsView';
 import PanelToolbar from './components/PanelToolbar';
 import PanelSearch from './components/PanelSearch';
@@ -159,6 +160,8 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   const [referenceOpen, setReferenceOpen] = useState(false);
   const [combatTrackerOpen, setCombatTrackerOpen] = useState(false);
   const [combatData, setCombatData] = useState(null);
+  const [librariesOpen, setLibrariesOpen] = useState(false);
+  const [librariesData, setLibrariesData] = useState(null);
   const [referenceManuals, setReferenceManuals] = useState([]);
   const [referenceScrollPositions, setReferenceScrollPositions] = useState({});
   const [referenceSelectedId, setReferenceSelectedId] = useState(null);
@@ -288,6 +291,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         setAiConfig(saved.aiConfig ?? { provider: '', apiKey: '', model: '', configured: false, telegramAiEnabled: true, telegramAiMode: 'manual' });
         setAiChatHistory(saved.aiChatHistory ?? []);
         setCombatData(saved.combatData ?? null);
+        setLibrariesData(saved.librariesData ?? null);
         // Restore media items (audio paused, re-resolve URLs)
         const savedMedia = saved.savedMediaItems || saved.savedAudioTracks;
         if (savedMedia && savedMedia.length > 0) {
@@ -363,7 +367,8 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
       aiChatHistory: aiChatHistory,
       panelVisibility: panelVisibility,
       layoutPresets: layoutPresets,
-      combatData: combatData
+      combatData: combatData,
+      librariesData: librariesData
     };
   });
 
@@ -373,7 +378,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     saveTimer.current = setTimeout(() => {
       window.electronAPI.saveProjectState(projectPath, latestState.current);
     }, 1000);
-  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, aiConversations, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, viewerFontSize, stageFontSize, scrollVersion, aiConfig, aiChatHistory, panelVisibility, layoutPresets, combatData]);
+  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, aiConversations, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, viewerFontSize, stageFontSize, scrollVersion, aiConfig, aiChatHistory, panelVisibility, layoutPresets, combatData, librariesData]);
 
   // Save immediately on unmount (project switch)
   useEffect(() => {
@@ -1490,6 +1495,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   }, []);
   const handleToggleReference = useCallback(() => setReferenceOpen(v => !v), []);
   const handleToggleCombatTracker = useCallback(() => setCombatTrackerOpen(v => !v), []);
+  const handleToggleLibraries = useCallback(() => setLibrariesOpen(v => !v), []);
   const handleToggleHighlight = useCallback(() => setHighlightKeywords(prev => ({ ...prev, enabled: !prev.enabled })), []);
   const handleOpenAdventures = useCallback(() => setAdventuresOpen(true), []);
   const handleOpenProjectFolder = useCallback(() => window.electronAPI.openProjectFolder(projectPath), [projectPath]);
@@ -1561,6 +1567,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         onToggleChat={handleToggleChat}
         onOpenReference={handleToggleReference}
         onOpenCombatTracker={handleToggleCombatTracker}
+        onOpenLibraries={handleToggleLibraries}
         referenceOpen={referenceOpen}
         highlightEnabled={highlightKeywords.enabled}
         onToggleHighlight={handleToggleHighlight}
@@ -1823,6 +1830,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           projectPath={projectPath}
           defaultProjectName={projectName}
           initialSection={settingsOpen}
+          librariesData={librariesData}
           settings={projectSettings}
           onSettingsChange={setProjectSettings}
           players={players}
@@ -2121,7 +2129,10 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         />
       )}
       {combatTrackerOpen && (
-        <CombatTrackerPanel combatData={combatData} onCombatDataChange={setCombatData} players={players} projectPath={projectPath} onClose={() => setCombatTrackerOpen(false)} />
+        <CombatTrackerPanel combatData={combatData} onCombatDataChange={setCombatData} players={players} projectPath={projectPath} librariesData={librariesData} onLibrariesDataChange={setLibrariesData} onClose={() => setCombatTrackerOpen(false)} />
+      )}
+      {librariesOpen && (
+        <LibrariesPanel librariesData={librariesData} onLibrariesDataChange={setLibrariesData} onClose={() => setLibrariesOpen(false)} />
       )}
       {chatOpen && (
         <TelegramChat

@@ -91,7 +91,8 @@ export default function SettingsPanel({
   aiConfig, onAiConfigChange, onClearAiHistory,
   panelVisibility, onPanelVisibilityChange,
   layoutPresets, onLayoutPresetsChange,
-  initialSection
+  initialSection,
+  librariesData
 }) {
   const [showToken, setShowToken] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -739,16 +740,27 @@ export default function SettingsPanel({
           </div>
 
           <div style={{ marginBottom: '16px' }}>
-            <label style={labelStyle}>Sistema</label>
-            <input
-              type="text"
-              value={settings.system || ''}
-              placeholder="es. GENKAI 限界 v1.2"
-              onChange={e => updateSetting('system', e.target.value)}
-              style={inputStyle}
-              onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-              onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
-            />
+            <label style={labelStyle}>Sistema di gioco</label>
+            {librariesData?.gameSystems?.length > 1 ? (
+              <select
+                value={settings.system || ''}
+                onChange={e => updateSetting('system', e.target.value)}
+                style={{ ...inputStyle, cursor: 'pointer' }}
+              >
+                <option value="">— Nessuno —</option>
+                {librariesData.gameSystems.map(s => (
+                  <option key={s.id} value={s.name}>{s.name}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={settings.system || ''}
+                placeholder="es. D&D, Vampiri, SWADE..."
+                onChange={e => updateSetting('system', e.target.value)}
+                style={inputStyle}
+              />
+            )}
           </div>
 
           <div style={{ marginBottom: '16px' }}>

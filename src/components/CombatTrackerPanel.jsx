@@ -1,6 +1,18 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { rollDice, formatDiceResult, containsDiceFormula, extractDiceFormula } from '../utils/diceEngine';
 
-const CONDITIONS = ['Stordito', 'Avvelenato', 'Accecato', 'Spaventato', 'Paralizzato', 'Prono', 'Afferrato', 'Invisibile', 'Incosciente'];
+// Default conditions fallback (shown when librariesData not yet initialized)
+const DEFAULT_CONDITIONS_FALLBACK = [
+  { id: 'cond_01', name: 'Stordito', description: 'Non può effettuare azioni.', defaultDuration: 1 },
+  { id: 'cond_02', name: 'Avvelenato', description: 'Svantaggio ai tiri per colpire.', defaultDuration: 3 },
+  { id: 'cond_03', name: 'Accecato', description: 'Non può vedere.', defaultDuration: 2 },
+  { id: 'cond_04', name: 'Spaventato', description: 'Non può muoversi verso la fonte della paura.', defaultDuration: 3 },
+  { id: 'cond_05', name: 'Paralizzato', description: 'Incapacitato, non può muoversi.', defaultDuration: 1 },
+  { id: 'cond_06', name: 'Prono', description: 'A terra.', defaultDuration: 0 },
+  { id: 'cond_07', name: 'Afferrato', description: 'Velocità ridotta a 0.', defaultDuration: 0 },
+  { id: 'cond_08', name: 'Invisibile', description: 'Impossibile da vedere.', defaultDuration: 3 },
+  { id: 'cond_09', name: 'Incosciente', description: 'Incapacitato, cade prono.', defaultDuration: 0 }
+];
 
 // ── Helpers ──
 function hpColor(hp, hpMax) {
@@ -33,16 +45,21 @@ function TopBar({ encounterName, round, turn, initMin, initMax, descending, onRo
     <div style={{
       display: 'flex', alignItems: 'center', gap: '12px',
       padding: '6px 12px', borderBottom: '1px solid var(--border-default)',
-      background: 'var(--bg-panel)', flexShrink: 0
+      background: 'var(--bg-panel)', flexShrink: 0,
+      WebkitAppRegion: 'drag'
     }}>
       {/* Back */}
       <span onClick={onBack} style={{
-        fontSize: '14px', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px 4px', userSelect: 'none'
+        fontSize: '14px', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px 4px', userSelect: 'none',
+        WebkitAppRegion: 'no-drag'
       }}>←</span>
 
       <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-secondary)', marginRight: '8px' }}>
         {encounterName || 'Combat Tracker'}
       </span>
+
+      {/* Controls — no-drag zone */}
+      <div style={{ display: 'contents', WebkitAppRegion: 'no-drag' }}>
 
       {/* Round + Turno */}
       <div style={{
@@ -106,7 +123,7 @@ function TopBar({ encounterName, round, turn, initMin, initMax, descending, onRo
       <div style={{ flex: 1 }} />
 
       {/* Completato */}
-      <button onClick={() => {
+      <button type="button" onClick={() => {
         if (!confirmComplete) {
           setConfirmComplete(true);
           if (confirmCompleteTimer.current) clearTimeout(confirmCompleteTimer.current);
@@ -119,11 +136,11 @@ function TopBar({ encounterName, round, turn, initMin, initMax, descending, onRo
       }} style={{
         background: confirmComplete ? 'var(--color-success-bg)' : 'none',
         border: '1px solid var(--color-success)',
-        borderRadius: '4px', padding: '3px 10px', fontSize: '11px',
+        borderRadius: '4px', padding: '5px 12px', fontSize: '11px',
         color: 'var(--color-success)', cursor: 'pointer', fontWeight: confirmComplete ? '600' : '500'
       }}>{confirmComplete ? 'Sicuro?' : 'Completato'}</button>
 
-      <button onClick={() => {
+      <button type="button" onClick={() => {
         if (!confirmReset) {
           setConfirmReset(true);
           if (confirmResetTimer.current) clearTimeout(confirmResetTimer.current);
@@ -146,11 +163,13 @@ function TopBar({ encounterName, round, turn, initMin, initMax, descending, onRo
         fontSize: '16px', cursor: 'pointer', padding: '2px 6px', borderRadius: '4px',
         transition: 'color 0.15s'
       }}>✕</button>
+
+      </div>{/* end no-drag controls */}
     </div>
   );
 }
 
-function NumPadCol({ hasTarget, undoCount, onModifier, onDigit, onClear, onUndo }) {
+function NumPadCol({ hasTarget, undoCount, diceBuffer, lastRoll, diceHistory, onModifier, onDigit, onClear, onUndo, onDiceRoll }) {
   const modStyle = (color) => ({
     fontSize: '11px', color, cursor: hasTarget ? 'pointer' : 'default',
     padding: '1px 0', textAlign: 'center', lineHeight: '1.5',
@@ -160,38 +179,44 @@ function NumPadCol({ hasTarget, undoCount, onModifier, onDigit, onClear, onUndo 
     fontSize: '11px', textAlign: 'center', padding: '3px 0',
     borderRadius: '3px', background: 'var(--bg-main)',
     border: '0.5px solid var(--border-subtle)',
-    cursor: hasTarget ? 'pointer' : 'default',
-    color: hasTarget ? 'var(--text-primary)' : 'var(--text-disabled)',
-    lineHeight: '1.6'
+    cursor: 'pointer', color: 'var(--text-primary)', lineHeight: '1.6'
   };
+  const diceStyle = {
+    fontSize: '11px', textAlign: 'center', padding: '4px 0', minHeight: '28px',
+    borderRadius: '3px', background: 'var(--bg-main)',
+    border: '0.5px solid var(--color-info)',
+    cursor: 'pointer', color: 'var(--color-info)', lineHeight: '1.4',
+    display: 'flex', alignItems: 'center', justifyContent: 'center'
+  };
+  const [rollFlash, setRollFlash] = useState(false);
+
+  useEffect(() => {
+    if (!lastRoll) return;
+    setRollFlash(true);
+    const t = setTimeout(() => setRollFlash(false), 500);
+    return () => clearTimeout(t);
+  }, [lastRoll?.timestamp]);
 
   return (
     <div style={{
-      width: '50px', background: 'var(--bg-elevated)', borderRight: '1px solid var(--border-subtle)',
+      width: '65px', background: 'var(--bg-elevated)', borderRight: '1px solid var(--border-subtle)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 4px', gap: '2px',
       flexShrink: 0, overflowY: 'auto'
     }}>
       {/* Undo */}
-      <div
-        onClick={onUndo}
-        style={{
-          fontSize: '11px', color: undoCount > 0 ? 'var(--color-info)' : 'var(--text-disabled)',
-          cursor: undoCount > 0 ? 'pointer' : 'default', marginBottom: '4px'
-        }}
-      >undo{undoCount > 0 ? ` (${undoCount})` : ''}</div>
+      <div onClick={onUndo} style={{
+        fontSize: '11px', color: undoCount > 0 ? 'var(--color-info)' : 'var(--text-disabled)',
+        cursor: undoCount > 0 ? 'pointer' : 'default', marginBottom: '4px'
+      }}>undo{undoCount > 0 ? ` (${undoCount})` : ''}</div>
       <div style={{ width: '100%', borderTop: '0.5px solid var(--border-subtle)', marginBottom: '4px' }} />
 
-      {/* Negativi */}
+      {/* Modificatori */}
       {[-10, -5, -3, -2, -1].map(v => (
         <div key={v} onClick={() => hasTarget && onModifier?.(v)} style={modStyle('var(--color-danger)')}>
           {v === -10 ? <b>{v}</b> : v}
         </div>
       ))}
-
-      {/* Zero */}
       <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '500', padding: '2px 0' }}>0</div>
-
-      {/* Positivi */}
       {[1, 2, 3, 5, 10].map(v => (
         <div key={v} onClick={() => hasTarget && onModifier?.(v)} style={modStyle('var(--color-success)')}>
           {v === 10 ? <b>+{v}</b> : `+${v}`}
@@ -200,21 +225,69 @@ function NumPadCol({ hasTarget, undoCount, onModifier, onDigit, onClear, onUndo 
 
       <div style={{ width: '100%', borderTop: '0.5px solid var(--border-subtle)', margin: '4px 0' }} />
 
-      {/* Tastierino — scrive direttamente negli HP */}
+      {/* Tastierino */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px', width: '100%' }}>
         {[1,2,3,4,5,6,7,8,9].map(n => (
-          <div key={n} onClick={() => hasTarget && onDigit?.(n)} style={keyStyle}>{n}</div>
+          <div key={n} onClick={() => onDigit?.(n)} style={keyStyle}>{n}</div>
         ))}
-        <div onClick={() => hasTarget && onDigit?.(0)} style={keyStyle}>0</div>
-        <div onClick={() => hasTarget && onClear?.()} style={{ ...keyStyle, fontSize: '13px', color: 'var(--color-danger)' }}>&#9003;</div>
+        <div onClick={() => onDigit?.(0)} style={keyStyle}>0</div>
+        <div onClick={() => onClear?.()} style={{ ...keyStyle, fontSize: '13px', color: 'var(--color-danger)' }}>&#9003;</div>
       </div>
+
+      <div style={{ width: '100%', borderTop: '0.5px solid var(--border-subtle)', margin: '4px 0' }} />
+
+      {/* Dice buffer indicator */}
+      {diceBuffer && (
+        <div style={{
+          fontSize: '12px', fontWeight: '600', color: 'var(--accent)',
+          textAlign: 'center', marginBottom: '2px'
+        }}>{diceBuffer}d...</div>
+      )}
+
+      {/* Dice buttons */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px', width: '100%' }}>
+        {[4, 6, 8, 10, 12, 20].map(d => (
+          <div key={d} onClick={() => onDiceRoll?.(d)} style={diceStyle}>d{d}</div>
+        ))}
+        <div onClick={() => onDiceRoll?.(100)} style={{ ...diceStyle, gridColumn: '1 / -1' }}>d100</div>
+      </div>
+
+      {/* Dice results — just the total, big and visible */}
+      {diceHistory.length > 0 && (
+        <div style={{
+          width: '100%', marginTop: '4px',
+          maxHeight: '100px', overflowY: 'auto'
+        }}>
+          {diceHistory.map((entry, i) => (
+            entry.separator ? (
+              <div key={i} style={{ borderTop: '0.5px solid var(--border-subtle)', margin: '3px 0' }} />
+            ) : (
+              <div key={i} style={{
+                padding: '2px 0', textAlign: 'center', borderRadius: '3px',
+                background: i === 0 && rollFlash ? 'var(--accent-a10)' : 'transparent',
+                transition: i === 0 ? 'all 0.3s ease' : 'none'
+              }}>
+                <div style={{
+                  fontSize: i === 0 ? '18px' : '13px',
+                  fontWeight: '700',
+                  color: i === 0 ? 'var(--color-info)' : 'var(--text-secondary)'
+                }}>{entry.total}</div>
+                <div style={{
+                  fontSize: '9px', color: 'var(--text-disabled)'
+                }}>{entry.formula}</div>
+              </div>
+            )
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function CombatantCard({ c, isPC, isActive, isTarget, hasActed, isSkipped, currentInit, hpSelected, initSelected, onSelect, onTargetToggle, onHpChange, onHpSelect, onSkipToggle, onEffectClick }) {
+function CombatantCard({ c, isPC, isActive, isTarget, hasActed, isSkipped, currentInit, hpSelected, initSelected, canRemove, isNpc, canToggleEnabled, onSelect, onTargetToggle, onHpChange, onHpSelect, onSkipToggle, onEffectClick, onRemove, onToggleEnabled }) {
   const isDead = c.hp <= 0;
-  const selected = isActive && !isDead;
+  const isDisabled = c.enabled === false;
+  const selected = isActive && !isDead && !isDisabled;
   const hpC = hpColor(c.hp, c.hpMax);
   const dimmed = hasActed || isSkipped;
 
@@ -250,18 +323,37 @@ function CombatantCard({ c, isPC, isActive, isTarget, hasActed, isSkipped, curre
     }
   }
 
+  if (isDisabled) {
+    opacity = 0.3;
+    bg = 'var(--bg-elevated)';
+    borderLeft = 'none';
+  }
+
   return (
     <div style={{
       display: 'flex', alignItems: 'stretch', gap: '6px',
       padding: '4px 6px', borderRadius: '3px',
-      border: borderLeft === 'none' ? '0.5px solid var(--border-subtle)' : 'none',
+      border: borderLeft === 'none' ? (isNpc ? '1px dashed var(--border-default)' : '0.5px solid var(--border-subtle)') : 'none',
       borderLeft, background: bg, opacity,
-      cursor: 'pointer', transition: 'all 0.15s',
+      cursor: isDisabled ? 'default' : 'pointer', transition: 'all 0.15s',
       minHeight: '38px'
     }}>
+      {/* Toggle enabled (PG only) */}
+      {canToggleEnabled && (
+        <div
+          onClick={(e) => { e.stopPropagation(); onToggleEnabled?.(c.id); }}
+          style={{
+            alignSelf: 'center', flexShrink: 0, cursor: 'pointer',
+            fontSize: '13px', color: isDisabled ? 'var(--text-disabled)' : 'var(--text-tertiary)',
+            padding: '2px', userSelect: 'none'
+          }}
+        >{isDisabled ? '○' : '●'}</div>
+      )}
+
       {/* Target checkbox */}
-      <div
-        onClick={(e) => { e.stopPropagation(); onTargetToggle?.(c.id); }}
+      {!isDisabled && (
+        <div
+          onClick={(e) => { e.stopPropagation(); onTargetToggle?.(c.id); }}
         style={{
           width: '11px', borderRadius: '2px', flexShrink: 0, alignSelf: 'center',
           height: '11px',
@@ -269,6 +361,7 @@ function CombatantCard({ c, isPC, isActive, isTarget, hasActed, isSkipped, curre
           background: isTarget ? 'var(--color-danger)' : 'transparent'
         }}
       />
+      )}
 
       {/* Name + effects */}
       <div style={{ flex: 1, minWidth: 0, alignSelf: 'center' }} onClick={() => onSelect?.(c.id)}>
@@ -342,7 +435,41 @@ function CombatantCard({ c, isPC, isActive, isTarget, hasActed, isSkipped, curre
           }}
         >S</div>
       )}
+
+      {/* Remove button (only for monsters/NPCs, not real PCs) */}
+      {canRemove && (
+        <RemoveButton onRemove={() => onRemove?.(c.id)} />
+      )}
     </div>
+  );
+}
+
+function RemoveButton({ onRemove }) {
+  const [confirm, setConfirm] = useState(false);
+  const timer = useRef(null);
+  const handleClick = (e) => {
+    e.stopPropagation();
+    if (!confirm) {
+      setConfirm(true);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setConfirm(false), 3000);
+    } else {
+      setConfirm(false);
+      if (timer.current) clearTimeout(timer.current);
+      onRemove?.();
+    }
+  };
+  return (
+    <div onClick={handleClick} style={{
+      width: '22px', height: '22px', borderRadius: '50%', alignSelf: 'center',
+      border: confirm ? '1px solid var(--color-danger)' : '0.5px solid var(--border-subtle)',
+      background: confirm ? 'var(--color-danger-bg)' : 'transparent',
+      flexShrink: 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: confirm ? '9px' : '12px',
+      color: confirm ? 'var(--color-danger)' : 'var(--text-disabled)',
+      cursor: 'pointer', fontWeight: confirm ? '600' : '400'
+    }}>{confirm ? '?' : '✕'}</div>
   );
 }
 
@@ -430,8 +557,52 @@ function EnvironmentCard({ environment, onEffectClick, onAddEffect }) {
   );
 }
 
-function ConditionsRow({ selectedId, activeEffects, duration, onDurationChange, onApplyCondition }) {
-  const [customInput, setCustomInput] = useState(null); // null = hidden, '' = showing
+function ConditionTag({ cond, isActive, selectedId, onApply }) {
+  const [showDesc, setShowDesc] = useState(false);
+  const touchTimer = useRef(null);
+
+  const handleTouchStart = () => {
+    touchTimer.current = setTimeout(() => setShowDesc(true), 500);
+  };
+  const handleTouchEnd = () => {
+    if (touchTimer.current) clearTimeout(touchTimer.current);
+    if (showDesc) { setShowDesc(false); return; }
+    if (selectedId) onApply?.(cond.name);
+  };
+
+  return (
+    <span
+      onClick={() => selectedId && onApply?.(cond.name)}
+      onMouseEnter={() => cond.description && setShowDesc(true)}
+      onMouseLeave={() => setShowDesc(false)}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      style={{
+        fontSize: '11px', padding: '4px 8px', borderRadius: '4px', position: 'relative',
+        border: `0.5px solid ${isActive ? 'var(--color-warning)' : 'var(--border-default)'}`,
+        background: isActive ? 'var(--color-warning-bg)' : 'transparent',
+        color: isActive ? 'var(--color-warning)' : 'var(--text-tertiary)',
+        cursor: selectedId ? 'pointer' : 'default',
+        opacity: selectedId ? 1 : 0.5, userSelect: 'none'
+      }}
+    >
+      {cond.name}
+      {showDesc && cond.description && (
+        <div style={{
+          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+          marginBottom: '6px', padding: '6px 10px', borderRadius: '4px',
+          background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+          boxShadow: '0 4px 12px var(--shadow-dropdown)',
+          fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4',
+          whiteSpace: 'normal', width: '200px', zIndex: 10, pointerEvents: 'none'
+        }}>{cond.description}</div>
+      )}
+    </span>
+  );
+}
+
+function ConditionsRow({ conditions, selectedId, activeEffects, duration, onDurationChange, onApplyCondition }) {
+  const [customInput, setCustomInput] = useState(null);
 
   const handleCustomSubmit = () => {
     if (customInput && customInput.trim()) {
@@ -449,23 +620,19 @@ function ConditionsRow({ selectedId, activeEffects, duration, onDurationChange, 
       <span style={{ fontSize: '11px', fontWeight: '500', color: 'var(--text-secondary)', marginRight: '2px' }}>
         Condizioni:
       </span>
-      {CONDITIONS.map(c => {
-        const isActive = activeEffects?.some(e => e.name === c);
-        return (
-          <span key={c} onClick={() => selectedId && onApplyCondition?.(c)} style={{
-            fontSize: '11px', padding: '1px 5px', borderRadius: '4px',
-            border: `0.5px solid ${isActive ? 'var(--color-warning)' : 'var(--border-default)'}`,
-            background: isActive ? 'var(--color-warning-bg)' : 'transparent',
-            color: isActive ? 'var(--color-warning)' : 'var(--text-tertiary)',
-            cursor: selectedId ? 'pointer' : 'default',
-            opacity: selectedId ? 1 : 0.5
-          }}>{c}</span>
-        );
-      })}
+      {(conditions || []).map(c => (
+        <ConditionTag
+          key={c.id}
+          cond={c}
+          isActive={activeEffects?.some(e => e.name === c.name)}
+          selectedId={selectedId}
+          onApply={onApplyCondition}
+        />
+      ))}
 
       {customInput === null ? (
         <span onClick={() => selectedId && setCustomInput('')} style={{
-          fontSize: '11px', padding: '1px 5px', borderRadius: '4px',
+          fontSize: '11px', padding: '4px 8px', borderRadius: '4px',
           border: '0.5px solid var(--color-info)', color: 'var(--color-info)',
           cursor: selectedId ? 'pointer' : 'default',
           opacity: selectedId ? 1 : 0.5
@@ -479,7 +646,7 @@ function ConditionsRow({ selectedId, activeEffects, duration, onDurationChange, 
           onBlur={handleCustomSubmit}
           placeholder="Nome..."
           style={{
-            width: '90px', padding: '1px 5px', fontSize: '11px',
+            width: '100px', padding: '4px 8px', fontSize: '11px',
             background: 'var(--bg-input)', border: '1px solid var(--accent)',
             borderRadius: '4px', color: 'var(--text-primary)', outline: 'none'
           }}
@@ -494,16 +661,18 @@ function ConditionsRow({ selectedId, activeEffects, duration, onDurationChange, 
         background: 'var(--bg-main)', border: '1px solid var(--border-subtle)',
         borderRadius: '4px', padding: '1px 5px', fontSize: '11px'
       }}>
-        <span onClick={() => onDurationChange?.(-1)} style={{ color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0 2px', userSelect: 'none' }}>−</span>
+        <span onClick={() => onDurationChange?.(-1)} style={{ color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px 4px', userSelect: 'none' }}>−</span>
         <span style={{ color: 'var(--text-primary)', fontWeight: '500', minWidth: '14px', textAlign: 'center' }}>{duration}</span>
-        <span onClick={() => onDurationChange?.(1)} style={{ color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0 2px', userSelect: 'none' }}>+</span>
+        <span onClick={() => onDurationChange?.(1)} style={{ color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px 4px', userSelect: 'none' }}>+</span>
       </div>
       <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{duration === 0 ? 'perm.' : 'round'}</span>
     </div>
   );
 }
 
-function DetailSheet({ title, data }) {
+function DetailSheet({ title, data, isMonster, onSaveToBestiary, saveToBestiaryId, onSaveToBestiaryStart, saveToBestiarySystem, onSaveToBestiarySystemChange, gameSystems, onDiceRoll }) {
+  const hasAttributes = data?.attributes && data.attributes.length > 0;
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{
@@ -516,9 +685,72 @@ function DetailSheet({ title, data }) {
             <div style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-primary)', marginBottom: '6px' }}>
               {data.name}
             </div>
-            {data.sheet.split('\n').map((line, i) => (
-              <div key={i}>{line}</div>
-            ))}
+            {hasAttributes ? (
+              data.attributes.map((attr, i) => {
+                const formula = extractDiceFormula(attr.value);
+                return (
+                  <div key={i} style={{ marginBottom: '2px' }}>
+                    <span style={{ color: 'var(--text-tertiary)' }}>{attr.key}</span>
+                    {attr.description && <span style={{ color: 'var(--text-secondary)' }}> ({attr.description})</span>}
+                    <span>: </span>
+                    {formula ? (
+                      <>
+                        {attr.value !== formula && <span style={{ color: 'var(--text-primary)' }}>{attr.value.split(formula)[0]}</span>}
+                        <span
+                          onClick={() => onDiceRoll?.(formula, attr.key, attr.description)}
+                          style={{
+                            color: 'var(--color-info)', cursor: 'pointer',
+                            textDecoration: 'underline', textDecorationStyle: 'dotted'
+                          }}
+                        >{formula}</span>
+                        {attr.value !== formula && attr.value.split(formula)[1] && (
+                          <span style={{ color: 'var(--text-primary)' }}>{attr.value.split(formula)[1]}</span>
+                        )}
+                      </>
+                    ) : (
+                      <span style={{ color: 'var(--text-primary)' }}>{attr.value}</span>
+                    )}
+                  </div>
+                );
+              })
+            ) : data.sheet ? (
+              data.sheet.split('\n').map((line, i) => (
+                <div key={i}>{line}</div>
+              ))
+            ) : null}
+            {data.notes && (
+              <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>{data.notes}</div>
+            )}
+            {/* Save to bestiary button */}
+            {isMonster && !data.templateId && onSaveToBestiary && (
+              <div style={{ marginTop: '10px', borderTop: '0.5px solid var(--border-subtle)', paddingTop: '8px' }}>
+                {saveToBestiaryId === data.id ? (
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                    <select
+                      value={saveToBestiarySystem}
+                      onChange={e => onSaveToBestiarySystemChange?.(e.target.value)}
+                      style={{
+                        flex: 1, padding: '3px 6px', fontSize: '11px', minHeight: '26px',
+                        background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+                        borderRadius: '3px', color: 'var(--text-primary)', outline: 'none'
+                      }}
+                    >
+                      {(gameSystems || []).map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                    <span onClick={() => onSaveToBestiary(data.id)} style={{
+                      fontSize: '11px', padding: '3px 8px', borderRadius: '3px',
+                      background: 'var(--accent)', color: 'var(--bg-main)', cursor: 'pointer', fontWeight: '500'
+                    }}>Salva</span>
+                  </div>
+                ) : (
+                  <span onClick={() => onSaveToBestiaryStart?.(data.id)} style={{
+                    fontSize: '11px', color: 'var(--color-info)', cursor: 'pointer'
+                  }}>Salva nel bestiario</span>
+                )}
+              </div>
+            )}
           </>
         ) : (
           <div style={{ color: 'var(--text-disabled)', fontStyle: 'italic' }}>Nessuna selezione</div>
@@ -745,13 +977,23 @@ function EncounterList({ encounters, onCreateEncounter, onOpenEncounter, onDelet
 }
 
 // ── Combat View (was Main Component) ──
-function CombatView({ encounter, onEncounterChange, onBack, onComplete, onClose }) {
+function CombatView({ encounter, onEncounterChange, onBack, onComplete, bestiary, gameSystems, conditions, onSaveToBestiary, onClose }) {
   const [state, setState] = useState(encounter);
   const initialRender = useRef(true);
   const [numpadTarget, setNumpadTarget] = useState(null); // { id, field: 'hp'|'init' }
   const [numpadTyping, setNumpadTyping] = useState(false); // true after first digit typed
   const [undoStack, setUndoStack] = useState([]); // max 5 entries: [{ id, field, value }]
-  const [addMonsterForm, setAddMonsterForm] = useState(null); // null | { name: '', hp: '' }
+  const [addMonsterMode, setAddMonsterMode] = useState(null); // null | 'choose' | 'manual' | 'bestiary'
+  const [addMonsterForm, setAddMonsterForm] = useState({ name: '', hp: '', qty: '1' });
+  const [bestiarySearch, setBestiarySearch] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [addNpcForm, setAddNpcForm] = useState(null); // null | { name: '', hp: '' }
+  const [saveToBestiaryId, setSaveToBestiaryId] = useState(null); // monster id being saved
+  const [saveToBestiarySystem, setSaveToBestiarySystem] = useState('sys-generico');
+  const [diceHistory, setDiceHistory] = useState([]);
+  const [lastRoll, setLastRoll] = useState(null);
+  const [lastDiceTime, setLastDiceTime] = useState(0);
+  const [diceBuffer, setDiceBuffer] = useState('');
 
   // Sync state to parent for persistence
   useEffect(() => {
@@ -765,7 +1007,7 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, onClose 
   const allCombatants = useMemo(() => [...state.pcs, ...state.monsters], [state.pcs, state.monsters]);
 
   const initBands = useMemo(() => {
-    const alivePcs = state.pcs.filter(p => p.hp > 0);
+    const alivePcs = state.pcs.filter(p => p.hp > 0 && p.enabled !== false);
     const aliveMons = state.monsters.filter(m => m.hp > 0);
     const alive = [...alivePcs, ...aliveMons];
     const initSet = new Set(alive.map(c => c.initiative));
@@ -773,7 +1015,7 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, onClose 
     return sorted;
   }, [state.pcs, state.monsters, state.descending]);
 
-  const deadPcs = useMemo(() => state.pcs.filter(p => p.hp <= 0), [state.pcs]);
+  const deadPcs = useMemo(() => state.pcs.filter(p => p.hp <= 0 && p.enabled !== false), [state.pcs]);
   const deadMons = useMemo(() => state.monsters.filter(m => m.hp <= 0), [state.monsters]);
   const hasDead = deadPcs.length > 0 || deadMons.length > 0;
 
@@ -867,7 +1109,14 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, onClose 
   };
 
   const handleNumpadDigit = (digit) => {
-    if (!numpadTarget) return;
+    if (!numpadTarget) {
+      // No target → compose dice buffer
+      setDiceBuffer(prev => {
+        if (prev.length >= 3) return prev;
+        return prev + String(digit);
+      });
+      return;
+    }
     const c = allCombatants.find(x => x.id === numpadTarget.id);
     if (!c) return;
     const currentVal = numpadTarget.field === 'hp' ? c.hp : c.initiative;
@@ -885,7 +1134,10 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, onClose 
   };
 
   const handleNumpadClear = () => {
-    if (!numpadTarget) return;
+    if (!numpadTarget) {
+      setDiceBuffer('');
+      return;
+    }
     const c = allCombatants.find(x => x.id === numpadTarget.id);
     if (!c) return;
     const currentVal = numpadTarget.field === 'hp' ? c.hp : c.initiative;
@@ -1005,20 +1257,111 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, onClose 
     });
   };
 
-  const handleAddMonster = () => {
-    if (!addMonsterForm?.name?.trim() || !addMonsterForm?.hp) return;
+  const handleAddMonsterManual = () => {
+    if (!addMonsterForm.name?.trim() || !addMonsterForm.hp) return;
     const hp = Math.max(1, parseInt(addMonsterForm.hp, 10) || 1);
     const name = addMonsterForm.name.trim();
     setState(prev => ({
       ...prev,
       monsters: [...prev.monsters, {
         id: 'mon-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-        name, hp, hpMax: hp, initiative: 0,
-        effects: [], sheet: ''
+        name, hp, hpMax: hp, hpInitial: hp, initiative: 0,
+        effects: [], attributes: [], templateId: null, sheet: ''
       }],
       log: [{ round: prev.round, turn: prev.turn, text: `${name} aggiunto (${hp} HP)` }, ...prev.log].slice(0, 50)
     }));
-    setAddMonsterForm(null);
+    setAddMonsterMode(null);
+    setAddMonsterForm({ name: '', hp: '', qty: '1' });
+  };
+
+  const handleAddNpc = () => {
+    if (!addNpcForm?.name?.trim() || !addNpcForm?.hp) return;
+    const hp = Math.max(1, parseInt(addNpcForm.hp, 10) || 1);
+    const name = addNpcForm.name.trim();
+    setState(prev => ({
+      ...prev,
+      pcs: [...prev.pcs, {
+        id: 'npc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        name, hp, hpMax: hp, hpInitial: hp, initiative: 0,
+        effects: [], attributes: [], templateId: null, sourceId: null,
+        type: 'npc', enabled: true, sheet: ''
+      }],
+      log: [{ round: prev.round, turn: prev.turn, text: `NPC ${name} aggiunto (${hp} HP)` }, ...prev.log].slice(0, 50)
+    }));
+    setAddNpcForm(null);
+  };
+
+  const handleToggleEnabled = (id) => {
+    setState(prev => ({
+      ...prev,
+      pcs: prev.pcs.map(p => p.id === id ? { ...p, enabled: !p.enabled } : p)
+    }));
+  };
+
+  const handleAddMonsterFromBestiary = () => {
+    if (!selectedTemplate) return;
+    const t = selectedTemplate;
+    const qty = Math.max(1, parseInt(addMonsterForm.qty, 10) || 1);
+    const hpAttr = t.attributes.find(a => a.key.toLowerCase() === 'hp');
+    const hp = Math.max(1, parseInt(addMonsterForm.hp || hpAttr?.value || '10', 10) || 10);
+    const baseName = addMonsterForm.name?.trim() || t.name;
+    const newMonsters = [];
+    for (let i = 0; i < qty; i++) {
+      newMonsters.push({
+        id: 'mon-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6) + '-' + i,
+        name: qty > 1 ? `${baseName} ${i + 1}` : baseName,
+        hp, hpMax: hp, hpInitial: hp, initiative: 0,
+        effects: [],
+        attributes: t.attributes.map(a => ({ ...a })),
+        templateId: t.id,
+        sheet: ''
+      });
+    }
+    setState(prev => ({
+      ...prev,
+      monsters: [...prev.monsters, ...newMonsters],
+      log: [{ round: prev.round, turn: prev.turn, text: `${baseName} aggiunto x${qty} (${hp} HP)` }, ...prev.log].slice(0, 50)
+    }));
+    setAddMonsterMode(null);
+    setSelectedTemplate(null);
+    setAddMonsterForm({ name: '', hp: '', qty: '1' });
+    setBestiarySearch('');
+  };
+
+  const handleSaveToBestiary = (monsterId) => {
+    const mon = state.monsters.find(m => m.id === monsterId);
+    if (!mon || mon.templateId) return;
+    const template = {
+      id: 'beast-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+      name: mon.name,
+      gameSystem: saveToBestiarySystem,
+      attributes: (mon.attributes || []).length > 0 ? mon.attributes.map(a => ({ ...a })) : [
+        { key: 'HP', value: String(mon.hpMax), description: '', isGlobal: true, defaultValue: '' }
+      ],
+      notes: ''
+    };
+    onSaveToBestiary?.(template);
+    // Mark as template-linked
+    setState(prev => ({
+      ...prev,
+      monsters: prev.monsters.map(m => m.id === monsterId ? { ...m, templateId: template.id } : m)
+    }));
+    setSaveToBestiaryId(null);
+  };
+
+  const handleRemoveCombatant = (id) => {
+    setState(prev => ({
+      ...prev,
+      pcs: prev.pcs.filter(p => p.id !== id),
+      monsters: prev.monsters.filter(m => m.id !== id),
+      selectedId: prev.selectedId === id ? null : prev.selectedId,
+      targetIds: prev.targetIds.filter(t => t !== id),
+      skippedIds: (prev.skippedIds || []).filter(s => s !== id)
+    }));
+    if (numpadTarget?.id === id) {
+      setNumpadTarget(null);
+      setNumpadTyping(false);
+    }
   };
 
   // ── Conditions ──
@@ -1103,7 +1446,16 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, onClose 
     setNumpadTarget(null);
     setNumpadTyping(false);
     setUndoStack([]);
-    setAddMonsterForm(null);
+    setAddMonsterMode(null);
+    setAddMonsterForm({ name: '', hp: '', qty: '1' });
+    setSelectedTemplate(null);
+    setBestiarySearch('');
+    setSaveToBestiaryId(null);
+    setSaveToBestiarySystem('sys-generico');
+    setAddNpcForm(null);
+    setDiceHistory([]);
+    setLastRoll(null);
+    setDiceBuffer('');
   };
 
   const handleEnvEffectClick = (effectIdx) => {
@@ -1130,6 +1482,55 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, onClose 
     addLogEntry(`Ambiente: ${name} aggiunto${rounds > 0 ? ` (${rounds}r)` : ''}`);
   };
 
+  // ── Dice ──
+
+  const buildDiceLogText = useCallback((result) => {
+    const selected = allCombatants.find(c => c.id === state.selectedId);
+    const targets = state.targetIds.map(tid => allCombatants.find(c => c.id === tid)).filter(Boolean);
+    let text = '';
+    if (selected) text += selected.name + ' ';
+    if (result.attrKey) {
+      text += result.attrKey;
+      if (result.attrDesc) text += ` (${result.attrDesc})`;
+      text += ' ';
+    }
+    if (targets.length > 0) text += '→ ' + targets.map(t => t.name).join(', ') + ': ';
+    else if (selected) text += ': ';
+    text += formatDiceResult(result);
+    return text;
+  }, [state.selectedId, state.targetIds, allCombatants]);
+
+  const pushDiceResult = useCallback((result) => {
+    const now = Date.now();
+    setDiceHistory(prev => {
+      const needsSeparator = prev.length > 0 && !prev[0]?.separator && (now - lastDiceTime > 3000);
+      const newHistory = needsSeparator
+        ? [result, { separator: true }, ...prev]
+        : [result, ...prev];
+      return newHistory.slice(0, 20);
+    });
+    setLastRoll(result);
+    setLastDiceTime(now);
+    addLogEntry(buildDiceLogText(result));
+  }, [lastDiceTime, buildDiceLogText]);
+
+  const handleDiceRoll = useCallback((diceType) => {
+    const count = (diceBuffer && parseInt(diceBuffer, 10) > 0) ? parseInt(diceBuffer, 10) : 1;
+    const formula = `${count}d${diceType}`;
+    const result = rollDice(formula);
+    if (!result) return;
+    pushDiceResult(result);
+    setDiceBuffer('');
+  }, [diceBuffer, pushDiceResult]);
+
+  const handleDiceRollFormula = useCallback((formula, attrKey, attrDesc) => {
+    const result = rollDice(formula);
+    if (!result) return;
+    result.attrKey = attrKey || null;
+    result.attrDesc = attrDesc || null;
+    pushDiceResult(result);
+  }, [pushDiceResult]);
+
   // Find data for detail sheets
   const selectedPc = state.pcs.find(p => p.id === state.selectedId) || null;
   const selectedMon = state.monsters.find(m => m.id === state.selectedId) || null;
@@ -1146,12 +1547,17 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, onClose 
     currentInit: state.currentInit,
     hpSelected: numpadTarget?.id === c.id && numpadTarget?.field === 'hp',
     initSelected: numpadTarget?.id === c.id && numpadTarget?.field === 'init',
+    canRemove: !c.sourceId,
+    isNpc: c.type === 'npc',
+    canToggleEnabled: !!c.sourceId,
     onSelect: handleSelect,
     onTargetToggle: handleTargetToggle,
     onHpChange: handleHpChange,
     onHpSelect: handleHpSelect,
     onSkipToggle: handleSkipToggle,
-    onEffectClick: handleEffectClick
+    onEffectClick: handleEffectClick,
+    onRemove: handleRemoveCombatant,
+    onToggleEnabled: handleToggleEnabled
   });
 
   return (
@@ -1180,10 +1586,14 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, onClose 
           <NumPadCol
             hasTarget={!!numpadTarget}
             undoCount={undoStack.length}
+            diceBuffer={diceBuffer}
+            lastRoll={lastRoll}
+            diceHistory={diceHistory}
             onModifier={handleNumpadModifier}
             onDigit={handleNumpadDigit}
             onClear={handleNumpadClear}
             onUndo={handleNumpadUndo}
+            onDiceRoll={handleDiceRoll}
           />
 
           {/* Center: Init + PG + Mostri */}
@@ -1204,7 +1614,7 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, onClose 
             {/* Initiative Bands (alive only) */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px' }}>
               {initBands.map(init => {
-                const pcsInBand = state.pcs.filter(p => p.initiative === init && p.hp > 0);
+                const pcsInBand = state.pcs.filter(p => p.initiative === init && p.hp > 0 && p.enabled !== false);
                 const monsInBand = state.monsters.filter(m => m.initiative === init && m.hp > 0);
                 const isCurrentInit = init === state.currentInit;
                 const hasActed = state.actedInits.includes(init);
@@ -1275,57 +1685,206 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, onClose 
                 </>
               )}
 
-              {/* Add monster */}
-              <div style={{ padding: '8px', display: 'flex', justifyContent: 'center' }}>
-                {addMonsterForm === null ? (
-                  <span
-                    onClick={() => setAddMonsterForm({ name: '', hp: '' })}
-                    style={{
-                      fontSize: '11px', padding: '4px 14px', borderRadius: '4px',
-                      border: '0.5px solid var(--color-info)', color: 'var(--color-info)',
-                      cursor: 'pointer'
-                    }}
-                  >+ Aggiungi mostro</span>
+              {/* Disabled PCs section */}
+              {state.pcs.some(p => p.enabled === false) && (
+                <>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '6px 0 4px', borderBottom: '0.5px solid var(--border-subtle)'
+                  }}>
+                    <div style={{ width: '24px', flexShrink: 0, textAlign: 'center', fontSize: '10px', fontWeight: '600', color: 'var(--text-disabled)' }}>OFF</div>
+                    <div style={{ flex: 1, height: '0.5px', background: 'var(--text-disabled)', opacity: 0.3 }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '0', minHeight: '36px' }}>
+                    <div style={{ width: '24px', flexShrink: 0 }} />
+                    <div style={{ flex: 1, padding: '3px 4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      {state.pcs.filter(p => p.enabled === false).map(pc => (
+                        <CombatantCard key={pc.id} {...cardProps(pc, true)} hasActed={false} />
+                      ))}
+                    </div>
+                    <div style={{ flex: 1 }} />
+                  </div>
+                </>
+              )}
+
+              {/* Add NPC + Add monster */}
+              <div style={{ display: 'flex', gap: '8px', padding: '8px', justifyContent: 'center' }}>
+                {/* Add NPC */}
+                {addNpcForm === null ? (
+                  <span onClick={() => setAddNpcForm({ name: '', hp: '' })} style={{
+                    fontSize: '11px', padding: '4px 14px', borderRadius: '4px',
+                    border: '1px dashed var(--color-info)', color: 'var(--color-info)', cursor: 'pointer'
+                  }}>+ NPC</span>
                 ) : (
                   <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                    <input
-                      autoFocus
-                      value={addMonsterForm.name}
+                    <input autoFocus value={addNpcForm.name}
+                      onChange={e => setAddNpcForm(prev => ({ ...prev, name: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') handleAddNpc(); if (e.key === 'Escape') setAddNpcForm(null); }}
+                      placeholder="Nome NPC" style={{
+                        width: '100px', padding: '4px 8px', fontSize: '12px', minHeight: '28px',
+                        background: 'var(--bg-input)', border: '1px dashed var(--border-default)',
+                        borderRadius: '4px', color: 'var(--text-primary)', outline: 'none'
+                      }} />
+                    <input value={addNpcForm.hp}
+                      onChange={e => setAddNpcForm(prev => ({ ...prev, hp: e.target.value.replace(/\D/g, '') }))}
+                      onKeyDown={e => { if (e.key === 'Enter') handleAddNpc(); if (e.key === 'Escape') setAddNpcForm(null); }}
+                      placeholder="HP" style={{
+                        width: '45px', padding: '4px', fontSize: '12px', minHeight: '28px',
+                        background: 'var(--bg-input)', border: '1px dashed var(--border-default)',
+                        borderRadius: '4px', color: 'var(--text-primary)', outline: 'none', textAlign: 'center'
+                      }} />
+                    <span onClick={handleAddNpc} style={{
+                      fontSize: '11px', padding: '4px 8px', borderRadius: '4px',
+                      background: 'var(--color-info-bg)', border: '1px solid var(--color-info)',
+                      color: 'var(--color-info)', cursor: 'pointer', fontWeight: '500'
+                    }}>OK</span>
+                    <span onClick={() => setAddNpcForm(null)} style={{ fontSize: '14px', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px' }}>✕</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Add monster */}
+              <div style={{ padding: '0 8px 8px' }}>
+                {addMonsterMode === null && (
+                  <div style={{ textAlign: 'center' }}>
+                    <span onClick={() => setAddMonsterMode('choose')} style={{
+                      fontSize: '11px', padding: '4px 14px', borderRadius: '4px',
+                      border: '0.5px solid var(--color-info)', color: 'var(--color-info)', cursor: 'pointer'
+                    }}>+ Aggiungi mostro</span>
+                  </div>
+                )}
+
+                {addMonsterMode === 'choose' && (
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
+                    <span onClick={() => setAddMonsterMode('bestiary')} style={{
+                      fontSize: '12px', padding: '6px 14px', borderRadius: '4px', minHeight: '36px',
+                      border: '1px solid var(--accent)', color: 'var(--accent)', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center'
+                    }}>Da bestiario</span>
+                    <span onClick={() => setAddMonsterMode('manual')} style={{
+                      fontSize: '12px', padding: '6px 14px', borderRadius: '4px', minHeight: '36px',
+                      border: '1px solid var(--border-default)', color: 'var(--text-secondary)', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center'
+                    }}>Manuale</span>
+                    <span onClick={() => setAddMonsterMode(null)} style={{
+                      fontSize: '14px', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px'
+                    }}>✕</span>
+                  </div>
+                )}
+
+                {addMonsterMode === 'manual' && (
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center', justifyContent: 'center' }}>
+                    <input autoFocus value={addMonsterForm.name}
                       onChange={e => setAddMonsterForm(prev => ({ ...prev, name: e.target.value }))}
-                      onKeyDown={e => { if (e.key === 'Enter') handleAddMonster(); if (e.key === 'Escape') setAddMonsterForm(null); }}
-                      placeholder="Nome"
-                      style={{
+                      onKeyDown={e => { if (e.key === 'Enter') handleAddMonsterManual(); if (e.key === 'Escape') setAddMonsterMode(null); }}
+                      placeholder="Nome" style={{
                         width: '120px', padding: '4px 8px', fontSize: '12px', minHeight: '28px',
                         background: 'var(--bg-input)', border: '1px solid var(--border-default)',
                         borderRadius: '4px', color: 'var(--text-primary)', outline: 'none'
-                      }}
-                    />
-                    <input
-                      value={addMonsterForm.hp}
+                      }} />
+                    <input value={addMonsterForm.hp}
                       onChange={e => setAddMonsterForm(prev => ({ ...prev, hp: e.target.value.replace(/\D/g, '') }))}
-                      onKeyDown={e => { if (e.key === 'Enter') handleAddMonster(); if (e.key === 'Escape') setAddMonsterForm(null); }}
-                      placeholder="HP"
-                      style={{
+                      onKeyDown={e => { if (e.key === 'Enter') handleAddMonsterManual(); if (e.key === 'Escape') setAddMonsterMode(null); }}
+                      placeholder="HP" style={{
                         width: '50px', padding: '4px 8px', fontSize: '12px', minHeight: '28px',
                         background: 'var(--bg-input)', border: '1px solid var(--border-default)',
                         borderRadius: '4px', color: 'var(--text-primary)', outline: 'none', textAlign: 'center'
-                      }}
-                    />
-                    <span
-                      onClick={handleAddMonster}
-                      style={{
-                        fontSize: '11px', padding: '4px 10px', borderRadius: '4px', minHeight: '28px',
-                        background: 'var(--color-info-bg)', border: '1px solid var(--color-info)',
-                        color: 'var(--color-info)', cursor: 'pointer', display: 'flex', alignItems: 'center',
-                        fontWeight: '500'
-                      }}
-                    >Aggiungi</span>
-                    <span
-                      onClick={() => setAddMonsterForm(null)}
-                      style={{
-                        fontSize: '14px', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px'
-                      }}
-                    >✕</span>
+                      }} />
+                    <span onClick={handleAddMonsterManual} style={{
+                      fontSize: '11px', padding: '4px 10px', borderRadius: '4px', minHeight: '28px',
+                      background: 'var(--color-info-bg)', border: '1px solid var(--color-info)',
+                      color: 'var(--color-info)', cursor: 'pointer', display: 'flex', alignItems: 'center', fontWeight: '500'
+                    }}>Aggiungi</span>
+                    <span onClick={() => setAddMonsterMode(null)} style={{ fontSize: '14px', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px' }}>✕</span>
+                  </div>
+                )}
+
+                {addMonsterMode === 'bestiary' && (
+                  <div style={{ border: '1px solid var(--border-default)', borderRadius: '6px', overflow: 'hidden', maxWidth: '400px', margin: '0 auto' }}>
+                    {!selectedTemplate ? (
+                      <>
+                        <input value={bestiarySearch}
+                          autoFocus
+                          onChange={e => setBestiarySearch(e.target.value)}
+                          placeholder="Cerca nel bestiario..."
+                          style={{
+                            width: '100%', padding: '6px 10px', fontSize: '12px', boxSizing: 'border-box',
+                            background: 'var(--bg-input)', border: 'none', borderBottom: '1px solid var(--border-subtle)',
+                            color: 'var(--text-primary)', outline: 'none'
+                          }} />
+                        <div style={{ maxHeight: '150px', overflowY: 'auto' }}>
+                          {(bestiary || [])
+                            .filter(b => !bestiarySearch || b.name.toLowerCase().includes(bestiarySearch.toLowerCase()))
+                            .map(b => {
+                              const hp = b.attributes.find(a => a.key.toLowerCase() === 'hp')?.value || '—';
+                              return (
+                                <div key={b.id} onClick={() => {
+                                  setSelectedTemplate(b);
+                                  const hpVal = b.attributes.find(a => a.key.toLowerCase() === 'hp')?.value || '';
+                                  setAddMonsterForm({ name: b.name, hp: hpVal, qty: '1' });
+                                }} style={{
+                                  padding: '6px 10px', minHeight: '36px', cursor: 'pointer', fontSize: '12px',
+                                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                  borderBottom: '0.5px solid var(--border-subtle)'
+                                }}
+                                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-elevated)'}
+                                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                >
+                                  <span style={{ color: 'var(--text-primary)' }}>{b.name}</span>
+                                  <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>{hp} HP</span>
+                                </div>
+                              );
+                            })}
+                          {(bestiary || []).length === 0 && (
+                            <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-disabled)', fontSize: '11px', fontStyle: 'italic' }}>
+                              Bestiario vuoto. Aggiungi mostri dalle Librerie.
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ padding: '6px', textAlign: 'center' }}>
+                          <span onClick={() => setAddMonsterMode(null)} style={{ fontSize: '11px', color: 'var(--text-tertiary)', cursor: 'pointer' }}>Annulla</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div style={{ fontSize: '12px', fontWeight: '500', color: 'var(--accent)', marginBottom: '2px' }}>{selectedTemplate.name}</div>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <input value={addMonsterForm.name}
+                            onChange={e => setAddMonsterForm(prev => ({ ...prev, name: e.target.value }))}
+                            placeholder="Nome"
+                            style={{
+                              flex: 1, padding: '4px 8px', fontSize: '12px', minHeight: '28px',
+                              background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+                              borderRadius: '4px', color: 'var(--text-primary)', outline: 'none'
+                            }} />
+                          <input value={addMonsterForm.hp}
+                            onChange={e => setAddMonsterForm(prev => ({ ...prev, hp: e.target.value.replace(/\D/g, '') }))}
+                            placeholder="HP"
+                            style={{
+                              width: '50px', padding: '4px 8px', fontSize: '12px', minHeight: '28px',
+                              background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+                              borderRadius: '4px', color: 'var(--text-primary)', outline: 'none', textAlign: 'center'
+                            }} />
+                          <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>x</span>
+                          <input value={addMonsterForm.qty}
+                            onChange={e => setAddMonsterForm(prev => ({ ...prev, qty: e.target.value.replace(/\D/g, '') }))}
+                            style={{
+                              width: '36px', padding: '4px', fontSize: '12px', minHeight: '28px',
+                              background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+                              borderRadius: '4px', color: 'var(--text-primary)', outline: 'none', textAlign: 'center'
+                            }} />
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                          <span onClick={() => { setSelectedTemplate(null); setBestiarySearch(''); }} style={{
+                            fontSize: '11px', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px 8px'
+                          }}>Indietro</span>
+                          <span onClick={handleAddMonsterFromBestiary} style={{
+                            fontSize: '11px', padding: '4px 12px', borderRadius: '4px',
+                            background: 'var(--accent)', color: 'var(--bg-main)', cursor: 'pointer', fontWeight: '500'
+                          }}>Aggiungi</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1333,6 +1892,7 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, onClose 
 
             {/* Conditions Row */}
             <ConditionsRow
+              conditions={conditions || []}
               selectedId={state.selectedId}
               activeEffects={allCombatants.find(c => c.id === state.selectedId)?.effects || []}
               duration={state.conditionDuration ?? 3}
@@ -1347,9 +1907,18 @@ function CombatView({ encounter, onEncounterChange, onBack, onComplete, onClose 
             borderLeft: '1px solid var(--border-default)',
             display: 'flex', flexDirection: 'column', overflow: 'hidden'
           }}>
-            <DetailSheet title="Scheda PG" data={sheetPc} />
+            <DetailSheet title="Scheda PG" data={sheetPc} onDiceRoll={handleDiceRollFormula} />
             <div style={{ borderBottom: '1px solid var(--border-default)' }} />
-            <DetailSheet title="Scheda mostro" data={sheetMon} />
+            <DetailSheet
+              title="Scheda mostro" data={sheetMon} isMonster={true}
+              onSaveToBestiary={handleSaveToBestiary}
+              saveToBestiaryId={saveToBestiaryId}
+              onSaveToBestiaryStart={(id) => setSaveToBestiaryId(id)}
+              saveToBestiarySystem={saveToBestiarySystem}
+              onSaveToBestiarySystemChange={setSaveToBestiarySystem}
+              gameSystems={gameSystems}
+              onDiceRoll={handleDiceRollFormula}
+            />
           </div>
         </div>
 
@@ -1377,6 +1946,8 @@ function createNewEncounter(name, description, players) {
     initiative: 0,
     effects: [],
     enabled: true,
+    attributes: [],
+    templateId: null,
     sheet: p.characterName + (p.playerName ? ` (${p.playerName})` : '') + '\nHP: da impostare'
   }));
   return {
@@ -1402,7 +1973,7 @@ function createNewEncounter(name, description, players) {
   };
 }
 
-export default function CombatTrackerPanel({ combatData, onCombatDataChange, players, projectPath, onClose }) {
+export default function CombatTrackerPanel({ combatData, onCombatDataChange, players, projectPath, librariesData, onLibrariesDataChange, onClose }) {
   const [data, setData] = useState(() => combatData || EMPTY_COMBAT_DATA);
   const initialRender = useRef(true);
 
@@ -1466,6 +2037,13 @@ export default function CombatTrackerPanel({ combatData, onCombatDataChange, pla
         onEncounterChange={handleEncounterChange}
         onBack={handleBack}
         onComplete={handleComplete}
+        bestiary={(librariesData || { bestiary: [] }).bestiary}
+        gameSystems={(librariesData || { gameSystems: [] }).gameSystems}
+        conditions={(librariesData?.conditions?.length > 0) ? librariesData.conditions : DEFAULT_CONDITIONS_FALLBACK}
+        onSaveToBestiary={(monster) => {
+          const lib = librariesData || { gameSystems: [{ id: 'sys-generico', name: 'Generico' }], bestiary: [], conditions: [] };
+          onLibrariesDataChange?.({ ...lib, bestiary: [...lib.bestiary, monster] });
+        }}
         onClose={onClose}
       />
     );
