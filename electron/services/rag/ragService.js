@@ -36,17 +36,14 @@ class RagService {
 
     vectorStore.open(projectPath);
     this.initialized = true;
-
-    // Incremental indexing in background
-    this.indexIncremental(onProgress).catch(err => {
-      console.error('RAG indexIncremental error:', err);
-    });
   }
 
   async close() {
-    vectorStore.close();
     this.initialized = false;
+    this.indexing = false;
     this.projectPath = null;
+    try { vectorStore.close(); } catch (e) {}
+    try { await embeddingService.dispose(); } catch (e) {}
   }
 
   // ── Indexing ──
@@ -58,6 +55,7 @@ class RagService {
       vectorStore.clear();
       const files = this._scanFiles();
       for (let i = 0; i < files.length; i++) {
+        if (!this.initialized) break; // abort if closed during indexing
         if (onProgress) {
           onProgress({
             phase: 'indexing',
@@ -67,7 +65,6 @@ class RagService {
           });
         }
         await this._indexFile(files[i]);
-        // Yield to main process event loop — prevents UI freeze
         await new Promise(r => setTimeout(r, 10));
       }
       if (onProgress) {
@@ -110,6 +107,7 @@ class RagService {
       }
 
       for (let i = 0; i < toUpdate.length; i++) {
+        if (!this.initialized) break;
         if (onProgress) {
           onProgress({
             phase: 'indexing',
@@ -265,6 +263,11 @@ class RagService {
 
   isReady() { return this.initialized && !this.indexing; }
   isIndexing() { return this.indexing; }
+  hasIndex() {
+    if (!this.initialized) return false;
+    const stats = vectorStore.getStats();
+    return stats.totalChunks > 0;
+  }
 
   // ── Private ──
 

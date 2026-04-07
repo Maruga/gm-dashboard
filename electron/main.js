@@ -308,6 +308,12 @@ app.whenReady().then(() => {
   }
 });
 
+app.on('before-quit', () => {
+  try {
+    ragService.close();
+  } catch (e) {}
+});
+
 app.on('window-all-closed', () => {
   app.quit();
 });
@@ -879,7 +885,8 @@ ipcMain.handle('rag-get-stats', async () => ragService.getStats());
 
 ipcMain.handle('rag-get-status', async () => ({
   ready: ragService.isReady(),
-  indexing: ragService.isIndexing()
+  indexing: ragService.isIndexing(),
+  hasIndex: ragService.hasIndex()
 }));
 
 ipcMain.handle('rag-update-file', async (event, filePath) => {

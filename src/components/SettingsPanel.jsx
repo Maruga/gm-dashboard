@@ -217,6 +217,21 @@ function RagSettings({ aiConfig, onAiConfigChange }) {
           {rebuilding ? 'Ricostruzione...' : needsReindex ? '🔄 Ricostruisci indice (richiesto)' : '🔄 Ricostruisci indice'}
         </button>
       </div>
+
+      {/* Auto-index toggle */}
+      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', fontSize: '11px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+        <input
+          type="checkbox"
+          checked={localRag.autoIndex || false}
+          onChange={e => {
+            const next = { ...localRag, autoIndex: e.target.checked };
+            setLocalRag(next);
+            onAiConfigChange(prev => ({ ...prev, rag: { ...(prev.rag || rag), autoIndex: e.target.checked } }));
+          }}
+          style={{ accentColor: 'var(--accent)' }}
+        />
+        Indicizza automaticamente all'apertura del progetto
+      </label>
     </div>
   );
 }

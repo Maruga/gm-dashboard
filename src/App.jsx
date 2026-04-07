@@ -316,16 +316,19 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
       }
       setStateLoaded(true);
 
-      // Init RAG in background with saved options
-      const ragSaved = saved?.aiConfig?.rag || { chunkSize: 500, overlapPercent: 10, topK: 7, contextExpand: 1 };
+      // RAG: always open DB (to check existing index), auto-index only if enabled
+      const ragSaved = saved?.aiConfig?.rag || {};
       const ragOpts = { ...ragSaved, chunkOverlap: Math.round((ragSaved.chunkSize || 500) * (ragSaved.overlapPercent || 10) / 100) };
-      window.electronAPI.ragOpen?.(projectPath, ragOpts).catch(err => {
-        console.warn('RAG init failed (fallback to keyword):', err);
+      window.electronAPI.ragOpen?.(projectPath, ragOpts).then(() => {
+        if (ragSaved.autoIndex) {
+          window.electronAPI.ragIndexAll?.();
+        }
+      }).catch(err => {
+        console.warn('RAG init failed:', err);
       });
     });
 
     return () => {
-      // Close RAG on project change/unmount
       window.electronAPI.ragClose?.().catch(() => {});
     };
   }, [projectPath]);

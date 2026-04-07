@@ -133,20 +133,48 @@ function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, t
   const [saveStatus, setSaveStatus] = useState({});
   const aiEndRef = useRef(null);
   const aiInputRef = useRef(null);
+  const [ragStatus, setRagStatus] = useState('unknown'); // unknown | not_indexed | indexing | ready
   const [ragProgress, setRagProgress] = useState(null);
   const ragDismissTimer = useRef(null);
+
+  // Check RAG status on mount and when tab changes to AI
+  useEffect(() => {
+    if (activeTab !== 'ai') return;
+    window.electronAPI?.ragGetStatus?.().then(s => {
+      if (s.indexing) setRagStatus('indexing');
+      else if (s.hasIndex) setRagStatus('ready');
+      else setRagStatus('not_indexed');
+    }).catch(() => setRagStatus('not_indexed'));
+  }, [activeTab]);
 
   // RAG progress listener
   useEffect(() => {
     const unsub = window.electronAPI?.onRagProgress?.((data) => {
       setRagProgress(data);
+      if (data.phase === 'indexing') setRagStatus('indexing');
       if (data.phase === 'done') {
+        setRagStatus('ready');
         if (ragDismissTimer.current) clearTimeout(ragDismissTimer.current);
         ragDismissTimer.current = setTimeout(() => setRagProgress(null), 4000);
       }
     });
     return () => { unsub?.(); if (ragDismissTimer.current) clearTimeout(ragDismissTimer.current); };
   }, []);
+
+  const handleIndexNow = async () => {
+    setRagStatus('indexing');
+    setRagProgress({ phase: 'indexing', message: 'Avvio indicizzazione...', progress: 0 });
+    const ragSaved = aiConfig?.rag || {};
+    const ragOpts = { ...ragSaved, chunkOverlap: Math.round((ragSaved.chunkSize || 500) * (ragSaved.overlapPercent || 10) / 100) };
+    try {
+      await window.electronAPI?.ragOpen?.(projectFolder, ragOpts);
+      await window.electronAPI?.ragIndexAll?.();
+    } catch (err) {
+      console.warn('Index failed:', err);
+      setRagStatus('not_indexed');
+      setRagProgress(null);
+    }
+  };
 
   // Load search history from localStorage
   useEffect(() => {
@@ -557,22 +585,50 @@ function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, t
         {/* AI tab content */}
         {activeTab === 'ai' && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            {/* RAG progress banner */}
-            {ragProgress && (
+            {/* RAG status banner */}
+            {ragStatus === 'not_indexed' && (
               <div style={{
-                padding: '4px 12px', fontSize: '11px', flexShrink: 0,
+                padding: '6px 12px', fontSize: '11px', flexShrink: 0,
                 display: 'flex', alignItems: 'center', gap: '8px',
-                background: ragProgress.phase === 'done' ? 'color-mix(in srgb, var(--color-success) 10%, transparent)' : ragProgress.phase === 'error' ? 'var(--color-danger-bg)' : 'color-mix(in srgb, var(--color-info) 10%, transparent)',
-                color: ragProgress.phase === 'done' ? 'var(--color-success)' : ragProgress.phase === 'error' ? 'var(--color-danger)' : 'var(--color-info)',
+                background: 'color-mix(in srgb, var(--color-warning) 10%, transparent)',
+                color: 'var(--color-warning)',
                 borderBottom: '0.5px solid var(--border-subtle)'
               }}>
-                <span>{ragProgress.phase === 'done' ? '✓' : ragProgress.phase === 'error' ? '⚠' : '⟳'}</span>
+                <span>⚠</span>
+                <span style={{ flex: 1 }}>Documenti non indicizzati — ricerca basata su parole chiave</span>
+                <span onClick={handleIndexNow} style={{
+                  padding: '3px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: '600',
+                  background: 'var(--color-warning)', color: 'var(--bg-main)', fontSize: '11px'
+                }}>Indicizza ora</span>
+              </div>
+            )}
+            {ragStatus === 'indexing' && ragProgress && (
+              <div style={{
+                padding: '6px 12px', fontSize: '11px', flexShrink: 0,
+                display: 'flex', alignItems: 'center', gap: '8px',
+                background: 'color-mix(in srgb, var(--color-info) 10%, transparent)',
+                color: 'var(--color-info)',
+                borderBottom: '0.5px solid var(--border-subtle)'
+              }}>
+                <span>⟳</span>
                 <span style={{ flex: 1 }}>{ragProgress.message}</span>
-                {ragProgress.progress != null && ragProgress.phase !== 'done' && (
+                {ragProgress.progress != null && (
                   <div style={{ width: '60px', height: '3px', borderRadius: '2px', background: 'var(--border-subtle)', overflow: 'hidden' }}>
                     <div style={{ height: '100%', borderRadius: '2px', background: 'currentColor', width: `${ragProgress.progress}%`, transition: 'width 0.3s' }} />
                   </div>
                 )}
+              </div>
+            )}
+            {ragStatus === 'ready' && ragProgress?.phase === 'done' && (
+              <div style={{
+                padding: '4px 12px', fontSize: '11px', flexShrink: 0,
+                display: 'flex', alignItems: 'center', gap: '8px',
+                background: 'color-mix(in srgb, var(--color-success) 10%, transparent)',
+                color: 'var(--color-success)',
+                borderBottom: '0.5px solid var(--border-subtle)'
+              }}>
+                <span>✓</span>
+                <span style={{ flex: 1 }}>{ragProgress.message}</span>
               </div>
             )}
             {(!aiConfig?.provider && !aiConfig?.apiKey && !firebaseUser) ? (
