@@ -89,6 +89,7 @@ class VectorStore {
     });
 
     scored.sort((a, b) => b.similarity - a.similarity);
+
     return scored.slice(0, topK);
   }
 

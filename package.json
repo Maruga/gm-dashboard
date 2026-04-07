@@ -21,7 +21,8 @@
     "electron-store": "^11.0.2",
     "electron-updater": "^6.8.3",
     "firebase": "^12.10.0",
-    "node-telegram-bot-api": "^0.67.0"
+    "node-telegram-bot-api": "^0.67.0",
+    "unpdf": "^1.4.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.1.4",

@@ -9,7 +9,7 @@ class RagService {
     this.projectPath = null;
     this.indexing = false;
     this.initialized = false;
-    this.fileExtensions = ['.md', '.html', '.htm', '.txt'];
+    this.fileExtensions = ['.md', '.html', '.htm', '.txt', '.pdf'];
     this.topK = 7;
     this.contextExpand = 1; // 0=no expansion, 1=±1 chunk, 2=±2 chunks
   }
@@ -150,13 +150,47 @@ class RagService {
   }
 
   async buildContext(question, topK = null) {
-    const results = await this.search(question, topK);
-    if (results.length === 0) return '';
+    if (!this.initialized) return '';
+    const k = topK || this.topK;
+    const queryEmbedding = await embeddingService.embed(question);
+    const allResults = vectorStore.search(queryEmbedding, 100);
+    const results = allResults.slice(0, k);
+
+    // Filename matching: if query words match a document name, include its chunks
+    const queryWords = question.toLowerCase().split(/\s+/).filter(w => w.length >= 2);
+    const indexedFiles = vectorStore.getIndexedFiles();
+    const fileNameMatches = [];
+    for (const f of indexedFiles) {
+      const baseName = path.basename(f.file_path).replace(/\.[^.]+$/, '').toLowerCase();
+      if (queryWords.some(w => baseName.includes(w) || w.includes(baseName))) {
+        // Get ALL chunks of this file
+        const fileChunks = allResults.filter(r => r.filePath === f.file_path);
+        if (fileChunks.length === 0) {
+          // Not in top 100 — fetch from DB directly
+          const dbChunks = vectorStore.getChunkNeighbors(f.file_path, 0, 999);
+          fileNameMatches.push(...dbChunks);
+        } else {
+          fileNameMatches.push(...fileChunks);
+        }
+      }
+    }
+
+    // Merge: results + filename matches (deduplicate)
+    const merged = [...results];
+    for (const m of fileNameMatches) {
+      if (!merged.some(r => r.filePath === m.filePath && r.startChar === m.startChar)) {
+        merged.push(m);
+      }
+    }
+
+    // Log kept for diagnostics
+    console.log(`[RAG] "${question.substring(0, 40)}" → ${results.length} sem + ${fileNameMatches.length} name = ${merged.length}`);
+    if (merged.length === 0) return '';
 
     // Expand context: include adjacent chunks for each result
     const allChunks = new Map(); // key: filePath+startChar → deduplicate
 
-    for (const r of results) {
+    for (const r of merged) {
       if (this.contextExpand > 0) {
         const neighbors = vectorStore.getChunkNeighbors(r.filePath, r.startChar, this.contextExpand);
         for (const n of neighbors) {
@@ -235,14 +269,31 @@ class RagService {
   // ── Private ──
 
   async _indexFile(filePath) {
+    const { extractPdfText } = require('../pdfExtractor');
     let content;
-    try { content = fs.readFileSync(filePath, 'utf-8'); } catch (e) { return; }
-    const chunks = chunkService.chunkDocument(content);
-    if (chunks.length === 0) return;
+    try {
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext === '.pdf') {
+        content = await extractPdfText(filePath);
+      } else {
+        content = fs.readFileSync(filePath, 'utf-8');
+      }
+    } catch (e) { return; }
+    // Prefix document name to content for better embedding matching
+    const fileName = path.basename(filePath);
+    const docName = fileName.replace(/\.[^.]+$/, ''); // remove extension
+    const prefixedContent = `Documento: ${docName}\n\n${content}`;
+
+    const chunks = chunkService.chunkDocument(prefixedContent);
+    if (chunks.length === 0) {
+      console.log(`[RAG index] ${fileName}: 0 chunks (content length: ${content.length})`);
+      return;
+    }
 
     const texts = chunks.map(c => c.text);
     const embeddings = await embeddingService.embedBatch(texts);
     vectorStore.upsertFileChunks(filePath, chunks, embeddings);
+    console.log(`[RAG index] ${fileName}: ${chunks.length} chunks`);
   }
 
   _scanFiles() {

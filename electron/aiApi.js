@@ -155,7 +155,7 @@ const MAX_CACHE_ENTRIES = 50;
 
 function collectProjectFiles(dirPath) {
   const files = [];
-  const EXTS = new Set(['.md', '.html', '.htm', '.txt']);
+  const EXTS = new Set(['.md', '.html', '.htm', '.txt', '.pdf']);
 
   function walk(dir) {
     try {
@@ -186,7 +186,8 @@ function collectProjectFiles(dirPath) {
   return files;
 }
 
-function buildContext(projectPath, question, allowedFiles = null, maxChars = 48000) {
+async function buildContext(projectPath, question, allowedFiles = null, maxChars = 48000) {
+  const { extractPdfText } = require('./services/pdfExtractor');
   const MAX_CHARS = Math.max(4000, Math.min(maxChars || 48000, 500000));
   let files = collectProjectFiles(projectPath);
   if (files.length === 0) return '';
@@ -201,7 +202,7 @@ function buildContext(projectPath, question, allowedFiles = null, maxChars = 480
     if (files.length === 0) return '';
   }
 
-  // Step 1: Read all files (with cache)
+  // Step 1: Read all files (with cache, PDF via pdfExtractor)
   const allFiles = [];
   let totalSize = 0;
   for (const f of files) {
@@ -211,13 +212,16 @@ function buildContext(projectPath, question, allowedFiles = null, maxChars = 480
       const cached = fileCache.get(f.path);
       if (cached && cached.mtimeMs === stat.mtimeMs) {
         content = cached.content;
+      } else if (f.ext === '.pdf') {
+        content = await extractPdfText(f.path);
+        fileCache.set(f.path, { mtimeMs: stat.mtimeMs, content });
       } else {
         content = fs.readFileSync(f.path, 'utf-8');
         fileCache.set(f.path, { mtimeMs: stat.mtimeMs, content });
-        if (fileCache.size > MAX_CACHE_ENTRIES) {
-          const firstKey = fileCache.keys().next().value;
-          fileCache.delete(firstKey);
-        }
+      }
+      if (fileCache.size > MAX_CACHE_ENTRIES) {
+        const firstKey = fileCache.keys().next().value;
+        fileCache.delete(firstKey);
       }
       if (f.ext === '.html' || f.ext === '.htm') {
         content = stripHtmlTags(content);

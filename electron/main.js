@@ -1085,7 +1085,7 @@ ipcMain.handle('ai-chat', async (event, messages, projectPath, options = {}) => 
       }
     }
     if (!context) {
-      context = aiApi.buildContext(projectPath, question, options.allowedFiles || null, options.allowedFiles ? undefined : contextMaxChars);
+      context = await aiApi.buildContext(projectPath, question, options.allowedFiles || null, options.allowedFiles ? undefined : contextMaxChars);
     }
     const projectName = projectState?.settings?.projectName || projectPath.split('/').pop();
     logDiag('info', `AI context: projectPath=${projectPath}, question="${question.substring(0, 50)}", contextLength=${context.length}, allowedFiles=${options.allowedFiles ? options.allowedFiles.length : 'null'}`);
