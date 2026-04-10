@@ -13,6 +13,30 @@ function TelegramConfigModal({ item, players, onSave, onCancel }) {
   const [enabled, setEnabled] = useState(item.telegram?.enabled || false);
   const [commonText, setCommonText] = useState(item.telegram?.commonText || '');
   const [personalTexts, setPersonalTexts] = useState(item.telegram?.personalTexts || {});
+  const [recipients, setRecipients] = useState(() => {
+    const saved = item.telegram?.recipients;
+    if (saved && Object.keys(saved).length > 0) return saved;
+    const s = {};
+    (players || []).filter(p => p.telegramChatId).forEach(p => { s[p.id] = true; });
+    return s;
+  });
+
+  const connectedPlayers = (players || []).filter(p => p.telegramChatId);
+  const toggleRecipient = (id) => setRecipients(prev => ({ ...prev, [id]: !prev[id] }));
+  const selectAll = () => { const s = {}; connectedPlayers.forEach(p => { s[p.id] = true; }); setRecipients(s); };
+  const selectNone = () => { const s = {}; connectedPlayers.forEach(p => { s[p.id] = false; }); setRecipients(s); };
+  const selectRandom = () => {
+    const selectedCount = connectedPlayers.filter(p => recipients[p.id]).length;
+    if (selectedCount >= connectedPlayers.length) {
+      const pick = connectedPlayers[Math.floor(Math.random() * connectedPlayers.length)];
+      setRecipients(pick ? { [pick.id]: true } : {});
+      return;
+    }
+    const unsel = connectedPlayers.filter(p => !recipients[p.id]);
+    if (unsel.length === 0) return;
+    const pick = unsel[Math.floor(Math.random() * unsel.length)];
+    setRecipients(prev => ({ ...prev, [pick.id]: true }));
+  };
 
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onCancel(); };
@@ -29,6 +53,7 @@ function TelegramConfigModal({ item, players, onSave, onCancel }) {
       enabled,
       commonText: commonText.trim(),
       personalTexts,
+      recipients,
       sent: item.telegram?.sent || false
     });
   };
@@ -108,15 +133,51 @@ function TelegramConfigModal({ item, players, onSave, onCancel }) {
 
           {enabled && (
             <>
+              {/* Destinatari */}
+              <div style={{ marginBottom: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Destinatari</label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <span onClick={selectAll} style={{ fontSize: '11px', color: 'var(--accent)', cursor: 'pointer' }}>Tutti</span>
+                    <span onClick={selectNone} style={{ fontSize: '11px', color: 'var(--text-tertiary)', cursor: 'pointer' }}>Nessuno</span>
+                    <span onClick={selectRandom} style={{ fontSize: '11px', color: 'var(--color-warning)', cursor: 'pointer' }}>Casuale</span>
+                  </div>
+                </div>
+                {connectedPlayers.length === 0 ? (
+                  <div style={{ fontSize: '11px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
+                    Nessun giocatore connesso
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {connectedPlayers.map(p => (
+                      <label key={p.id} style={{
+                        display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 8px',
+                        borderRadius: '4px', cursor: 'pointer', fontSize: '12px',
+                        background: recipients[p.id] ? 'var(--accent-a10)' : 'transparent',
+                        border: recipients[p.id] ? '1px solid var(--accent)' : '1px solid var(--border-subtle)',
+                        transition: 'all 0.15s'
+                      }}>
+                        <input type="checkbox" checked={!!recipients[p.id]} onChange={() => toggleRecipient(p.id)}
+                          style={{ accentColor: 'var(--accent)' }} />
+                        <span style={{ color: 'var(--text-primary)' }}>{p.characterName || p.playerName}</span>
+                        {p.playerName && p.characterName && (
+                          <span style={{ color: 'var(--text-disabled)', fontSize: '11px' }}>({p.playerName})</span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Common text */}
               <div style={{ marginBottom: '14px' }}>
                 <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                  Testo comune (tutti i giocatori):
+                  Testo comune (destinatari selezionati):
                 </label>
                 <textarea
                   value={commonText}
                   onChange={e => setCommonText(e.target.value)}
-                  placeholder="Questo testo verrà inviato a tutti i giocatori connessi..."
+                  placeholder="Questo testo verrà inviato ai destinatari selezionati..."
                   rows={3}
                   style={textareaStyle}
                   onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
@@ -125,12 +186,12 @@ function TelegramConfigModal({ item, players, onSave, onCancel }) {
               </div>
 
               {/* Per-player texts */}
-              {(players || []).length > 0 && (
+              {connectedPlayers.filter(p => recipients[p.id]).length > 0 && (
                 <div>
                   <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
                     Testo personalizzato per giocatore:
                   </label>
-                  {players.map(pg => (
+                  {connectedPlayers.filter(p => recipients[p.id]).map(pg => (
                     <div key={pg.id} style={{ marginBottom: '10px' }}>
                       <div style={{
                         fontSize: '11px', color: 'var(--text-primary)', marginBottom: '3px',
@@ -155,9 +216,9 @@ function TelegramConfigModal({ item, players, onSave, onCancel }) {
                 </div>
               )}
 
-              {(players || []).length === 0 && (
+              {connectedPlayers.filter(p => recipients[p.id]).length === 0 && connectedPlayers.length > 0 && (
                 <div style={{ fontSize: '11px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
-                  Nessun giocatore configurato. Aggiungi giocatori nelle Impostazioni.
+                  Seleziona almeno un destinatario per il testo personalizzato.
                 </div>
               )}
             </>
@@ -172,7 +233,7 @@ function TelegramConfigModal({ item, players, onSave, onCancel }) {
           background: 'var(--bg-elevated)'
         }}>
           <span style={{ fontSize: '10px', color: 'var(--text-disabled)', maxWidth: '280px' }}>
-            Al check, i messaggi saranno inviati solo ai giocatori connessi alla sessione
+            Al check, i messaggi saranno inviati ai destinatari selezionati
           </span>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button

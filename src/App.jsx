@@ -1150,13 +1150,17 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     // Invio Telegram solo quando si spunta (non quando si de-spunta)
     if (willBeChecked && item.telegram?.enabled && !item.telegram?.sent && botStatus.running) {
       const connectedPlayers = players.filter(p => p.telegramChatId);
-      if (connectedPlayers.length === 0) return;
+      const itemRecipients = item.telegram.recipients;
+      const targetPlayers = itemRecipients && Object.keys(itemRecipients).length > 0
+        ? connectedPlayers.filter(p => itemRecipients[p.id])
+        : connectedPlayers;
+      if (targetPlayers.length === 0) return;
 
       const now = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
       const commonText = (item.telegram.commonText || '').trim();
       const personalTexts = item.telegram.personalTexts || {};
 
-      for (const p of connectedPlayers) {
+      for (const p of targetPlayers) {
         try {
           if (commonText) {
             await window.electronAPI.telegramSendMessage(p.telegramChatId, wrapGmText(commonText));
@@ -1894,6 +1898,12 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           onPanelVisibilityChange={setPanelVisibility}
           layoutPresets={layoutPresets}
           onLayoutPresetsChange={setLayoutPresets}
+          notes={notes}
+          onNotesChange={setNotes}
+          checklist={checklist}
+          onChecklistChange={setChecklist}
+          calendarData={calendarData}
+          onCalendarChange={setCalendarData}
         />
       )}
 

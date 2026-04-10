@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import DataImportPanel from './DataImportPanel';
 import { THEMES, THEME_LIST } from '../themes/themeDefinitions';
 import QRCode from 'qrcode';
 import { applyTheme, saveThemeId, getStoredThemeId, applyFontScale, saveFontScale, getStoredFontScale } from '../themes/themeEngine';
@@ -253,7 +254,10 @@ export default function SettingsPanel({
   panelVisibility, onPanelVisibilityChange,
   layoutPresets, onLayoutPresetsChange,
   initialSection,
-  librariesData
+  librariesData,
+  notes, onNotesChange,
+  checklist, onChecklistChange,
+  calendarData, onCalendarChange
 }) {
   const [showToken, setShowToken] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -406,6 +410,7 @@ export default function SettingsPanel({
               { id: 'account', icon: '👤', label: 'Account' },
               { id: 'parole', icon: '🔆', label: 'Parole evidenziate' },
               { id: 'manuali', icon: '📖', label: 'Manuali' },
+              { id: 'importexport', icon: '📦', label: 'Importa/Esporta' },
               { id: 'layout', icon: '🖥️', label: 'Layout' },
             ].map(item => (
               <div
@@ -2024,6 +2029,16 @@ export default function SettingsPanel({
           )}
 
           </>)}
+
+          {section === 'importexport' && (
+            <DataImportPanel
+              projectPath={projectPath}
+              players={players} onPlayersChange={onPlayersChange}
+              notes={notes} onNotesChange={onNotesChange}
+              checklist={checklist} onChecklistChange={onChecklistChange}
+              calendarData={calendarData} onCalendarChange={onCalendarChange}
+            />
+          )}
 
           {section === 'layout' && (<>
           {/* === LAYOUT PANNELLI === */}
