@@ -23,7 +23,8 @@ function ensureChannel(id, name = null) {
       id,
       name: name || id,
       clients: new Set(),
-      lastContent: null
+      lastContent: null,
+      defaultContent: null   // Passepartout: mostrato quando lastContent è null (clear)
     });
   }
   return channels.get(id);
@@ -82,7 +83,21 @@ function clear(channelId) {
   const ch = channels.get(channelId);
   if (!ch) return 0;
   ch.lastContent = null;
+  // Se c'è un passepartout, mostralo; altrimenti clear vero e proprio
+  if (ch.defaultContent) {
+    return broadcastToChannel(channelId, { type: 'show', payload: ch.defaultContent });
+  }
   return broadcastToChannel(channelId, { type: 'clear' });
+}
+
+function setDefaultContent(channelId, content) {
+  const ch = ensureChannel(channelId);
+  ch.defaultContent = content || null;
+  // Se in questo momento il canale è in "clear" (nessun contenuto attivo), aggiorna live
+  if (!ch.lastContent) {
+    if (content) broadcastToChannel(channelId, { type: 'show', payload: content });
+    else broadcastToChannel(channelId, { type: 'clear' });
+  }
 }
 
 function setupRoutes() {
@@ -139,8 +154,9 @@ function setupWebSocket() {
     const ch = ensureChannel(channelId);
     ch.clients.add(ws);
 
-    // Invia stato iniziale (ultimo contenuto)
-    ws.send(JSON.stringify({ type: 'state', payload: { content: ch.lastContent } }));
+    // Invia stato iniziale: lastContent se presente, altrimenti defaultContent (passepartout)
+    const initialContent = ch.lastContent || ch.defaultContent || null;
+    ws.send(JSON.stringify({ type: 'state', payload: { content: initialContent } }));
 
     if (onClientConnect) onClientConnect(channelId);
 
@@ -211,6 +227,7 @@ module.exports = {
   getStatus,
   send,
   clear,
+  setDefaultContent,
   ensureChannel,
   setEventHooks,
   getLanAddresses

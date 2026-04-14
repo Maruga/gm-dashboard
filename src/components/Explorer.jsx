@@ -122,7 +122,7 @@ function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, togg
 function Explorer({
   projectFolder, activeFilePath, onFileOpen, onSlotAssign, onMediaAdd, onImageClick,
   expandedDirs: externalExpanded, onExpandedDirsChange,
-  onTelegramFile,
+  onTelegramFile, onCastFile,
   hiddenExtensions,
   refreshKey
 }) {
@@ -302,6 +302,9 @@ function Explorer({
               <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '4px 0' }} />
               <MenuItem label="✉️ Invia via Telegram" onClick={() => onTelegramFile(contextMenu.entry)} />
             </>
+          )}
+          {!isDir && ctxType === FILE_TYPES.IMAGE && onCastFile && (
+            <MenuItem label="📡 Invia al display" onClick={() => onCastFile(contextMenu.entry)} />
           )}
         </div>
       )}

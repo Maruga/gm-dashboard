@@ -622,6 +622,11 @@ ipcMain.handle('cast-clear', async (event, channelId) => {
   return { sent };
 });
 
+ipcMain.handle('cast-set-default', async (event, channelId, content) => {
+  castServer.setDefaultContent(channelId || 'default', content);
+  return { success: true };
+});
+
 ipcMain.handle('cast-qr', async (event, url) => {
   try {
     const dataUrl = await QRCode.toDataURL(url, { margin: 1, width: 240 });

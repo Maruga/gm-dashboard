@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
-export default function CastPanel({ projectPath, onClose }) {
+export default function CastPanel({ projectPath, castConfig, onClose }) {
   const [status, setStatus] = useState({ running: false, port: null, addresses: [], channels: [] });
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -64,6 +64,16 @@ export default function CastPanel({ projectPath, onClose }) {
     try {
       const r = await window.electronAPI.castStart({ port, projectPath });
       if (r?.error) setError(r.error);
+      else {
+        // Al primo avvio, sync passepartout sul canale default
+        const pass = castConfig?.passepartoutFile;
+        if (pass) {
+          const url = `/files/${encodeURI(pass).replace(/#/g, '%23').replace(/\?/g, '%3F')}`;
+          await window.electronAPI.castSetDefault('default', {
+            type: 'image', url, fit: 'cover'
+          });
+        }
+      }
       await refreshStatus();
     } finally {
       setStarting(false);

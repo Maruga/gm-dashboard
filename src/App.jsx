@@ -142,6 +142,8 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   const [calendarData, setCalendarData] = useState({ currentDate: '', events: {} });
   const [settingsOpen, setSettingsOpen] = useState(null); // null=chiuso, stringa=sezione iniziale
   const [castPanelOpen, setCastPanelOpen] = useState(false);
+  const [castConfig, setCastConfig] = useState({ passepartoutFile: '', fit: 'contain' });
+  const castConfigRef = useRef({ passepartoutFile: '', fit: 'contain' });
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calFile, setCalFile] = useState(null);
   const [viewerTabs, setViewerTabs] = useState([{ type: 'document' }]);
@@ -264,6 +266,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         setChatMessages(savedTg.chat ?? {});
         setAiConversations(saved.aiConversations ?? {});
         setAiTestConversations(saved.aiTestConversations ?? {});
+        setCastConfig(saved.castConfig ?? { passepartoutFile: '', fit: 'contain' });
         const savedCal = saved.calendar ?? {};
         const startDate = saved.settings?.startDate || '2000-01-01';
         setCalendarData({
@@ -368,6 +371,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
       checklist: checklist,
       aiConversations: aiConversations,
       aiTestConversations: aiTestConversations,
+      castConfig: castConfig,
       referenceManuals: referenceManuals,
       referenceScrollPositions: referenceScrollPositions,
       referenceSelectedId: referenceSelectedId,
@@ -398,7 +402,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     saveTimer.current = setTimeout(() => {
       window.electronAPI.saveProjectState(projectPath, latestState.current);
     }, 1000);
-  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, aiConversations, aiTestConversations, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, viewerFontSize, stageFontSize, scrollVersion, aiConfig, aiChatHistory, panelVisibility, layoutPresets, combatData, librariesData]);
+  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, aiConversations, aiTestConversations, castConfig, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, viewerFontSize, stageFontSize, scrollVersion, aiConfig, aiChatHistory, panelVisibility, layoutPresets, combatData, librariesData]);
 
   // Save immediately on unmount (project switch)
   useEffect(() => {
@@ -1306,6 +1310,52 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   }, [players, projectPath]);
 
   // Invia un messaggio speciale (_msg_*) a un PG via Telegram, fuori dal contesto AI
+  // Casting: sync ref + invia passepartout al server quando cambia config o parte il server
+  useEffect(() => { castConfigRef.current = castConfig; }, [castConfig]);
+
+  // Costruisce path relativo di un file dentro il projectPath
+  const toRelativeProjectPath = useCallback((absPath) => {
+    if (!absPath || !projectPath) return null;
+    const norm = absPath.replace(/\\/g, '/');
+    const base = projectPath.replace(/\\/g, '/').replace(/\/$/, '');
+    if (!norm.startsWith(base + '/') && norm !== base) return null;
+    return norm.slice(base.length + 1);
+  }, [projectPath]);
+
+  // Invia un'immagine a un canale (default se non specificato)
+  const handleCastImage = useCallback(async (absOrRelPath, options = {}) => {
+    if (!absOrRelPath) return { error: 'Nessun file' };
+    const rel = absOrRelPath.includes(':') || absOrRelPath.startsWith('/')
+      ? toRelativeProjectPath(absOrRelPath)
+      : absOrRelPath;
+    if (!rel) return { error: 'File fuori dal progetto' };
+    const status = await window.electronAPI.castStatus();
+    if (!status?.running) return { error: 'Server casting non attivo' };
+    const fit = options.fit || castConfigRef.current?.fit || 'contain';
+    const channelId = options.channelId || 'default';
+    const url = `/files/${encodeURI(rel).replace(/#/g, '%23').replace(/\?/g, '%3F')}`;
+    return await window.electronAPI.castSend(channelId, {
+      type: 'image', url, fit, caption: options.caption || null
+    });
+  }, [toRelativeProjectPath]);
+
+  // Aggiorna il passepartout del canale default sul server
+  useEffect(() => {
+    (async () => {
+      const status = await window.electronAPI.castStatus();
+      if (!status?.running) return;
+      const pass = castConfig?.passepartoutFile;
+      if (pass) {
+        const url = `/files/${encodeURI(pass).replace(/#/g, '%23').replace(/\?/g, '%3F')}`;
+        await window.electronAPI.castSetDefault('default', {
+          type: 'image', url, fit: 'cover'
+        });
+      } else {
+        await window.electronAPI.castSetDefault('default', null);
+      }
+    })();
+  }, [castConfig?.passepartoutFile]);
+
   const handleSendSpecialMessage = useCallback(async (playerId, docFile) => {
     const player = players.find(p => p.id === playerId);
     const logError = (desc, errMsg) => {
@@ -1708,6 +1758,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
             expandedDirs={expandedDirs}
             onExpandedDirsChange={setExpandedDirs}
             onTelegramFile={handleTelegramFile}
+            onCastFile={(entry) => handleCastImage(entry.path)}
             hiddenExtensions={projectSettings.hiddenExtensions}
             refreshKey={explorerRefreshKey}
           />
@@ -1726,6 +1777,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
             onImageClick={handleOverlayImage}
             onVideoClick={handleOverlayVideo}
             onTelegramFile={handleTelegramFile}
+            onCastFile={(path) => handleCastImage(path)}
           />
         </div>
         )}
@@ -1930,7 +1982,11 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
 
       {/* === CAST PANEL === */}
       {castPanelOpen && (
-        <CastPanel projectPath={projectPath} onClose={() => setCastPanelOpen(false)} />
+        <CastPanel
+          projectPath={projectPath}
+          castConfig={castConfig}
+          onClose={() => setCastPanelOpen(false)}
+        />
       )}
 
       {/* === SETTINGS PANEL === */}
@@ -1985,6 +2041,8 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           aiConfig={aiConfig}
           onAiConfigChange={setAiConfig}
           onClearAiHistory={() => setAiChatHistory([])}
+          castConfig={castConfig}
+          onCastConfigChange={setCastConfig}
           panelVisibility={panelVisibility}
           onPanelVisibilityChange={setPanelVisibility}
           layoutPresets={layoutPresets}
@@ -2090,6 +2148,19 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           }}
         >
           <img src={overlayImage} style={{ maxWidth: '95%', maxHeight: '95%', objectFit: 'contain' }} />
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCastImage(overlayImage);
+            }}
+            title="Invia al display"
+            style={{
+              position: 'absolute', top: '16px', right: '60px',
+              background: 'var(--bg-panel)', border: '1px solid var(--border-default)',
+              borderRadius: '4px', padding: '6px 14px',
+              color: 'var(--accent)', fontSize: '12px', cursor: 'pointer'
+            }}
+          >📡 Invia al display</button>
         </div>
       )}
 

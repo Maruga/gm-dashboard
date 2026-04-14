@@ -251,6 +251,7 @@ export default function SettingsPanel({
   onExportAdventure, onOpenAdventures,
   onResetAllRelations,
   aiConfig, onAiConfigChange, onClearAiHistory,
+  castConfig = { passepartoutFile: '', fit: 'contain' }, onCastConfigChange,
   panelVisibility, onPanelVisibilityChange,
   layoutPresets, onLayoutPresetsChange,
   initialSection,
@@ -410,6 +411,7 @@ export default function SettingsPanel({
               { id: 'account', icon: '👤', label: 'Account' },
               { id: 'parole', icon: '🔆', label: 'Parole evidenziate' },
               { id: 'manuali', icon: '📖', label: 'Manuali' },
+              { id: 'casting', icon: '📡', label: 'Casting' },
               { id: 'importexport', icon: '📦', label: 'Importa/Esporta' },
               { id: 'layout', icon: '🖥️', label: 'Layout' },
             ].map(item => (
@@ -1867,6 +1869,72 @@ export default function SettingsPanel({
             </div>
           ))}
 
+          </>)}
+
+          {section === 'casting' && (<>
+          <div style={sectionStyle}>Casting — Display al tavolo</div>
+          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
+            Configura il display secondario che mostrerà immagini, testi e tiri di dado ai giocatori.
+            Il server si avvia manualmente dal pulsante 📡 nella barra in alto.
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ fontSize: '12px', color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
+              Sfondo passepartout (immagine/GIF mostrata quando il display è vuoto)
+            </label>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <input
+                type="text"
+                value={castConfig.passepartoutFile || ''}
+                readOnly
+                placeholder="Nessuno sfondo impostato"
+                style={{
+                  flex: 1, background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+                  borderRadius: '4px', padding: '6px 10px', color: 'var(--text-primary)',
+                  fontSize: '12px', outline: 'none'
+                }}
+              />
+              <button
+                onClick={async () => {
+                  const result = await window.electronAPI.selectProjectFile(projectPath, [
+                    { name: 'Immagini', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }
+                  ]);
+                  if (result) onCastConfigChange(prev => ({ ...prev, passepartoutFile: result }));
+                }}
+                style={{
+                  background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                  padding: '6px 12px', color: 'var(--accent)', fontSize: '11px', cursor: 'pointer'
+                }}
+              >📁 Scegli</button>
+              {castConfig.passepartoutFile && (
+                <button
+                  onClick={() => onCastConfigChange(prev => ({ ...prev, passepartoutFile: '' }))}
+                  style={{
+                    background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                    padding: '6px 12px', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer'
+                  }}
+                >✕ Rimuovi</button>
+              )}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ fontSize: '12px', color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
+              Adattamento immagini al display
+            </label>
+            <select
+              value={castConfig.fit || 'contain'}
+              onChange={e => onCastConfigChange(prev => ({ ...prev, fit: e.target.value }))}
+              style={{
+                background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+                borderRadius: '4px', padding: '5px 8px', color: 'var(--text-primary)',
+                fontSize: '12px', outline: 'none', cursor: 'pointer'
+              }}
+            >
+              <option value="contain">Contieni (mostra tutta l'immagine)</option>
+              <option value="cover">Riempi (ritaglia per coprire lo schermo)</option>
+            </select>
+          </div>
           </>)}
 
           {section === 'manuali' && (<>

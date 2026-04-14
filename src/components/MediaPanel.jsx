@@ -276,7 +276,7 @@ function VideoItem({ item, onRemove, onVideoClick, onContextMenu }) {
 function MediaPanel({
   items, filter, onFilterChange,
   onRemoveItem, onUpdateItem, onClearAll,
-  onImageClick, onVideoClick, onTelegramFile
+  onImageClick, onVideoClick, onTelegramFile, onCastFile
 }) {
   const [globalMute, setGlobalMute] = useState(false);
   const [stopTrigger, setStopTrigger] = useState(0);
@@ -414,28 +414,46 @@ function MediaPanel({
       </div>
 
       {/* Context menu */}
-      {contextMenu && onTelegramFile && (
+      {contextMenu && (onTelegramFile || onCastFile) && (
         <div style={{
           position: 'fixed', left: contextMenu.x, top: contextMenu.y,
           background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: '6px',
           zIndex: 2000, boxShadow: 'var(--shadow-dropdown)',
           padding: '4px 0', minWidth: '180px'
         }}>
-          <div
-            onClick={() => {
-              const ext = '.' + contextMenu.item.name.split('.').pop().toLowerCase();
-              onTelegramFile({ name: contextMenu.item.name, extension: ext, path: contextMenu.item.path });
-              setContextMenu(null);
-            }}
-            style={{
-              padding: '6px 14px', fontSize: '12px', color: 'var(--text-primary)',
-              cursor: 'pointer', transition: 'background 0.1s'
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--border-default)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-          >
-            ✉️ Invia via Telegram
-          </div>
+          {onTelegramFile && (
+            <div
+              onClick={() => {
+                const ext = '.' + contextMenu.item.name.split('.').pop().toLowerCase();
+                onTelegramFile({ name: contextMenu.item.name, extension: ext, path: contextMenu.item.path });
+                setContextMenu(null);
+              }}
+              style={{
+                padding: '6px 14px', fontSize: '12px', color: 'var(--text-primary)',
+                cursor: 'pointer', transition: 'background 0.1s'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--border-default)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              ✉️ Invia via Telegram
+            </div>
+          )}
+          {onCastFile && contextMenu.item?.type === 'image' && (
+            <div
+              onClick={() => {
+                onCastFile(contextMenu.item.path);
+                setContextMenu(null);
+              }}
+              style={{
+                padding: '6px 14px', fontSize: '12px', color: 'var(--text-primary)',
+                cursor: 'pointer', transition: 'background 0.1s'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--border-default)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              📡 Invia al display
+            </div>
+          )}
         </div>
       )}
     </div>
