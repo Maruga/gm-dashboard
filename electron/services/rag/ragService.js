@@ -24,16 +24,7 @@ class RagService {
     if (options.contextExpand !== undefined) this.contextExpand = options.contextExpand;
     if (options.fileExtensions) this.fileExtensions = options.fileExtensions;
 
-    // Init embedding model (first run downloads ~46MB)
-    if (!embeddingService.isReady()) {
-      if (onProgress) onProgress({ phase: 'model', message: 'Caricamento modello ricerca AI...', progress: 0 });
-      await embeddingService.initialize((p) => {
-        if (onProgress && p.status === 'progress') {
-          onProgress({ phase: 'model', message: `Scaricamento modello: ${Math.round(p.progress || 0)}%`, progress: p.progress });
-        }
-      });
-    }
-
+    // Only open DB here — model loads lazily on first search/index
     vectorStore.open(projectPath);
     this.initialized = true;
   }
@@ -52,6 +43,15 @@ class RagService {
     if (this.indexing) return;
     this.indexing = true;
     try {
+      // Lazy model init — runs only on first index/search
+      if (!embeddingService.isReady()) {
+        if (onProgress) onProgress({ phase: 'model', message: 'Caricamento modello ricerca AI...', progress: 0 });
+        await embeddingService.initialize((p) => {
+          if (onProgress && p.status === 'progress') {
+            onProgress({ phase: 'model', message: `Scaricamento modello: ${Math.round(p.progress || 0)}%`, progress: p.progress });
+          }
+        });
+      }
       vectorStore.clear();
       const files = this._scanFiles();
       for (let i = 0; i < files.length; i++) {
@@ -80,6 +80,14 @@ class RagService {
     if (this.indexing) return;
     this.indexing = true;
     try {
+      if (!embeddingService.isReady()) {
+        if (onProgress) onProgress({ phase: 'model', message: 'Caricamento modello ricerca AI...', progress: 0 });
+        await embeddingService.initialize((p) => {
+          if (onProgress && p.status === 'progress') {
+            onProgress({ phase: 'model', message: `Scaricamento modello: ${Math.round(p.progress || 0)}%`, progress: p.progress });
+          }
+        });
+      }
       const currentFiles = this._scanFiles();
       const indexed = vectorStore.getIndexedFiles();
       const indexedMap = new Map(indexed.map(f => [f.file_path, f.last_modified]));
