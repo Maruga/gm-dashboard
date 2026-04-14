@@ -564,6 +564,23 @@ ipcMain.handle('read-file-binary', async (event, filePath) => {
   }
 });
 
+ipcMain.handle('write-file', async (event, projectPath, relativeFile, content) => {
+  try {
+    const cleaned = String(relativeFile || '').replace(/^[/\\]+/, '');
+    const absPath = path.resolve(projectPath, cleaned);
+    const normProj = path.resolve(projectPath);
+    if (absPath !== normProj && !absPath.startsWith(normProj + path.sep)) {
+      return { error: 'Percorso fuori dal progetto' };
+    }
+    fs.mkdirSync(path.dirname(absPath), { recursive: true });
+    fs.writeFileSync(absPath, content, 'utf-8');
+    return { success: true };
+  } catch (err) {
+    logDiag('error', `write-file fallito: ${relativeFile} — ${err.message}`);
+    return { error: err.message };
+  }
+});
+
 ipcMain.handle('get-file-url', async (event, filePath) => {
   const normalizedPath = filePath.replace(/\\/g, '/');
   return `app://local/-/${normalizedPath}`;

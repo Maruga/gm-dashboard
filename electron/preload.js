@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readDirectory: (dirPath) => ipcRenderer.invoke('read-directory', dirPath),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
   readFileBinary: (filePath) => ipcRenderer.invoke('read-file-binary', filePath),
+  writeFile: (projectPath, relativeFile, content) => ipcRenderer.invoke('write-file', projectPath, relativeFile, content),
   getFileUrl: (filePath) => ipcRenderer.invoke('get-file-url', filePath),
   searchFiles: (folderPath, query) => ipcRenderer.invoke('search-files', folderPath, query),
   selectProjectFile: (projectPath, filters) => ipcRenderer.invoke('select-project-file', projectPath, filters),

@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { renderMarkdown } from '../utils/markdownRenderer';
+import ResizeHandle from './ResizeHandle';
 
 // ─── Dice Panel ───
 const DICE = [4, 6, 8, 10, 12, 20, 100];
@@ -115,7 +116,7 @@ function DicePanel() {
 }
 
 // ─── Search Panel (main Console content) ───
-function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, telegramLog = [], onClearLog, aiConfig, aiChatHistory = [], onAiChatHistoryChange, firebaseUser, onTelegramText, onTelegramFile, onSaveImage, botRunning }) {
+function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, telegramLog = [], onClearLog, aiConfig, aiChatHistory = [], onAiChatHistoryChange, firebaseUser, onTelegramText, onTelegramFile, onSaveImage, botRunning, players = [], onAiConfigChange, aiTestConversations = {}, onAiTestConversationsChange, onClearAiTelegramHistory }) {
   const [activeTab, setActiveTab] = useState('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
@@ -391,6 +392,7 @@ function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, t
           {[
             { key: 'search', label: 'Ricerca', icon: '🔍' },
             { key: 'ai', label: 'AI', icon: '🤖' },
+            { key: 'test', label: 'Prova PG', icon: '🎭' },
             { key: 'log', label: `Log Telegram${telegramLog.length > 0 ? ` (${telegramLog.length})` : ''}`, icon: '📨' }
           ].map(tab => (
             <div
@@ -856,10 +858,617 @@ function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, t
             )}
           </div>
         )}
+
+        {/* Test PG tab content */}
+        {activeTab === 'test' && (
+          <AiTestPanel
+            projectFolder={projectFolder}
+            aiConfig={aiConfig}
+            players={players}
+            firebaseUser={firebaseUser}
+            aiTestConversations={aiTestConversations}
+            onAiTestConversationsChange={onAiTestConversationsChange}
+            onClearAiTelegramHistory={onClearAiTelegramHistory}
+          />
+        )}
       </div>
 
       {/* Right: Dice */}
       <DicePanel />
+    </div>
+  );
+}
+
+// ─── AI Test Panel ───
+// Chat di prova per il GM: simula conversazioni AI per singolo PG con gli stessi documenti
+// che userebbe Telegram, e permette di editare i file direttamente.
+function AiTestPanel({ projectFolder, aiConfig, players, firebaseUser, aiTestConversations, onAiTestConversationsChange, onClearAiTelegramHistory }) {
+  const [selectedPgId, setSelectedPgId] = useState(players[0]?.id || '');
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [confirmClearTest, setConfirmClearTest] = useState(false);
+  const [confirmClearTelegram, setConfirmClearTelegram] = useState(false);
+  const confirmClearTestTimer = useRef(null);
+  const confirmClearTelegramTimer = useRef(null);
+  const endRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // Editor state: { [relativeFile]: { content, original, open, loading, saveStatus } }
+  const [editors, setEditors] = useState({});
+  // Dirty guard on PG change
+  const [pendingPgChange, setPendingPgChange] = useState(null);
+  // Resizable split chat/docs (persisted)
+  const [docPanelWidth, setDocPanelWidth] = useState(() => {
+    const saved = parseInt(localStorage.getItem('aiTestDocPanelWidth') || '', 10);
+    return Number.isFinite(saved) ? saved : 360;
+  });
+  useEffect(() => {
+    localStorage.setItem('aiTestDocPanelWidth', String(docPanelWidth));
+  }, [docPanelWidth]);
+  const splitContainerRef = useRef(null);
+  const clampWidth = useCallback((next, total) => {
+    const minChat = 280;
+    const minDocs = 220;
+    const maxDocs = Math.max(minDocs, total - minChat);
+    return Math.max(minDocs, Math.min(maxDocs, next));
+  }, []);
+  const handleSplitResize = useCallback((delta) => {
+    const container = splitContainerRef.current;
+    if (!container) return;
+    const total = container.getBoundingClientRect().width;
+    setDocPanelWidth(prev => clampWidth(prev - delta, total));
+  }, [clampWidth]);
+  // Auto-clamp quando il container cambia dimensione (es. resize finestra)
+  useEffect(() => {
+    const container = splitContainerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      const total = container.getBoundingClientRect().width;
+      if (total > 0) setDocPanelWidth(prev => clampWidth(prev, total));
+    });
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [clampWidth]);
+
+  const player = players.find(p => p.id === selectedPgId) || null;
+
+  const commonDocs = (aiConfig?.commonDocs || []);
+  const personalDocs = (player?.aiDocuments || []);
+  const history = aiTestConversations[selectedPgId] || [];
+
+  // Considera dirty anche gli editor chiusi: il loro content è ancora in memoria ma verrà
+  // scartato al cambio PG se non salvato (escludo loading per evitare confronti undefined).
+  const hasUnsaved = Object.values(editors).some(e => e && !e.loading && e.content !== e.original);
+
+  // Update default selection when players change (empty state or removed PG)
+  useEffect(() => {
+    if (players.length === 0) return;
+    if (!selectedPgId || !players.find(p => p.id === selectedPgId)) {
+      setSelectedPgId(players[0].id);
+    }
+  }, [players, selectedPgId]);
+
+  // Auto-scroll chat
+  useEffect(() => {
+    if (endRef.current) endRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [history.length, loading]);
+
+  // Keep only common-doc editors when changing PG (common files don't belong to a specific PG)
+  const pruneEditorsForPg = () => {
+    const commonFiles = new Set(commonDocs.map(d => d.file));
+    setEditors(prev => {
+      const kept = {};
+      for (const [k, v] of Object.entries(prev)) if (commonFiles.has(k)) kept[k] = v;
+      return kept;
+    });
+  };
+
+  const handlePgChange = (newId) => {
+    if (newId === selectedPgId) return;
+    if (hasUnsaved) {
+      setPendingPgChange(newId);
+      return;
+    }
+    setSelectedPgId(newId);
+    pruneEditorsForPg();
+  };
+
+  const confirmPgChange = () => {
+    setSelectedPgId(pendingPgChange);
+    pruneEditorsForPg();
+    setPendingPgChange(null);
+  };
+
+  const toggleEditor = async (doc) => {
+    const key = doc.file;
+    const current = editors[key];
+    if (current?.open) {
+      // Just close the pane — keep content/original in memory so reopening restores the work
+      setEditors(prev => ({ ...prev, [key]: { ...prev[key], open: false } }));
+      return;
+    }
+    // Reopen: reuse in-memory content if already loaded, otherwise load from disk
+    if (current && current.original !== undefined) {
+      setEditors(prev => ({ ...prev, [key]: { ...prev[key], open: true, loading: false } }));
+      return;
+    }
+    setEditors(prev => ({ ...prev, [key]: { ...(prev[key] || {}), open: true, loading: true } }));
+    const content = await window.electronAPI.readFile(projectFolder + '/' + doc.file);
+    setEditors(prev => ({
+      ...prev,
+      [key]: { open: true, loading: false, content: content || '', original: content || '', saveStatus: null }
+    }));
+  };
+
+  const handleEditorChange = (key, value) => {
+    setEditors(prev => ({ ...prev, [key]: { ...prev[key], content: value, saveStatus: null } }));
+  };
+
+  const handleSave = async (key) => {
+    const ed = editors[key];
+    if (!ed || ed.content === ed.original) return;
+    setEditors(prev => ({ ...prev, [key]: { ...prev[key], saveStatus: 'saving' } }));
+    const result = await window.electronAPI.writeFile(projectFolder, key, ed.content);
+    if (result?.success) {
+      setEditors(prev => ({ ...prev, [key]: { ...prev[key], original: ed.content, saveStatus: 'ok' } }));
+      setTimeout(() => {
+        setEditors(prev => prev[key] ? { ...prev, [key]: { ...prev[key], saveStatus: null } } : prev);
+      }, 2000);
+    } else {
+      setEditors(prev => ({ ...prev, [key]: { ...prev[key], saveStatus: 'err' } }));
+    }
+  };
+
+  const handleRevert = (key) => {
+    setEditors(prev => ({ ...prev, [key]: { ...prev[key], content: prev[key].original, saveStatus: null } }));
+  };
+
+  const handleSend = async () => {
+    const question = input.trim();
+    if (!question || !player || loading) return;
+
+    const allActiveDocs = [...commonDocs, ...personalDocs].filter(d => d.active);
+    if (allActiveDocs.length === 0) {
+      onAiTestConversationsChange(prev => ({
+        ...prev,
+        [selectedPgId]: [...(prev[selectedPgId] || []),
+          { role: 'user', content: question, timestamp: new Date().toISOString() },
+          { role: 'assistant', content: 'Nessun documento attivo per questo personaggio.', timestamp: new Date().toISOString(), isError: true }
+        ]
+      }));
+      setInput('');
+      return;
+    }
+
+    // Escludi messaggi speciali (_msg_*) dal contesto AI
+    const allowedFiles = allActiveDocs.filter(d => !d.name?.toLowerCase().startsWith('_msg_')).map(d => d.file);
+    const promptDoc = allActiveDocs.find(d => d.name?.toLowerCase().startsWith('_prompt'));
+    const chatOpts = { allowedFiles };
+
+    if (promptDoc) {
+      const promptContent = await window.electronAPI.readFile(projectFolder + '/' + promptDoc.file);
+      if (promptContent) {
+        chatOpts.allowedFiles = allowedFiles.filter(f => f !== promptDoc.file);
+        const charName = player.characterName || '';
+        const playerIdentity = charName ? `\n\n# STAI COMUNICANDO CON\n${charName}. Rivolgiti direttamente a questo operatore usando "tu". Usa le informazioni che hai su di lui nei documenti attivi.` : '';
+        chatOpts.systemPromptOverride = promptContent + playerIdentity;
+        chatOpts.maxTokens = 2048;
+      }
+    }
+
+    const prevHistory = (aiTestConversations[selectedPgId] || []).slice(-30);
+    const aiMessages = [
+      ...prevHistory.map(m => ({ role: m.role, content: m.content })),
+      { role: 'user', content: question }
+    ];
+
+    setLoading(true);
+    onAiTestConversationsChange(prev => ({
+      ...prev,
+      [selectedPgId]: [...(prev[selectedPgId] || []), { role: 'user', content: question, timestamp: new Date().toISOString() }]
+    }));
+    setInput('');
+    // Keep focus on the input so the user can keep typing while the AI is thinking
+    setTimeout(() => inputRef.current?.focus(), 0);
+
+    try {
+      const result = await window.electronAPI.aiChat(aiMessages, projectFolder, chatOpts);
+      if (result?.response) {
+        onAiTestConversationsChange(prev => ({
+          ...prev,
+          [selectedPgId]: [...(prev[selectedPgId] || []), { role: 'assistant', content: result.response, timestamp: new Date().toISOString(), tokensUsed: result.tokensUsed || 0 }]
+        }));
+      } else {
+        onAiTestConversationsChange(prev => ({
+          ...prev,
+          [selectedPgId]: [...(prev[selectedPgId] || []), { role: 'assistant', content: result?.error || 'Errore risposta AI', timestamp: new Date().toISOString(), isError: true }]
+        }));
+      }
+    } catch (err) {
+      onAiTestConversationsChange(prev => ({
+        ...prev,
+        [selectedPgId]: [...(prev[selectedPgId] || []), { role: 'assistant', content: `Errore: ${err.message}`, timestamp: new Date().toISOString(), isError: true }]
+      }));
+    } finally {
+      setLoading(false);
+      inputRef.current?.focus();
+    }
+  };
+
+  const handleClearTest = () => {
+    if (confirmClearTest) {
+      onAiTestConversationsChange(prev => ({ ...prev, [selectedPgId]: [] }));
+      setConfirmClearTest(false);
+      clearTimeout(confirmClearTestTimer.current);
+    } else {
+      setConfirmClearTest(true);
+      clearTimeout(confirmClearTestTimer.current);
+      confirmClearTestTimer.current = setTimeout(() => setConfirmClearTest(false), 3000);
+    }
+  };
+
+  const handleClearTelegram = () => {
+    if (confirmClearTelegram) {
+      onClearAiTelegramHistory?.(selectedPgId);
+      setConfirmClearTelegram(false);
+      clearTimeout(confirmClearTelegramTimer.current);
+    } else {
+      setConfirmClearTelegram(true);
+      clearTimeout(confirmClearTelegramTimer.current);
+      confirmClearTelegramTimer.current = setTimeout(() => setConfirmClearTelegram(false), 3000);
+    }
+  };
+
+  useEffect(() => () => {
+    clearTimeout(confirmClearTestTimer.current);
+    clearTimeout(confirmClearTelegramTimer.current);
+  }, []);
+
+  // Empty state: no AI configured
+  if (!aiConfig?.apiKey && !firebaseUser) {
+    return (
+      <div style={{ padding: '20px 12px', textAlign: 'center', fontSize: '12px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
+        Configura l'AI nelle Impostazioni → Assistente AI<br />
+        <span style={{ fontSize: '10px' }}>Oppure effettua il login per usare la quota gratuita</span>
+      </div>
+    );
+  }
+
+  if (players.length === 0) {
+    return (
+      <div style={{ padding: '20px 12px', textAlign: 'center', fontSize: '12px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
+        Nessun personaggio configurato.<br />
+        <span style={{ fontSize: '10px' }}>Aggiungi personaggi dalle Impostazioni → Personaggi</span>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={splitContainerRef} style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+      {/* LEFT: chat */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+        {/* Toolbar PG + clear */}
+        <div style={{
+          padding: '6px 12px', flexShrink: 0, display: 'flex', gap: '6px', alignItems: 'center',
+          borderBottom: '1px solid var(--border-subtle)', flexWrap: 'wrap'
+        }}>
+          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: '600' }}>PG:</span>
+          <select
+            value={selectedPgId}
+            onChange={e => handlePgChange(e.target.value)}
+            style={{
+              background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+              borderRadius: '4px', padding: '4px 8px', color: 'var(--text-primary)',
+              fontSize: '12px', outline: 'none', cursor: 'pointer', minWidth: '140px'
+            }}
+          >
+            {players.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.characterName || 'Senza nome'}{p.playerName ? ` (${p.playerName})` : ''}
+              </option>
+            ))}
+          </select>
+          <div style={{ flex: 1 }} />
+          <button
+            onClick={handleClearTest}
+            style={{
+              background: 'none',
+              border: `1px solid ${confirmClearTest ? 'var(--color-danger)' : 'var(--border-default)'}`,
+              borderRadius: '3px', padding: '3px 10px',
+              color: confirmClearTest ? 'var(--color-danger)' : 'var(--text-secondary)',
+              fontSize: '10px', cursor: 'pointer', transition: 'all 0.15s'
+            }}
+            title="Svuota la conversazione di prova per questo PG"
+          >
+            {confirmClearTest ? 'Sicuro?' : '🗑️ Pulisci prova'}
+          </button>
+          <button
+            onClick={handleClearTelegram}
+            style={{
+              background: 'none',
+              border: `1px solid ${confirmClearTelegram ? 'var(--color-danger)' : 'var(--border-default)'}`,
+              borderRadius: '3px', padding: '3px 10px',
+              color: confirmClearTelegram ? 'var(--color-danger)' : 'var(--text-secondary)',
+              fontSize: '10px', cursor: 'pointer', transition: 'all 0.15s'
+            }}
+            title="Svuota lo storico AI reale di Telegram per questo PG"
+          >
+            {confirmClearTelegram ? 'Sicuro?' : '🗑️ Pulisci storico Telegram'}
+          </button>
+        </div>
+
+        {/* Messages */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
+          {history.length === 0 && !loading && (
+            <div style={{ padding: '20px 0', textAlign: 'center', fontSize: '11px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
+              Scrivi una domanda per testare l'AI con i documenti di {player?.characterName || 'questo PG'}...
+            </div>
+          )}
+          {history.map((msg, i) => {
+            const isUser = msg.role === 'user';
+            const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
+            return (
+              <div key={i} style={{
+                marginBottom: '6px',
+                display: 'flex',
+                justifyContent: isUser ? 'flex-end' : 'flex-start'
+              }}>
+                <div style={{
+                  maxWidth: '85%', padding: '6px 10px',
+                  borderRadius: isUser ? '8px 8px 2px 8px' : '8px 8px 8px 2px',
+                  background: isUser ? 'var(--chat-gm-bg)' : 'var(--bg-main)',
+                  border: msg.isError
+                    ? '1px solid var(--color-danger)'
+                    : isUser ? '1px solid var(--chat-gm-border)' : '1px solid var(--border-subtle)'
+                }}>
+                  <div style={{ fontSize: '9px', color: 'var(--text-tertiary)', marginBottom: '2px', display: 'flex', gap: '4px', alignItems: 'center' }}>
+                    <span>{time}</span>
+                    <span style={{ fontWeight: '600' }}>{isUser ? 'GM (prova)' : '🤖 AI'}</span>
+                    {!isUser && msg.tokensUsed > 0 && (
+                      <span style={{ marginLeft: 'auto', color: 'var(--text-disabled)', fontSize: '9px' }}>
+                        {msg.tokensUsed.toLocaleString()} token
+                      </span>
+                    )}
+                  </div>
+                  {isUser || msg.isError ? (
+                    <div style={{
+                      fontSize: '12px',
+                      color: msg.isError ? 'var(--color-danger)' : 'var(--text-primary)',
+                      lineHeight: '1.5', whiteSpace: 'pre-wrap', wordBreak: 'break-word'
+                    }}>{msg.content}</div>
+                  ) : (
+                    <div
+                      className="ai-response-md"
+                      style={{ fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.6', wordBreak: 'break-word' }}
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                    />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {loading && (
+            <div style={{ padding: '6px 0', fontSize: '11px', color: 'var(--text-secondary)' }}>
+              🤖 Sto pensando...
+            </div>
+          )}
+          <div ref={endRef} />
+        </div>
+
+        {/* Input */}
+        <form
+          onSubmit={e => { e.preventDefault(); handleSend(); }}
+          style={{ padding: '6px 12px', flexShrink: 0, display: 'flex', gap: '6px', borderTop: '1px solid var(--border-subtle)' }}
+        >
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder={`Domanda a ${player?.characterName || 'PG'}...`}
+            style={{
+              flex: 1, background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+              borderRadius: '4px', padding: '6px 10px', color: 'var(--text-primary)',
+              fontSize: '12px', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box'
+            }}
+            onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+            onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+          />
+          <button
+            type="submit"
+            disabled={!input.trim() || loading}
+            style={{
+              background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+              padding: '0 12px', color: input.trim() && !loading ? 'var(--accent)' : 'var(--text-disabled)',
+              cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
+              fontSize: '12px', transition: 'all 0.15s', flexShrink: 0
+            }}
+          >Invia</button>
+        </form>
+      </div>
+
+      {/* Divisore trascinabile tra chat e documenti */}
+      <ResizeHandle direction="vertical" onResize={handleSplitResize} />
+
+      {/* RIGHT: document editor */}
+      <div style={{
+        width: `${docPanelWidth}px`, flexShrink: 0, display: 'flex', flexDirection: 'column',
+        overflow: 'hidden'
+      }}>
+        <div style={{
+          padding: '6px 12px', borderBottom: '1px solid var(--border-subtle)',
+          fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: '600',
+          textTransform: 'uppercase', letterSpacing: '1px', flexShrink: 0
+        }}>
+          Documenti AI
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '6px 8px' }}>
+          {commonDocs.length === 0 && personalDocs.length === 0 && (
+            <div style={{ padding: '16px 0', textAlign: 'center', fontSize: '11px', color: 'var(--text-disabled)', fontStyle: 'italic' }}>
+              Nessun documento configurato.<br />
+              <span style={{ fontSize: '10px' }}>Aggiungi documenti dalle Impostazioni → Assistente AI</span>
+            </div>
+          )}
+          {commonDocs.length > 0 && (
+            <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', padding: '4px 4px 2px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+              📄 Comuni
+            </div>
+          )}
+          {commonDocs.map(doc => (
+            <DocEditorRow
+              key={'c-' + doc.id}
+              doc={doc}
+              editor={editors[doc.file]}
+              onToggle={() => toggleEditor(doc)}
+              onChange={v => handleEditorChange(doc.file, v)}
+              onSave={() => handleSave(doc.file)}
+              onRevert={() => handleRevert(doc.file)}
+            />
+          ))}
+          {personalDocs.length > 0 && (
+            <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', padding: '8px 4px 2px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+              🎭 Personali — {player?.characterName || ''}
+            </div>
+          )}
+          {personalDocs.map(doc => (
+            <DocEditorRow
+              key={'p-' + doc.id}
+              doc={doc}
+              editor={editors[doc.file]}
+              onToggle={() => toggleEditor(doc)}
+              onChange={v => handleEditorChange(doc.file, v)}
+              onSave={() => handleSave(doc.file)}
+              onRevert={() => handleRevert(doc.file)}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Confirm PG change with unsaved edits */}
+      {pendingPgChange && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'var(--overlay-medium)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999
+        }}
+          onClick={() => setPendingPgChange(null)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--bg-panel)', border: '1px solid var(--border-default)',
+              borderRadius: '6px', padding: '18px 22px', maxWidth: '380px',
+              boxShadow: 'var(--shadow-panel)'
+            }}
+          >
+            <div style={{ fontSize: '13px', color: 'var(--text-primary)', marginBottom: '14px' }}>
+              Ci sono modifiche non salvate ai documenti. Cambiando PG andranno perse.
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setPendingPgChange(null)}
+                style={{
+                  background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                  padding: '5px 12px', color: 'var(--text-secondary)', fontSize: '12px', cursor: 'pointer'
+                }}
+              >Annulla</button>
+              <button
+                onClick={confirmPgChange}
+                style={{
+                  background: 'none', border: '1px solid var(--color-danger)', borderRadius: '4px',
+                  padding: '5px 12px', color: 'var(--color-danger)', fontSize: '12px', cursor: 'pointer'
+                }}
+              >Scarta modifiche</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Single doc row + inline editor ───
+function DocEditorRow({ doc, editor, onToggle, onChange, onSave, onRevert }) {
+  const isOpen = editor?.open;
+  const isDirty = editor && editor.content !== editor.original;
+  const saveStatus = editor?.saveStatus;
+  const canEdit = /\.(md|txt|html?|json)$/i.test(doc.file);
+
+  return (
+    <div style={{
+      marginBottom: '4px', border: '1px solid var(--border-subtle)', borderRadius: '4px',
+      background: 'var(--bg-elevated)', overflow: 'hidden'
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 8px',
+        cursor: canEdit ? 'pointer' : 'default'
+      }}
+        onClick={canEdit ? onToggle : undefined}
+      >
+        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', flexShrink: 0 }}>
+          {isOpen ? '▼' : '▶'}
+        </span>
+        <span style={{
+          fontSize: '12px', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          color: doc.active ? 'var(--text-primary)' : 'var(--text-disabled)'
+        }} title={doc.file}>
+          {doc.name}{!doc.active && ' (inattivo)'}
+        </span>
+        {isDirty && (
+          <span style={{ fontSize: '10px', color: 'var(--color-warning)', flexShrink: 0 }} title="Modifiche non salvate">●</span>
+        )}
+      </div>
+      {isOpen && (
+        <div style={{ padding: '4px 8px 8px' }}>
+          {editor?.loading ? (
+            <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Caricamento...</div>
+          ) : (
+            <>
+              <textarea
+                value={editor.content}
+                onChange={e => onChange(e.target.value)}
+                style={{
+                  width: '100%', minHeight: '200px', maxHeight: '400px', resize: 'vertical',
+                  background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+                  borderRadius: '3px', padding: '6px 8px', color: 'var(--text-primary)',
+                  fontSize: '11px', fontFamily: 'Consolas, Monaco, monospace', outline: 'none',
+                  boxSizing: 'border-box', lineHeight: '1.5'
+                }}
+                onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+                spellCheck={false}
+              />
+              <div style={{ display: 'flex', gap: '6px', marginTop: '6px', alignItems: 'center' }}>
+                <button
+                  onClick={onSave}
+                  disabled={!isDirty || saveStatus === 'saving'}
+                  style={{
+                    background: 'none',
+                    border: `1px solid ${isDirty ? 'var(--accent)' : 'var(--border-default)'}`,
+                    borderRadius: '3px', padding: '3px 10px',
+                    color: isDirty ? 'var(--accent)' : 'var(--text-disabled)',
+                    fontSize: '11px', cursor: isDirty ? 'pointer' : 'not-allowed', transition: 'all 0.15s'
+                  }}
+                >
+                  {saveStatus === 'saving' ? 'Salvataggio...' : saveStatus === 'ok' ? '✓ Salvato' : saveStatus === 'err' ? '✗ Errore' : '💾 Salva'}
+                </button>
+                {isDirty && (
+                  <button
+                    onClick={onRevert}
+                    style={{
+                      background: 'none', border: '1px solid var(--border-default)', borderRadius: '3px',
+                      padding: '3px 10px', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer'
+                    }}
+                  >Annulla</button>
+                )}
+                <span style={{ flex: 1 }} />
+                <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '180px' }} title={doc.file}>
+                  {doc.file}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

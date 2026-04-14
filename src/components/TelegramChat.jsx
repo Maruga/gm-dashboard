@@ -8,7 +8,7 @@ function formatTime(iso) {
   } catch { return '--:--'; }
 }
 
-export default function TelegramChat({ players, chatMessages, onSendReply, onMarkRead, onSelectedChange, onClearChat, onClose, aiEnabled, onAiReply, onAiPoke }) {
+export default function TelegramChat({ players, chatMessages, onSendReply, onMarkRead, onSelectedChange, onClearChat, onClose, aiEnabled, onAiReply, onAiPoke, aiConfig, botRunning, onSendSpecialMessage, onResetSpecialMessage, onResetAllSpecialMessages }) {
   const [selectedChatId, setSelectedChatId] = useState(null);
   const messagesEndRef = useRef(null);
   const [replyText, setReplyText] = useState('');
@@ -259,6 +259,18 @@ export default function TelegramChat({ players, chatMessages, onSendReply, onMar
           </div>
         </div>
 
+        {/* Messaggi speciali (_msg_*) */}
+        {selectedPlayer && (
+          <SpecialMessagesBar
+            player={selectedPlayer}
+            aiConfig={aiConfig}
+            botRunning={botRunning}
+            onSend={onSendSpecialMessage}
+            onReset={onResetSpecialMessage}
+            onResetAll={onResetAllSpecialMessages}
+          />
+        )}
+
         {/* Messages area */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
           {!selectedPlayer ? (
@@ -375,6 +387,188 @@ export default function TelegramChat({ players, chatMessages, onSendReply, onMar
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Barra messaggi speciali (_msg_*) per il PG selezionato ───
+function SpecialMessagesBar({ player, aiConfig, botRunning, onSend, onReset, onResetAll }) {
+  const [confirmSend, setConfirmSend] = useState({});   // { [file]: true }
+  const [confirmReset, setConfirmReset] = useState({}); // { [file]: true }
+  const [confirmResetAll, setConfirmResetAll] = useState(false);
+  const [sending, setSending] = useState({});           // { [file]: true }
+  const timers = useRef({});
+
+  useEffect(() => () => {
+    Object.values(timers.current).forEach(t => clearTimeout(t));
+  }, []);
+
+  // Reset di tutti i "Sicuro?" quando cambio PG (evita che stati precedenti restino attivi)
+  useEffect(() => {
+    Object.values(timers.current).forEach(t => clearTimeout(t));
+    timers.current = {};
+    setConfirmSend({});
+    setConfirmReset({});
+    setConfirmResetAll(false);
+    setSending({});
+  }, [player?.id]);
+
+  const startConfirm = (kind, key, setter) => {
+    setter(prev => ({ ...prev, [key]: true }));
+    const tKey = kind + ':' + key;
+    clearTimeout(timers.current[tKey]);
+    timers.current[tKey] = setTimeout(() => setter(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    }), 3000);
+  };
+
+  const clearConfirm = (kind, key, setter) => {
+    setter(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    clearTimeout(timers.current[kind + ':' + key]);
+  };
+
+  const commonDocs = aiConfig?.commonDocs || [];
+  const personalDocs = player?.aiDocuments || [];
+  const specialMsgs = [...commonDocs, ...personalDocs]
+    .filter(d => d.active && d.name?.toLowerCase().startsWith('_msg_'));
+
+  if (specialMsgs.length === 0) return null;
+
+  const msgLog = player.msgLog || {};
+  const anySent = specialMsgs.some(d => msgLog[d.file]?.sendCount > 0);
+
+  const displayName = (name) =>
+    (name || '').replace(/^_msg_/i, '').replace(/_/g, ' ').trim();
+
+  const shortTime = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const handleSendClick = async (file) => {
+    if (sending[file]) return;
+    if (confirmSend[file]) {
+      clearConfirm('send', file, setConfirmSend);
+      setSending(prev => ({ ...prev, [file]: true }));
+      try {
+        await onSend?.(player.id, file);
+      } finally {
+        setSending(prev => {
+          const next = { ...prev };
+          delete next[file];
+          return next;
+        });
+      }
+    } else {
+      startConfirm('send', file, setConfirmSend);
+    }
+  };
+
+  const handleResetClick = (file) => {
+    if (confirmReset[file]) {
+      clearConfirm('reset', file, setConfirmReset);
+      onReset?.(player.id, file);
+    } else {
+      startConfirm('reset', file, setConfirmReset);
+    }
+  };
+
+  const handleResetAllClick = () => {
+    if (confirmResetAll) {
+      setConfirmResetAll(false);
+      clearTimeout(timers.current['resetAll']);
+      onResetAll?.(player.id);
+    } else {
+      setConfirmResetAll(true);
+      clearTimeout(timers.current['resetAll']);
+      timers.current['resetAll'] = setTimeout(() => setConfirmResetAll(false), 3000);
+    }
+  };
+
+  return (
+    <div style={{
+      padding: '6px 10px', borderBottom: '1px solid var(--border-subtle)',
+      background: 'var(--bg-main)', flexShrink: 0,
+      display: 'flex', gap: '6px', alignItems: 'center', overflowX: 'auto'
+    }}>
+      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: '600', flexShrink: 0 }}>
+        📨
+      </span>
+      {specialMsgs.map(doc => {
+        const entry = msgLog[doc.file];
+        const sent = entry?.sendCount > 0;
+        const isConfirmSend = !!confirmSend[doc.file];
+        const isConfirmReset = !!confirmReset[doc.file];
+        const isSending = !!sending[doc.file];
+        const canSend = botRunning && !!player.telegramChatId && !isSending;
+        return (
+          <div key={doc.file} style={{
+            display: 'flex', alignItems: 'center', gap: '4px',
+            border: `1px solid ${sent ? 'var(--accent)' : 'var(--border-default)'}`,
+            borderRadius: '14px', padding: '2px 6px 2px 10px',
+            background: sent ? 'var(--accent-a04)' : 'transparent',
+            flexShrink: 0,
+            opacity: isSending ? 0.6 : 1
+          }}>
+            <button
+              onClick={() => handleSendClick(doc.file)}
+              disabled={!canSend}
+              title={isSending ? 'Invio in corso…' : !canSend ? 'Bot non attivo o PG non connesso' : (sent ? `Inviato ${entry.sendCount} volte — ultimo ${shortTime(entry.lastSentAt)}` : 'Clicca per inviare')}
+              style={{
+                background: 'none', border: 'none', padding: '2px 2px',
+                color: isConfirmSend ? 'var(--color-danger)' : (canSend ? 'var(--text-primary)' : 'var(--text-disabled)'),
+                fontSize: '11px', cursor: canSend ? 'pointer' : 'not-allowed',
+                display: 'flex', alignItems: 'center', gap: '4px'
+              }}
+            >
+              {sent && <span style={{ color: 'var(--accent)' }}>✓</span>}
+              <span>{displayName(doc.name)}</span>
+              {isSending && <span style={{ marginLeft: '4px' }}>…</span>}
+              {isConfirmSend && !isSending && <span style={{ marginLeft: '4px' }}>Sicuro?</span>}
+              {sent && !isConfirmSend && !isSending && (
+                <span style={{ fontSize: '9px', color: 'var(--text-tertiary)' }}>
+                  ×{entry.sendCount}
+                </span>
+              )}
+            </button>
+            {sent && (
+              <button
+                onClick={() => handleResetClick(doc.file)}
+                title="Resetta stato invio"
+                style={{
+                  background: 'none', border: 'none', padding: '2px 4px',
+                  color: isConfirmReset ? 'var(--color-danger)' : 'var(--text-tertiary)',
+                  fontSize: '10px', cursor: 'pointer'
+                }}
+              >
+                {isConfirmReset ? 'Sicuro?' : '🗑'}
+              </button>
+            )}
+          </div>
+        );
+      })}
+      {anySent && (
+        <button
+          onClick={handleResetAllClick}
+          title="Resetta stato invio per tutti i messaggi"
+          style={{
+            background: 'none',
+            border: `1px solid ${confirmResetAll ? 'var(--color-danger)' : 'var(--border-default)'}`,
+            borderRadius: '3px', padding: '2px 8px',
+            color: confirmResetAll ? 'var(--color-danger)' : 'var(--text-secondary)',
+            fontSize: '10px', cursor: 'pointer', flexShrink: 0, marginLeft: '4px'
+          }}
+        >
+          {confirmResetAll ? 'Sicuro?' : 'Reset tutti'}
+        </button>
+      )}
     </div>
   );
 }

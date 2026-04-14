@@ -13,8 +13,12 @@ function shouldHide(entry, hiddenSet) {
   const name = entry.name;
   // Always hide dot-directories
   if (entry.isDirectory && name.startsWith('.')) return true;
-  // Always hide files starting with _
-  if (!entry.isDirectory && name.startsWith('_')) return true;
+  // Hide files starting with _ (file di sistema), eccetto i file funzionali dell'AI
+  // (_msg_* = messaggi speciali inviabili via Telegram, _prompt* = system prompt personalizzato)
+  if (!entry.isDirectory && name.startsWith('_')) {
+    const lower = name.toLowerCase();
+    if (!lower.startsWith('_msg_') && !lower.startsWith('_prompt')) return true;
+  }
   // Check full filename match (e.g. .gitignore, .DS_Store, thumbs.db)
   if (hiddenSet.has(name.toLowerCase())) return true;
   // Check extension match

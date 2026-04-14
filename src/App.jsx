@@ -171,6 +171,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   const [telegramTextData, setTelegramTextData] = useState(null);
   const [chatMessages, setChatMessages] = useState({});
   const [aiConversations, setAiConversations] = useState({});
+  const [aiTestConversations, setAiTestConversations] = useState({});
   const [chatOpen, setChatOpen] = useState(false);
   const [chatFlash, setChatFlash] = useState(false);
   const [gmPrivateAlert, setGmPrivateAlert] = useState(false);
@@ -260,6 +261,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         setTelegramLog(savedTg.sendLog ?? []);
         setChatMessages(savedTg.chat ?? {});
         setAiConversations(saved.aiConversations ?? {});
+        setAiTestConversations(saved.aiTestConversations ?? {});
         const savedCal = saved.calendar ?? {};
         const startDate = saved.settings?.startDate || '2000-01-01';
         setCalendarData({
@@ -363,6 +365,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
       notes: notes,
       checklist: checklist,
       aiConversations: aiConversations,
+      aiTestConversations: aiTestConversations,
       referenceManuals: referenceManuals,
       referenceScrollPositions: referenceScrollPositions,
       referenceSelectedId: referenceSelectedId,
@@ -393,7 +396,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     saveTimer.current = setTimeout(() => {
       window.electronAPI.saveProjectState(projectPath, latestState.current);
     }, 1000);
-  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, aiConversations, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, viewerFontSize, stageFontSize, scrollVersion, aiConfig, aiChatHistory, panelVisibility, layoutPresets, combatData, librariesData]);
+  }, [stateLoaded, projectPath, leftWidth, rightWidth, explorerRatio, consoleHeight, viewerStageRatio, slotRatios, currentFile, slotFiles, projectSettings, players, telegramConfig, calendarData, activeStageSlot, slotSelectedIndices, expandedDirs, docTocPinned, calFile, viewerTabs, activeViewerTab, notes, checklist, aiConversations, aiTestConversations, mediaItems, mediaFilter, telegramLog, chatMessages, referenceManuals, referenceScrollPositions, referenceSelectedId, highlightKeywords, relationsBase, relationsSession, vistaContent, viewerFontSize, stageFontSize, scrollVersion, aiConfig, aiChatHistory, panelVisibility, layoutPresets, combatData, librariesData]);
 
   // Save immediately on unmount (project switch)
   useEffect(() => {
@@ -892,7 +895,8 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           // Raccogliere documenti autorizzati per questo player
           const player = playersRef.current.find(p => p.id === data.playerId);
           const allActiveDocs = [...(ai.commonDocs || []), ...(player?.aiDocuments || [])].filter(d => d.active);
-          const allowedFiles = allActiveDocs.map(d => d.file);
+          // Escludi messaggi speciali (_msg_*) dal contesto AI
+          const allowedFiles = allActiveDocs.filter(d => !d.name?.toLowerCase().startsWith('_msg_')).map(d => d.file);
 
           // Nessun documento attivo → no AI
           if (allowedFiles.length === 0) {
@@ -901,7 +905,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           }
 
           // Cercare file _prompt tra i documenti attivi
-          const promptDoc = allActiveDocs.find(d => d.name?.startsWith('_prompt'));
+          const promptDoc = allActiveDocs.find(d => d.name?.toLowerCase().startsWith('_prompt'));
           const chatOpts = { allowedFiles };
 
           (async () => {
@@ -1233,11 +1237,12 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     if (!player) return;
 
     const allActiveDocs = [...(ai.commonDocs || []), ...(player.aiDocuments || [])].filter(d => d.active);
-    const allowedFiles = allActiveDocs.map(d => d.file);
+    // Escludi messaggi speciali (_msg_*) dal contesto AI
+    const allowedFiles = allActiveDocs.filter(d => !d.name?.toLowerCase().startsWith('_msg_')).map(d => d.file);
 
     if (allowedFiles.length === 0) return;
 
-    const promptDoc = allActiveDocs.find(d => d.name?.startsWith('_prompt'));
+    const promptDoc = allActiveDocs.find(d => d.name?.toLowerCase().startsWith('_prompt'));
     const chatOpts = { allowedFiles };
 
     try {
@@ -1297,6 +1302,84 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
       console.error('AI poke error:', err);
     }
   }, [players, projectPath]);
+
+  // Invia un messaggio speciale (_msg_*) a un PG via Telegram, fuori dal contesto AI
+  const handleSendSpecialMessage = useCallback(async (playerId, docFile) => {
+    const player = players.find(p => p.id === playerId);
+    const logError = (desc, errMsg) => {
+      const tm = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+      setTelegramLog(prev => [...prev, {
+        date: tm, success: false,
+        description: desc,
+        error: errMsg,
+        icon: '\u{1F4E8}'
+      }]);
+    };
+    if (!player?.telegramChatId) {
+      logError('Messaggio speciale non inviato: PG non connesso', docFile);
+      return { error: 'PG non connesso' };
+    }
+    const content = await window.electronAPI.readFile(projectPath + '/' + docFile);
+    if (!content || !content.trim()) {
+      logError(`Messaggio speciale a ${player.characterName}: file vuoto o non leggibile`, docFile);
+      return { error: 'File vuoto o non leggibile' };
+    }
+    try {
+      await window.electronAPI.telegramSendReply(player.telegramChatId, content);
+    } catch (err) {
+      logError(`Messaggio speciale a ${player.characterName}: errore invio`, err.message || String(err));
+      return { error: err.message || 'Invio fallito' };
+    }
+    const now = new Date().toISOString();
+    setPlayers(prev => prev.map(p => {
+      if (p.id !== playerId) return p;
+      const prevEntry = p.msgLog?.[docFile];
+      return {
+        ...p,
+        msgLog: {
+          ...(p.msgLog || {}),
+          [docFile]: {
+            firstSentAt: prevEntry?.firstSentAt || now,
+            lastSentAt: now,
+            sendCount: (prevEntry?.sendCount || 0) + 1
+          }
+        }
+      };
+    }));
+    // Messaggio visibile nella chat GM
+    setChatMessages(prev => ({
+      ...prev,
+      [player.telegramChatId]: [...(prev[player.telegramChatId] || []), {
+        id: crypto.randomUUID(),
+        from: 'ai',
+        text: content,
+        timestamp: now,
+        read: true
+      }]
+    }));
+    // Log Telegram
+    const time = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    setTelegramLog(prev => [...prev, {
+      date: time,
+      success: true,
+      description: `Messaggio speciale a ${player.characterName}: ${docFile.split('/').pop()}`,
+      icon: '\u{1F4E8}'
+    }]);
+    return { success: true };
+  }, [players, projectPath]);
+
+  const handleResetSpecialMessage = useCallback((playerId, docFile) => {
+    setPlayers(prev => prev.map(p => {
+      if (p.id !== playerId) return p;
+      if (!p.msgLog?.[docFile]) return p;
+      const { [docFile]: _removed, ...rest } = p.msgLog;
+      return { ...p, msgLog: rest };
+    }));
+  }, []);
+
+  const handleResetAllSpecialMessages = useCallback((playerId) => {
+    setPlayers(prev => prev.map(p => p.id === playerId ? { ...p, msgLog: {} } : p));
+  }, []);
 
   const handleChatMarkRead = useCallback((chatId) => {
     setChatMessages(prev => ({
@@ -1812,7 +1895,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         {/* CONSOLE — full width */}
         {panelVisibility.console && (
         <div style={{ height: `${consoleHeight}px`, overflow: 'hidden', flexShrink: 0 }}>
-          <Console projectFolder={projectPath} onOpenFile={handleFileOpen} onSearchNavigate={handleSearchNavigate} externalQuery={externalSearchQuery} telegramLog={telegramLog} onClearLog={handleClearTelegramLog} aiConfig={aiConfig} aiChatHistory={aiChatHistory} onAiChatHistoryChange={setAiChatHistory} firebaseUser={firebaseUser} onTelegramText={handleTelegramText} onTelegramFile={handleTelegramFile} onSaveImage={handleAiSaveImage} botRunning={botStatus.running} />
+          <Console projectFolder={projectPath} onOpenFile={handleFileOpen} onSearchNavigate={handleSearchNavigate} externalQuery={externalSearchQuery} telegramLog={telegramLog} onClearLog={handleClearTelegramLog} aiConfig={aiConfig} aiChatHistory={aiChatHistory} onAiChatHistoryChange={setAiChatHistory} firebaseUser={firebaseUser} onTelegramText={handleTelegramText} onTelegramFile={handleTelegramFile} onSaveImage={handleAiSaveImage} botRunning={botStatus.running} players={players} onAiConfigChange={setAiConfig} aiTestConversations={aiTestConversations} onAiTestConversationsChange={setAiTestConversations} onClearAiTelegramHistory={(playerId) => setAiConversations(prev => ({ ...prev, [playerId]: [] }))} />
         </div>
         )}
       </div>
@@ -2163,6 +2246,11 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         <TelegramChat
           players={players}
           chatMessages={chatMessages}
+          aiConfig={aiConfig}
+          botRunning={botStatus.running}
+          onSendSpecialMessage={handleSendSpecialMessage}
+          onResetSpecialMessage={handleResetSpecialMessage}
+          onResetAllSpecialMessages={handleResetAllSpecialMessages}
           onSendReply={handleChatSendReply}
           onMarkRead={handleChatMarkRead}
           onSelectedChange={handleChatSelectedChange}
@@ -2177,7 +2265,8 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           onAiReply={async (msg, chatId) => {
             const player = players.find(p => p.telegramChatId === chatId);
             const allActiveDocs = [...(aiConfig.commonDocs || []), ...(player?.aiDocuments || [])].filter(d => d.active);
-            const allowedFiles = allActiveDocs.map(d => d.file);
+            // Escludi messaggi speciali (_msg_*) dal contesto AI
+            const allowedFiles = allActiveDocs.filter(d => !d.name?.toLowerCase().startsWith('_msg_')).map(d => d.file);
 
             // Nessun documento attivo → no AI
             if (allowedFiles.length === 0) {
@@ -2186,7 +2275,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
             }
 
             // Cercare file _prompt tra i documenti attivi
-            const promptDoc = allActiveDocs.find(d => d.name?.startsWith('_prompt'));
+            const promptDoc = allActiveDocs.find(d => d.name?.toLowerCase().startsWith('_prompt'));
             const chatOpts = { allowedFiles };
 
             if (promptDoc) {
