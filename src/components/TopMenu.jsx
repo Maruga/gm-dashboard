@@ -3,7 +3,7 @@ import {
   ChevronLeft, ChevronRight, Bell, Calendar,
   Timer, Play, Pause, RotateCcw,
   Users, StickyNote, CheckSquare, Highlighter, Network, MessageCircle, MessageCircleWarning, FileText,
-  BookOpen, Swords, Library, Monitor, Eye, Search, UserCircle,
+  BookOpen, Swords, Library, Monitor, Eye, Search, UserCircle, Cast,
   Info, Settings, Globe, FolderOpen, FolderRoot,
   Minus, Square, X, LayoutGrid
 } from 'lucide-react';
@@ -722,7 +722,7 @@ function AuthDropdown({ firebaseUser, onFirebaseUserChange, onClose }) {
 // ─── Main component ───
 
 function TopMenu({
-  onChangeProject, onOpenInfo, onOpenSettings, onOpenCalendar, onOpenNotes, onOpenChecklist,
+  onChangeProject, onOpenInfo, onOpenSettings, onOpenCalendar, onOpenNotes, onOpenChecklist, onOpenCast,
   onOpenAdventures, onOpenProjectFolder, onOpenRelationsOverlay, onOpenAiDocs,
   relationsHasFile, relationsBase,
   onOpenRelationsViewer, onOpenRelationsStage,
@@ -850,6 +850,7 @@ function TopMenu({
           )}
 
           <IconBtn Icon={Calendar} tooltip="Calendario" onClick={onOpenCalendar} />
+          <IconBtn Icon={Cast} tooltip="Casting al tavolo" onClick={onOpenCast} />
         </div>
 
         {/* ── Gruppo 3: TIMER ── */}

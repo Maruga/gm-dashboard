@@ -7,6 +7,8 @@ const { GmDashBot, verifyToken, htmlToImage } = require('./telegramBot');
 const firebase = require('./firebaseApi');
 const aiApi = require('./aiApi');
 const ragService = require('./services/rag/ragService');
+const castServer = require('./services/cast/castServer');
+const QRCode = require('qrcode');
 const AdmZip = require('adm-zip');
 const os = require('os');
 const Store = require('electron-store').default;
@@ -312,6 +314,9 @@ app.on('before-quit', () => {
   try {
     ragService.close();
   } catch (e) {}
+  try {
+    if (castServer.isRunning()) castServer.stop();
+  } catch (e) {}
 });
 
 app.on('window-all-closed', () => {
@@ -577,6 +582,51 @@ ipcMain.handle('write-file', async (event, projectPath, relativeFile, content) =
     return { success: true };
   } catch (err) {
     logDiag('error', `write-file fallito: ${relativeFile} — ${err.message}`);
+    return { error: err.message };
+  }
+});
+
+// === Casting (display remoto su LAN) ===
+function notifyCastRenderer(channel, data) {
+  const wins = BrowserWindow.getAllWindows();
+  for (const w of wins) {
+    try { w.webContents.send(channel, data); } catch (_) {}
+  }
+}
+castServer.setEventHooks({
+  onConnect: (channelId) => notifyCastRenderer('cast-client-connected', { channelId }),
+  onDisconnect: (channelId) => notifyCastRenderer('cast-client-disconnected', { channelId })
+});
+
+ipcMain.handle('cast-start', async (event, opts = {}) => {
+  const port = Number.isFinite(opts.port) ? opts.port : 1804;
+  const result = await castServer.start({ port, projectPath: opts.projectPath || null });
+  return result;
+});
+
+ipcMain.handle('cast-stop', async () => {
+  return await castServer.stop();
+});
+
+ipcMain.handle('cast-status', async () => {
+  return castServer.getStatus();
+});
+
+ipcMain.handle('cast-send', async (event, channelId, content) => {
+  const sent = castServer.send(channelId || 'default', content);
+  return { sent };
+});
+
+ipcMain.handle('cast-clear', async (event, channelId) => {
+  const sent = castServer.clear(channelId || 'default');
+  return { sent };
+});
+
+ipcMain.handle('cast-qr', async (event, url) => {
+  try {
+    const dataUrl = await QRCode.toDataURL(url, { margin: 1, width: 240 });
+    return { dataUrl };
+  } catch (err) {
     return { error: err.message };
   }
 });

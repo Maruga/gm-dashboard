@@ -1,0 +1,128 @@
+html, body {
+  margin: 0; padding: 0;
+  width: 100%; height: 100%;
+  background: #000;
+  color: #eee;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: none;
+}
+
+.status {
+  position: fixed;
+  top: 12px; left: 12px;
+  font-size: 12px;
+  color: #888;
+  pointer-events: none;
+  z-index: 10;
+  transition: opacity 0.4s;
+}
+.status.hidden { opacity: 0; }
+
+.fs-btn {
+  position: fixed;
+  bottom: 16px; right: 16px;
+  background: rgba(255,255,255,0.08);
+  color: #eee;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  z-index: 20;
+  transition: opacity 0.3s;
+}
+.fs-btn:hover { background: rgba(255,255,255,0.15); }
+.fs-btn.hidden { opacity: 0; pointer-events: none; }
+
+.root {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Testo */
+.content-text {
+  max-width: 80%;
+  max-height: 80%;
+  overflow-y: auto;
+  text-align: center;
+  font-size: 3.5vw;
+  line-height: 1.4;
+  padding: 2vw;
+  color: #fff;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.6);
+}
+.content-text.align-left { text-align: left; }
+.content-text h1, .content-text h2, .content-text h3 { margin: 0.3em 0; }
+
+/* Immagine */
+.content-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.content-image.fit-cover { object-fit: cover; }
+
+/* Wrapper per caption sotto immagine */
+.content-image-wrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.content-image-wrap .caption {
+  margin-top: 16px;
+  font-size: 1.5vw;
+  color: #eee;
+  max-width: 80%;
+  text-align: center;
+}
+
+/* Dado */
+.content-dice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2vw;
+}
+.content-dice .value {
+  font-size: 18vw;
+  font-weight: 800;
+  color: #e8c77a;
+  text-shadow: 0 0 30px rgba(232,199,122,0.5), 0 4px 20px rgba(0,0,0,0.6);
+  animation: diceRoll 0.6s cubic-bezier(.2,.7,.3,1.2);
+}
+.content-dice .label {
+  font-size: 2.5vw;
+  color: #ccc;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+@keyframes diceRoll {
+  0% { transform: scale(0.4) rotate(-360deg); opacity: 0; }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+
+/* Transizioni di entrata/uscita */
+.fade-enter { opacity: 0; }
+.fade-enter-active { opacity: 1; transition: opacity var(--fade-ms, 250ms) ease; }
+.fade-exit { opacity: 1; }
+.fade-exit-active { opacity: 0; transition: opacity var(--fade-ms, 250ms) ease; }
+
+/* Passepartout (sfondo di default) */
+.passepartout {
+  position: absolute; inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  z-index: -1;
+}

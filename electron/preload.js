@@ -20,6 +20,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
   readFileBinary: (filePath) => ipcRenderer.invoke('read-file-binary', filePath),
   writeFile: (projectPath, relativeFile, content) => ipcRenderer.invoke('write-file', projectPath, relativeFile, content),
+
+  // Casting (display remoto LAN)
+  castStart: (opts) => ipcRenderer.invoke('cast-start', opts),
+  castStop: () => ipcRenderer.invoke('cast-stop'),
+  castStatus: () => ipcRenderer.invoke('cast-status'),
+  castSend: (channelId, content) => ipcRenderer.invoke('cast-send', channelId, content),
+  castClear: (channelId) => ipcRenderer.invoke('cast-clear', channelId),
+  castQr: (url) => ipcRenderer.invoke('cast-qr', url),
+  onCastClientConnected: (cb) => { const h = (_, d) => cb(d); ipcRenderer.on('cast-client-connected', h); return () => ipcRenderer.removeListener('cast-client-connected', h); },
+  onCastClientDisconnected: (cb) => { const h = (_, d) => cb(d); ipcRenderer.on('cast-client-disconnected', h); return () => ipcRenderer.removeListener('cast-client-disconnected', h); },
   getFileUrl: (filePath) => ipcRenderer.invoke('get-file-url', filePath),
   searchFiles: (folderPath, query) => ipcRenderer.invoke('search-files', folderPath, query),
   selectProjectFile: (projectPath, filters) => ipcRenderer.invoke('select-project-file', projectPath, filters),

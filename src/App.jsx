@@ -6,6 +6,7 @@ import Stage from './components/Stage';
 import SlotPanel from './components/SlotPanel';
 import MediaPanel from './components/MediaPanel';
 import Console from './components/Console';
+import CastPanel from './components/CastPanel';
 import TopMenu from './components/TopMenu';
 import DocToc from './components/DocToc';
 import SettingsPanel from './components/SettingsPanel';
@@ -140,6 +141,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   const [telegramConfig, setTelegramConfig] = useState({ botToken: '', configured: false });
   const [calendarData, setCalendarData] = useState({ currentDate: '', events: {} });
   const [settingsOpen, setSettingsOpen] = useState(null); // null=chiuso, stringa=sezione iniziale
+  const [castPanelOpen, setCastPanelOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calFile, setCalFile] = useState(null);
   const [viewerTabs, setViewerTabs] = useState([{ type: 'document' }]);
@@ -1650,6 +1652,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         onOpenSettings={handleOpenSettings}
         onOpenAiDocs={handleOpenAiDocs}
         onOpenCalendar={handleOpenCalendar}
+        onOpenCast={() => setCastPanelOpen(true)}
         onOpenNotes={handleToggleNotes}
         onOpenChecklist={handleToggleChecklist}
         gameDate={calendarData.currentDate}
@@ -1924,6 +1927,11 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
       </div>)}
 
       </div>{/* end MAIN CONTENT */}
+
+      {/* === CAST PANEL === */}
+      {castPanelOpen && (
+        <CastPanel projectPath={projectPath} onClose={() => setCastPanelOpen(false)} />
+      )}
 
       {/* === SETTINGS PANEL === */}
       {settingsOpen && (
