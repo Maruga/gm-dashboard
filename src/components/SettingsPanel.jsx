@@ -1935,6 +1935,38 @@ export default function SettingsPanel({
               <option value="cover">Riempi (ritaglia per coprire lo schermo)</option>
             </select>
           </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ fontSize: '12px', color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
+              Tipo di transizione tra contenuti
+            </label>
+            <select
+              value={castConfig.transition || 'crossfade'}
+              onChange={e => onCastConfigChange(prev => ({ ...prev, transition: e.target.value }))}
+              style={{
+                background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+                borderRadius: '4px', padding: '5px 8px', color: 'var(--text-primary)',
+                fontSize: '12px', outline: 'none', cursor: 'pointer'
+              }}
+            >
+              <option value="crossfade">Dissolvenza (crossfade)</option>
+              <option value="cut">Stacco istantaneo (cut)</option>
+            </select>
+          </div>
+
+          {(castConfig.transition || 'crossfade') !== 'cut' && (
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ fontSize: '12px', color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
+                Durata dissolvenza: <span style={{ color: 'var(--accent)' }}>{castConfig.fadeMs ?? 250} ms</span>
+              </label>
+              <input
+                type="range" min="0" max="1000" step="50"
+                value={castConfig.fadeMs ?? 250}
+                onChange={e => onCastConfigChange(prev => ({ ...prev, fadeMs: parseInt(e.target.value, 10) }))}
+                style={{ width: '100%', accentColor: 'var(--accent)' }}
+              />
+            </div>
+          )}
           </>)}
 
           {section === 'manuali' && (<>

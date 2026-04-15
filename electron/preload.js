@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   castSend: (channelId, content) => ipcRenderer.invoke('cast-send', channelId, content),
   castClear: (channelId) => ipcRenderer.invoke('cast-clear', channelId),
   castSetDefault: (channelId, content) => ipcRenderer.invoke('cast-set-default', channelId, content),
+  castSetConfig: (config) => ipcRenderer.invoke('cast-set-config', config),
   castQr: (url) => ipcRenderer.invoke('cast-qr', url),
   onCastClientConnected: (cb) => { const h = (_, d) => cb(d); ipcRenderer.on('cast-client-connected', h); return () => ipcRenderer.removeListener('cast-client-connected', h); },
   onCastClientDisconnected: (cb) => { const h = (_, d) => cb(d); ipcRenderer.on('cast-client-disconnected', h); return () => ipcRenderer.removeListener('cast-client-disconnected', h); },

@@ -627,6 +627,11 @@ ipcMain.handle('cast-set-default', async (event, channelId, content) => {
   return { success: true };
 });
 
+ipcMain.handle('cast-set-config', async (event, config) => {
+  castServer.broadcastConfig(config || {});
+  return { success: true };
+});
+
 ipcMain.handle('cast-qr', async (event, url) => {
   try {
     const dataUrl = await QRCode.toDataURL(url, { margin: 1, width: 240 });

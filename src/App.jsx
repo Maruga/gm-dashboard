@@ -142,8 +142,10 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   const [calendarData, setCalendarData] = useState({ currentDate: '', events: {} });
   const [settingsOpen, setSettingsOpen] = useState(null); // null=chiuso, stringa=sezione iniziale
   const [castPanelOpen, setCastPanelOpen] = useState(false);
-  const [castConfig, setCastConfig] = useState({ passepartoutFile: '', fit: 'contain' });
-  const castConfigRef = useRef({ passepartoutFile: '', fit: 'contain' });
+  const [castDiceScene, setCastDiceScene] = useState([]); // [{ rollId, sides, value, label }]
+  const [castDiceTotal, setCastDiceTotal] = useState(null);
+  const [castConfig, setCastConfig] = useState({ passepartoutFile: '', fit: 'contain', transition: 'crossfade', fadeMs: 250 });
+  const castConfigRef = useRef({ passepartoutFile: '', fit: 'contain', transition: 'crossfade', fadeMs: 250 });
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calFile, setCalFile] = useState(null);
   const [viewerTabs, setViewerTabs] = useState([{ type: 'document' }]);
@@ -266,7 +268,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         setChatMessages(savedTg.chat ?? {});
         setAiConversations(saved.aiConversations ?? {});
         setAiTestConversations(saved.aiTestConversations ?? {});
-        setCastConfig(saved.castConfig ?? { passepartoutFile: '', fit: 'contain' });
+        setCastConfig(saved.castConfig ?? { passepartoutFile: '', fit: 'contain', transition: 'crossfade', fadeMs: 250 });
         const savedCal = saved.calendar ?? {};
         const startDate = saved.settings?.startDate || '2000-01-01';
         setCalendarData({
@@ -1322,22 +1324,115 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     return norm.slice(base.length + 1);
   }, [projectPath]);
 
+  // Helper comune per feedback errori casting (server spento / nessun client)
+  const castLogError = useCallback((msg) => {
+    const now = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    setTelegramLog(prev => [...prev, {
+      date: now, success: false,
+      description: 'Casting: ' + msg,
+      icon: '\u{1F4E1}'
+    }]);
+  }, []);
+
+  const castAssertRunning = useCallback(async () => {
+    const status = await window.electronAPI.castStatus();
+    if (!status?.running) {
+      castLogError('server non attivo — avvialo dal pannello 📡');
+      return false;
+    }
+    return true;
+  }, [castLogError]);
+
+  // Aggiunge un dado alla scena e invia la scena al display
+  const handleCastDie = useCallback(async (roll) => {
+    if (!(await castAssertRunning())) return;
+    const existing = castDiceScene.some(d => d.rollId === roll.id);
+    const next = existing
+      ? castDiceScene
+      : [...castDiceScene, { rollId: roll.id, sides: roll.sides, value: roll.value, label: 'd' + roll.sides }];
+    setCastDiceScene(next);
+    const r = await window.electronAPI.castSend('default', {
+      type: 'dice-scene',
+      dice: next.map(d => ({ sides: d.sides, value: d.value, label: d.label })),
+      total: castDiceTotal
+    });
+    if (r?.sent === 0) castLogError('nessun display connesso — apri URL sul tablet');
+  }, [castDiceScene, castDiceTotal, castAssertRunning, castLogError]);
+
+  const handleCastDiceTotal = useCallback(async (total) => {
+    if (!(await castAssertRunning())) return;
+    setCastDiceTotal(total);
+    const dice = castDiceScene.map(d => ({ sides: d.sides, value: d.value, label: d.label }));
+    let r;
+    if (dice.length === 0) {
+      r = await window.electronAPI.castSend('default', { type: 'text', content: 'Totale: ' + total, align: 'center' });
+    } else {
+      r = await window.electronAPI.castSend('default', { type: 'dice-scene', dice, total });
+    }
+    if (r?.sent === 0) castLogError('nessun display connesso');
+  }, [castDiceScene, castAssertRunning, castLogError]);
+
+  const handleCastClearScene = useCallback(async () => {
+    setCastDiceScene([]);
+    setCastDiceTotal(null);
+    await window.electronAPI.castClear('default');
+  }, []);
+
+  // Invia del testo libero al display
+  const handleCastText = useCallback(async (text, options = {}) => {
+    const content = String(text || '').trim();
+    if (!content) { castLogError('testo vuoto'); return { error: 'Testo vuoto' }; }
+    if (!(await castAssertRunning())) return { error: 'Server casting non attivo' };
+    const channelId = options.channelId || 'default';
+    const r = await window.electronAPI.castSend(channelId, {
+      type: 'text',
+      content,
+      align: options.align || 'center'
+    });
+    if (r?.sent === 0) castLogError('nessun display connesso');
+    return r;
+  }, [castAssertRunning, castLogError]);
+
+  // Invia il contenuto di un file di testo (md/txt/html) come testo sul display
+  const handleCastTextFile = useCallback(async (absOrRelPath, options = {}) => {
+    if (!absOrRelPath) return { error: 'Nessun file' };
+    const isAbs = absOrRelPath.includes(':') || absOrRelPath.startsWith('/');
+    const rel = isAbs ? toRelativeProjectPath(absOrRelPath) : absOrRelPath;
+    if (!rel) return { error: 'File fuori dal progetto' };
+    const fullPath = isAbs ? absOrRelPath : (projectPath + '/' + rel);
+    const content = await window.electronAPI.readFile(fullPath);
+    if (!content) return { error: 'File vuoto o non leggibile' };
+    return handleCastText(content, options);
+  }, [toRelativeProjectPath, projectPath, handleCastText]);
+
   // Invia un'immagine a un canale (default se non specificato)
   const handleCastImage = useCallback(async (absOrRelPath, options = {}) => {
-    if (!absOrRelPath) return { error: 'Nessun file' };
+    if (!absOrRelPath) { castLogError('nessun file'); return { error: 'Nessun file' }; }
     const rel = absOrRelPath.includes(':') || absOrRelPath.startsWith('/')
       ? toRelativeProjectPath(absOrRelPath)
       : absOrRelPath;
-    if (!rel) return { error: 'File fuori dal progetto' };
-    const status = await window.electronAPI.castStatus();
-    if (!status?.running) return { error: 'Server casting non attivo' };
+    if (!rel) { castLogError('file fuori dal progetto'); return { error: 'File fuori dal progetto' }; }
+    if (!(await castAssertRunning())) return { error: 'Server casting non attivo' };
     const fit = options.fit || castConfigRef.current?.fit || 'contain';
     const channelId = options.channelId || 'default';
     const url = `/files/${encodeURI(rel).replace(/#/g, '%23').replace(/\?/g, '%3F')}`;
-    return await window.electronAPI.castSend(channelId, {
+    const r = await window.electronAPI.castSend(channelId, {
       type: 'image', url, fit, caption: options.caption || null
     });
-  }, [toRelativeProjectPath]);
+    if (r?.sent === 0) castLogError('nessun display connesso — apri URL sul tablet');
+    return r;
+  }, [toRelativeProjectPath, castAssertRunning, castLogError]);
+
+  // Aggiorna config transizioni sul server quando cambia
+  useEffect(() => {
+    (async () => {
+      const status = await window.electronAPI.castStatus();
+      if (!status?.running) return;
+      const transition = castConfig?.transition || 'crossfade';
+      const fadeMs = transition === 'cut' ? 0 : (castConfig?.fadeMs ?? 250);
+      await window.electronAPI.castSetConfig({ transition, fadeMs });
+    })();
+  }, [castConfig?.transition, castConfig?.fadeMs]);
 
   // Aggiorna il passepartout del canale default sul server
   useEffect(() => {
@@ -1759,6 +1854,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
             onExpandedDirsChange={setExpandedDirs}
             onTelegramFile={handleTelegramFile}
             onCastFile={(entry) => handleCastImage(entry.path)}
+            onCastTextFile={(entry) => handleCastTextFile(entry.path)}
             hiddenExtensions={projectSettings.hiddenExtensions}
             refreshKey={explorerRefreshKey}
           />
@@ -1950,7 +2046,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         {/* CONSOLE — full width */}
         {panelVisibility.console && (
         <div style={{ height: `${consoleHeight}px`, overflow: 'hidden', flexShrink: 0 }}>
-          <Console projectFolder={projectPath} onOpenFile={handleFileOpen} onSearchNavigate={handleSearchNavigate} externalQuery={externalSearchQuery} telegramLog={telegramLog} onClearLog={handleClearTelegramLog} aiConfig={aiConfig} aiChatHistory={aiChatHistory} onAiChatHistoryChange={setAiChatHistory} firebaseUser={firebaseUser} onTelegramText={handleTelegramText} onTelegramFile={handleTelegramFile} onSaveImage={handleAiSaveImage} botRunning={botStatus.running} players={players} onAiConfigChange={setAiConfig} aiTestConversations={aiTestConversations} onAiTestConversationsChange={setAiTestConversations} onClearAiTelegramHistory={(playerId) => setAiConversations(prev => ({ ...prev, [playerId]: [] }))} />
+          <Console projectFolder={projectPath} onOpenFile={handleFileOpen} onSearchNavigate={handleSearchNavigate} externalQuery={externalSearchQuery} telegramLog={telegramLog} onClearLog={handleClearTelegramLog} aiConfig={aiConfig} aiChatHistory={aiChatHistory} onAiChatHistoryChange={setAiChatHistory} firebaseUser={firebaseUser} onTelegramText={handleTelegramText} onTelegramFile={handleTelegramFile} onSaveImage={handleAiSaveImage} botRunning={botStatus.running} players={players} onAiConfigChange={setAiConfig} aiTestConversations={aiTestConversations} onAiTestConversationsChange={setAiTestConversations} onClearAiTelegramHistory={(playerId) => setAiConversations(prev => ({ ...prev, [playerId]: [] }))} onCastDie={handleCastDie} onCastDiceTotal={handleCastDiceTotal} onCastClearScene={handleCastClearScene} castDiceScene={castDiceScene} />
         </div>
         )}
       </div>
@@ -2265,6 +2361,17 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
             }}
           >
             ✉️ Invia selezione via Telegram
+          </div>
+          <div
+            style={{ padding: '6px 16px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-primary)' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--border-default)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            onClick={() => {
+              handleCastText(textContextMenu.text);
+              setTextContextMenu(null);
+            }}
+          >
+            📡 Invia selezione al display
           </div>
         </div>
       )}

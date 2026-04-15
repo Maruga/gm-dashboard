@@ -20,7 +20,7 @@ function dieValueColor(value, sides) {
   return 'var(--text-bright)';
 }
 
-function DicePanel() {
+function DicePanel({ onCastDie, onCastDiceTotal, onCastClearScene, castScene = [] }) {
   const [rolls, setRolls] = useState([]);
   const lastRollTime = useRef(0);
   const groupId = useRef(0);
@@ -37,6 +37,15 @@ function DicePanel() {
 
   const clearRolls = useCallback(() => setRolls([]), []);
 
+  // Il rollId è già nella scena di cast? (serve per mostrare un ✓)
+  const isInScene = (roll) => castScene.some(d => d.rollId === roll.id);
+
+  // Totale del gruppo corrente dello storico locale
+  const groupTotals = {};
+  for (const r of rolls) {
+    groupTotals[r.group] = (groupTotals[r.group] || 0) + r.value;
+  }
+
   return (
     <div style={{
       width: '150px', flexShrink: 0, borderLeft: '1px solid var(--border-subtle)',
@@ -48,12 +57,25 @@ function DicePanel() {
         textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--accent)',
         borderBottom: '1px solid var(--border-subtle)', flexShrink: 0,
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        gap: '6px',
         height: '26px', boxSizing: 'border-box'
       }}>
         <span>Dadi</span>
-        {rolls.length > 0 && (
-          <span className="close-btn" onClick={clearRolls} style={{ fontSize: '12px' }} title="Svuota">✕</span>
-        )}
+        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          {castScene.length > 0 && onCastClearScene && (
+            <span
+              onClick={onCastClearScene}
+              title={`Pulisci scena dadi sul display (${castScene.length})`}
+              style={{
+                fontSize: '10px', color: 'var(--color-warning)', cursor: 'pointer',
+                padding: '0 4px', border: '1px solid var(--color-warning)', borderRadius: '3px'
+              }}
+            >📡✕{castScene.length}</span>
+          )}
+          {rolls.length > 0 && (
+            <span className="close-btn" onClick={clearRolls} style={{ fontSize: '12px' }} title="Svuota storico">✕</span>
+          )}
+        </div>
       </div>
 
       {/* Body: buttons + results side by side */}
@@ -85,18 +107,32 @@ function DicePanel() {
           {rolls.map((roll, i) => {
             const prevGroup = i > 0 ? rolls[i - 1].group : roll.group;
             const showSep = i > 0 && roll.group !== prevGroup;
+            const inScene = isInScene(roll);
+            // Mostra bottone "totale" solo sulla prima riga di un gruppo con >= 2 dadi
+            const isGroupStart = i === 0 || rolls[i - 1].group !== roll.group;
+            const rollsInGroup = rolls.filter(r => r.group === roll.group);
+            const showTotal = isGroupStart && onCastDiceTotal && rollsInGroup.length >= 2;
             return (
               <div key={roll.id}>
                 {showSep && (
                   <div style={{ borderTop: '1px dashed var(--text-disabled)', margin: '4px 0' }} />
                 )}
-                <div style={{
-                  padding: '2px 6px', marginBottom: '1px', borderRadius: '3px',
-                  background: 'var(--bg-glow-subtle)',
-                  display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '4px'
-                }}>
+                <div
+                  onClick={onCastDie ? () => onCastDie({ id: roll.id, sides: roll.sides, value: roll.value }) : undefined}
+                  title={onCastDie ? (inScene ? 'Già sul display — clicca per rimandarlo' : 'Invia al display') : undefined}
+                  style={{
+                    padding: '2px 6px', marginBottom: '1px', borderRadius: '3px',
+                    background: inScene ? 'var(--accent-a08)' : 'var(--bg-glow-subtle)',
+                    border: inScene ? '1px solid var(--accent)' : '1px solid transparent',
+                    display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '4px',
+                    cursor: onCastDie ? 'pointer' : 'default',
+                    transition: 'background 0.15s'
+                  }}
+                  onMouseEnter={onCastDie ? e => { if (!inScene) e.currentTarget.style.background = 'var(--bg-hover-subtle)'; } : undefined}
+                  onMouseLeave={onCastDie ? e => { e.currentTarget.style.background = inScene ? 'var(--accent-a08)' : 'var(--bg-glow-subtle)'; } : undefined}
+                >
                   <span style={{ fontSize: '10px', color: DIE_COLORS[roll.sides], fontWeight: '600' }}>
-                    d{roll.sides}
+                    {inScene ? '📡 ' : ''}d{roll.sides}
                   </span>
                   <span style={{
                     fontSize: '16px', fontWeight: '800',
@@ -106,6 +142,21 @@ function DicePanel() {
                     {roll.value}
                   </span>
                 </div>
+                {showTotal && (
+                  <div
+                    onClick={() => onCastDiceTotal(groupTotals[roll.group])}
+                    title="Mostra totale del gruppo sul display"
+                    style={{
+                      padding: '1px 6px', marginBottom: '2px', borderRadius: '3px',
+                      fontSize: '9px', color: 'var(--text-tertiary)', cursor: 'pointer',
+                      textAlign: 'right'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+                    onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+                  >
+                    📡 Totale: {groupTotals[roll.group]}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -116,7 +167,7 @@ function DicePanel() {
 }
 
 // ─── Search Panel (main Console content) ───
-function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, telegramLog = [], onClearLog, aiConfig, aiChatHistory = [], onAiChatHistoryChange, firebaseUser, onTelegramText, onTelegramFile, onSaveImage, botRunning, players = [], onAiConfigChange, aiTestConversations = {}, onAiTestConversationsChange, onClearAiTelegramHistory }) {
+function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, telegramLog = [], onClearLog, aiConfig, aiChatHistory = [], onAiChatHistoryChange, firebaseUser, onTelegramText, onTelegramFile, onSaveImage, botRunning, players = [], onAiConfigChange, aiTestConversations = {}, onAiTestConversationsChange, onClearAiTelegramHistory, onCastDie, onCastDiceTotal, onCastClearScene, castDiceScene = [] }) {
   const [activeTab, setActiveTab] = useState('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
@@ -874,7 +925,12 @@ function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, t
       </div>
 
       {/* Right: Dice */}
-      <DicePanel />
+      <DicePanel
+        onCastDie={onCastDie}
+        onCastDiceTotal={onCastDiceTotal}
+        onCastClearScene={onCastClearScene}
+        castScene={castDiceScene}
+      />
     </div>
   );
 }

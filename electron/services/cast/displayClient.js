@@ -63,17 +63,112 @@
   }
 
   function renderDice(c) {
-    const wrap = document.createElement('div');
-    wrap.className = 'content-dice';
+    // Riusa la cell multi-dado per coerenza visiva + animazione rolling
+    const scene = document.createElement('div');
+    scene.className = 'content-dice-scene';
+    scene.appendChild(buildDiceCell({ ...c, rollId: Date.now() }, true));
+    root.appendChild(scene);
+  }
+
+  // Classifica il risultato: critico/fallimento solo per d20
+  function classifyDie(d) {
+    if (d.sides === 20 && d.value === 20) return 'critical';
+    if (d.sides === 20 && d.value === 1) return 'failure';
+    return null;
+  }
+
+  // Simula il "rotolamento" mostrando numeri random per ~500ms prima del valore finale.
+  // Solo DOPO il rolling applica l'eventuale classificazione (critico/fallimento) per non spoilerare.
+  function animateRoll(valueEl, sides, finalValue, classification, cellEl) {
+    const duration = 450;
+    const changes = 8;
+    const stepMs = duration / changes;
+    let count = 0;
+    const id = setInterval(() => {
+      count++;
+      if (count >= changes) {
+        clearInterval(id);
+        valueEl.textContent = String(finalValue);
+        if (cellEl) {
+          // Fase 1: bounce di assestamento (numero neutro, ancora senza colore critico/fallimento)
+          cellEl.classList.add('is-rolling');
+          // Fase 2 (dopo il bounce): togli is-rolling e applica lo stato critico/fallimento con banner
+          setTimeout(() => {
+            cellEl.classList.remove('is-rolling');
+            if (classification === 'critical') cellEl.classList.add('is-critical');
+            if (classification === 'failure') cellEl.classList.add('is-failure');
+            const banner = cellEl.querySelector('.banner');
+            if (banner) banner.style.display = '';
+          }, 500);
+        }
+        return;
+      }
+      const r = 1 + Math.floor(Math.random() * Math.max(2, sides || 6));
+      valueEl.textContent = String(r);
+    }, stepMs);
+    return id;
+  }
+
+  function buildDiceCell(d, animate) {
+    const cell = document.createElement('div');
+    cell.className = 'dice-cell';
+    cell.dataset.key = (d.sides || '') + ':' + (d.value || '') + ':' + (d.rollId || '');
+
+    const classification = classifyDie(d);
+    // Se il dado NON deve rollare (è un dado già esistente ridisegnato), applica subito lo stato finale.
+    // Se invece deve rollare, applica la classe speciale SOLO alla fine del rolling per non spoilerare.
+    if (!animate) {
+      if (classification === 'critical') cell.classList.add('is-critical');
+      if (classification === 'failure') cell.classList.add('is-failure');
+    }
+
     const val = document.createElement('div');
     val.className = 'value';
-    val.textContent = String(c.value);
-    wrap.appendChild(val);
+    val.textContent = animate ? String(1 + Math.floor(Math.random() * Math.max(2, d.sides || 6))) : String(d.value);
+    cell.appendChild(val);
+
     const lab = document.createElement('div');
     lab.className = 'label';
-    lab.textContent = c.label || ('d' + (c.sides || ''));
-    wrap.appendChild(lab);
-    root.appendChild(wrap);
+    lab.textContent = d.label || ('d' + (d.sides || ''));
+    cell.appendChild(lab);
+
+    if (classification) {
+      const banner = document.createElement('div');
+      banner.className = 'banner';
+      banner.textContent = classification === 'critical' ? 'Critico!' : 'Fallimento';
+      // Nascondi banner durante il rolling per non spoilerare
+      if (animate) banner.style.display = 'none';
+      cell.appendChild(banner);
+    }
+
+    if (animate) {
+      setTimeout(() => animateRoll(val, d.sides, d.value, classification, cell), 150);
+    }
+
+    return cell;
+  }
+
+  // Stato corrente scena dadi per diffing incrementale
+  let currentDiceKeys = new Set();
+
+  function renderDiceScene(c) {
+    const scene = document.createElement('div');
+    scene.className = 'content-dice-scene';
+    const newKeys = new Set();
+    (c.dice || []).forEach((d, i) => {
+      const key = (d.sides || '') + ':' + (d.value || '') + ':' + i;
+      const isNew = !currentDiceKeys.has(key);
+      newKeys.add(key);
+      scene.appendChild(buildDiceCell({ ...d, rollId: i }, isNew));
+    });
+    if (c.total != null) {
+      const totalEl = document.createElement('div');
+      totalEl.className = 'dice-total';
+      totalEl.textContent = 'Totale: ' + c.total;
+      scene.appendChild(totalEl);
+    }
+    currentDiceKeys = newKeys;
+    root.appendChild(scene);
   }
 
   function applyContent(content) {
@@ -93,11 +188,16 @@
   function doRender(content) {
     renderBlank();
     currentContent = content;
+    // Reset stato diffing se il contenuto non è più una scena dadi
+    if (!content || content.type !== 'dice-scene') {
+      currentDiceKeys = new Set();
+    }
     if (!content || content.type === 'blank') return;
     let el = null;
     if (content.type === 'text') renderText(content);
     else if (content.type === 'image') renderImage(content);
     else if (content.type === 'dice') renderDice(content);
+    else if (content.type === 'dice-scene') renderDiceScene(content);
 
     if (fadeMs > 0) {
       const newEls = Array.from(root.children);
@@ -114,6 +214,10 @@
   function handleMessage(msg) {
     if (msg.type === 'state') {
       // Stato iniziale — non fade
+      if (msg.payload?.config) {
+        if (typeof msg.payload.config.fadeMs === 'number') setFadeMs(msg.payload.config.fadeMs);
+        // (transition: 'crossfade'|'cut' — cut = fadeMs 0 effettivo)
+      }
       const saveFade = fadeMs; setFadeMs(0);
       doRender(msg.payload?.content || null);
       setFadeMs(saveFade);
@@ -123,7 +227,8 @@
     } else if (msg.type === 'clear') {
       applyContent(null);
     } else if (msg.type === 'config') {
-      if (typeof msg.payload?.fadeMs === 'number') setFadeMs(msg.payload.fadeMs);
+      if (msg.payload?.transition === 'cut') setFadeMs(0);
+      else if (typeof msg.payload?.fadeMs === 'number') setFadeMs(msg.payload.fadeMs);
     }
   }
 

@@ -1,4 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+
+// Ordina gli IP LAN mettendo in cima quelli più probabilmente usati dal Wi-Fi casa,
+// in fondo quelli di interfacce virtuali (VirtualBox, Docker, VPN aziendali).
+function ipPriority(ip) {
+  if (/^192\.168\.56\./.test(ip)) return 30; // VirtualBox host-only
+  if (/^192\.168\.(2[0-9]{2})\./.test(ip)) return 25; // Hyper-V/Docker 192.168.2xx
+  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip)) return 20; // Docker/VPN range privato
+  if (/^10\./.test(ip)) return 15; // VPN aziendali tipiche
+  if (/^192\.168\./.test(ip)) return 0; // Probabile Wi-Fi casa
+  return 10; // IP LAN meno comune
+}
 
 export default function CastPanel({ projectPath, castConfig, onClose }) {
   const [status, setStatus] = useState({ running: false, port: null, addresses: [], channels: [] });
@@ -9,6 +20,21 @@ export default function CastPanel({ projectPath, castConfig, onClose }) {
   const [qrByUrl, setQrByUrl] = useState({}); // { url: dataUrl }
   const [textInput, setTextInput] = useState('');
   const [copiedKey, setCopiedKey] = useState(null);
+  const [selectedAddress, setSelectedAddress] = useState(null);
+
+  // Ordina gli IP con quelli più probabilmente "Wi-Fi casalingo" in cima
+  const sortedAddresses = useMemo(() => {
+    const list = [...(status.addresses || [])];
+    list.sort((a, b) => ipPriority(a) - ipPriority(b));
+    return list;
+  }, [status.addresses]);
+
+  // Quando la lista IP cambia, resetta la selezione al primo (il più probabile)
+  useEffect(() => {
+    if (sortedAddresses.length > 0 && (!selectedAddress || !sortedAddresses.includes(selectedAddress))) {
+      setSelectedAddress(sortedAddresses[0]);
+    }
+  }, [sortedAddresses, selectedAddress]);
 
   const copyToClipboard = async (text, key) => {
     try {
@@ -43,8 +69,8 @@ export default function CastPanel({ projectPath, castConfig, onClose }) {
 
   useEffect(() => {
     // Genera QR per ogni URL pubblico dei canali
-    if (!status.running || !status.addresses?.length) return;
-    const host = status.addresses[0];
+    if (!status.running || !selectedAddress) return;
+    const host = selectedAddress;
     (async () => {
       const updates = {};
       for (const ch of status.channels || []) {
@@ -56,7 +82,7 @@ export default function CastPanel({ projectPath, castConfig, onClose }) {
       }
       if (Object.keys(updates).length) setQrByUrl(prev => ({ ...prev, ...updates }));
     })();
-  }, [status.running, status.addresses, status.port, status.channels]);
+  }, [status.running, selectedAddress, status.port, status.channels]);
 
   const handleStart = async () => {
     setError(null);
@@ -105,8 +131,8 @@ export default function CastPanel({ projectPath, castConfig, onClose }) {
   };
 
   const chUrl = (channelId) => {
-    if (!status.running || !status.addresses?.length) return null;
-    return `http://${status.addresses[0]}:${status.port}/display/${encodeURIComponent(channelId)}`;
+    if (!status.running || !selectedAddress) return null;
+    return `http://${selectedAddress}:${status.port}/display/${encodeURIComponent(channelId)}`;
   };
 
   return (
@@ -177,11 +203,27 @@ export default function CastPanel({ projectPath, castConfig, onClose }) {
               >{stopping ? 'Stop...' : '■ Ferma server'}</button>
             )}
 
-            {status.running && status.addresses?.length > 0 && (
+            {status.running && sortedAddresses.length > 0 && (
               <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <span>http://{status.addresses[0]}:{status.port}</span>
+                <select
+                  value={selectedAddress || ''}
+                  onChange={e => setSelectedAddress(e.target.value)}
+                  title="Seleziona l'IP del tuo Wi-Fi (il primo è di solito quello giusto)"
+                  style={{
+                    background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+                    borderRadius: '3px', padding: '2px 6px', color: 'var(--text-primary)',
+                    fontSize: '11px', outline: 'none', cursor: 'pointer', fontFamily: 'inherit'
+                  }}
+                >
+                  {sortedAddresses.map((ip, i) => (
+                    <option key={ip} value={ip}>
+                      {ip}{i === 0 ? ' (consigliato)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <span>:{status.port}</span>
                 <button
-                  onClick={() => copyToClipboard(`http://${status.addresses[0]}:${status.port}`, 'server')}
+                  onClick={() => copyToClipboard(`http://${selectedAddress}:${status.port}`, 'server')}
                   title="Copia indirizzo"
                   style={{
                     background: 'none',
@@ -204,8 +246,9 @@ export default function CastPanel({ projectPath, castConfig, onClose }) {
           )}
 
           {status.running && (
-            <div style={{ marginTop: '10px', fontSize: '10px', color: 'var(--text-tertiary)' }}>
-              Al primo avvio Windows può chiedere permesso per aprire connessioni in LAN — accetta per permettere ai dispositivi di collegarsi.
+            <div style={{ marginTop: '10px', fontSize: '10px', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+              Se il dispositivo non si collega, prova a selezionare un altro IP dal menu (alcuni PC hanno IP virtuali di VirtualBox/VPN/Docker).
+              Al primo avvio Windows può chiedere permesso per aprire connessioni in LAN — accetta.
             </div>
           )}
         </div>

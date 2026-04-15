@@ -122,7 +122,7 @@ function TreeNode({ entry, depth, onFileClick, onContextMenu, expandedDirs, togg
 function Explorer({
   projectFolder, activeFilePath, onFileOpen, onSlotAssign, onMediaAdd, onImageClick,
   expandedDirs: externalExpanded, onExpandedDirsChange,
-  onTelegramFile, onCastFile,
+  onTelegramFile, onCastFile, onCastTextFile,
   hiddenExtensions,
   refreshKey
 }) {
@@ -305,6 +305,12 @@ function Explorer({
           )}
           {!isDir && ctxType === FILE_TYPES.IMAGE && onCastFile && (
             <MenuItem label="📡 Invia al display" onClick={() => onCastFile(contextMenu.entry)} />
+          )}
+          {!isDir && ctxType === FILE_TYPES.DOCUMENT && onCastTextFile && (
+            // Solo file testo semplice: .md/.txt. HTML non renderizzabile come testo plain.
+            ['.md', '.txt'].includes((contextMenu.entry.extension || '').toLowerCase()) && (
+              <MenuItem label="📡 Invia testo al display" onClick={() => onCastTextFile(contextMenu.entry)} />
+            )
           )}
         </div>
       )}

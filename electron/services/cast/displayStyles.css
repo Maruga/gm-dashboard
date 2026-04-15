@@ -112,6 +112,139 @@ html, body {
   100% { transform: scale(1) rotate(0); opacity: 1; }
 }
 
+/* Ingresso cella multi-dado (slide + fade) */
+@keyframes diceEnter {
+  0% { transform: translateY(-30px) scale(0.6); opacity: 0; }
+  60% { transform: translateY(4px) scale(1.1); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* Bounce finale quando il numero si "fissa" */
+@keyframes diceSettle {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.25); }
+  60% { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+
+/* Critico — glow espansivo verde */
+@keyframes criticalPulse {
+  0% { text-shadow: 0 0 22px rgba(80,230,120,0.5), 0 4px 16px rgba(0,0,0,0.6); transform: scale(1); }
+  50% { text-shadow: 0 0 60px rgba(80,230,120,1), 0 0 100px rgba(80,230,120,0.7); transform: scale(1.15); }
+  100% { text-shadow: 0 0 30px rgba(80,230,120,0.7), 0 4px 16px rgba(0,0,0,0.6); transform: scale(1); }
+}
+
+/* Fallimento — shake rosso */
+@keyframes failureShake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-8px); }
+  20%, 40%, 60%, 80% { transform: translateX(8px); }
+}
+
+/* Scritta di risultato speciale (CRITICO/FALLIMENTO) */
+@keyframes resultBannerIn {
+  0% { transform: translateY(20px); opacity: 0; letter-spacing: 0px; }
+  100% { transform: translateY(0); opacity: 1; letter-spacing: 8px; }
+}
+
+/* Scena multi-dado */
+.content-dice-scene {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3vw;
+  align-items: center;
+  justify-content: center;
+  max-width: 94vw;
+}
+.content-dice-scene .dice-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6vw;
+  animation: diceEnter 0.55s cubic-bezier(.2,.7,.3,1.3);
+  position: relative;
+}
+.content-dice-scene .dice-cell .value {
+  font-size: 10vw;
+  font-weight: 800;
+  color: #e8c77a;
+  text-shadow: 0 0 22px rgba(232,199,122,0.5), 0 4px 16px rgba(0,0,0,0.6);
+  line-height: 1;
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  transition: color 0.3s;
+  /* Numeri a larghezza fissa per evitare shifting durante il rolling */
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  /* 18vw copre fino a 3 cifre (d100). Con tabular-nums ogni cifra ha larghezza uguale. */
+  min-width: 18vw;
+  text-align: center;
+  /* Previene anche un expand oltre questo valore se il numero è più stretto */
+  display: inline-block;
+}
+.content-dice-scene .dice-cell.is-rolling .value {
+  animation: diceSettle 0.45s ease-out;
+}
+.content-dice-scene .dice-cell .label {
+  font-size: 1.5vw;
+  color: #ccc;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* Critico */
+.content-dice-scene .dice-cell.is-critical .value {
+  color: #58e878;
+  animation: criticalPulse 1.2s ease-in-out infinite;
+}
+.content-dice-scene .dice-cell.is-critical .label {
+  color: #58e878;
+}
+
+/* Fallimento */
+.content-dice-scene .dice-cell.is-failure .value {
+  color: #ff5a5a;
+  text-shadow: 0 0 22px rgba(255,90,90,0.6), 0 4px 16px rgba(0,0,0,0.6);
+  animation: failureShake 0.6s ease-in-out;
+}
+.content-dice-scene .dice-cell.is-failure .label {
+  color: #ff5a5a;
+}
+
+/* Banner risultato (CRITICO/FALLIMENTO) */
+.content-dice-scene .dice-cell .banner {
+  font-size: 1vw;
+  font-weight: 800;
+  letter-spacing: 8px;
+  text-transform: uppercase;
+  margin-top: 0.4vw;
+  padding: 0.3vw 1vw;
+  border-radius: 999px;
+  opacity: 0;
+  animation: resultBannerIn 0.4s ease-out 0.4s forwards;
+}
+.content-dice-scene .dice-cell.is-critical .banner {
+  background: rgba(80,230,120,0.15);
+  color: #58e878;
+  border: 1px solid rgba(80,230,120,0.5);
+}
+.content-dice-scene .dice-cell.is-failure .banner {
+  background: rgba(255,90,90,0.15);
+  color: #ff5a5a;
+  border: 1px solid rgba(255,90,90,0.5);
+}
+
+.content-dice-scene .dice-total {
+  width: 100%;
+  text-align: center;
+  font-size: 3vw;
+  color: #fff;
+  margin-top: 1vw;
+  padding-top: 1vw;
+  border-top: 1px solid rgba(255,255,255,0.2);
+  letter-spacing: 3px;
+  animation: diceEnter 0.5s cubic-bezier(.2,.7,.3,1.2);
+}
+
 /* Transizioni di entrata/uscita */
 .fade-enter { opacity: 0; }
 .fade-enter-active { opacity: 1; transition: opacity var(--fade-ms, 250ms) ease; }

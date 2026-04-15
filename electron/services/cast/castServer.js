@@ -90,6 +90,21 @@ function clear(channelId) {
   return broadcastToChannel(channelId, { type: 'clear' });
 }
 
+let currentConfig = { transition: 'crossfade', fadeMs: 250 };
+
+function broadcastConfig(config) {
+  // Salva config globale per nuovi client (merge)
+  currentConfig = { ...currentConfig, ...config };
+  const msg = JSON.stringify({ type: 'config', payload: currentConfig });
+  let sent = 0;
+  for (const ch of channels.values()) {
+    for (const ws of ch.clients) {
+      if (ws.readyState === 1) { ws.send(msg); sent++; }
+    }
+  }
+  return sent;
+}
+
 function setDefaultContent(channelId, content) {
   const ch = ensureChannel(channelId);
   ch.defaultContent = content || null;
@@ -156,7 +171,7 @@ function setupWebSocket() {
 
     // Invia stato iniziale: lastContent se presente, altrimenti defaultContent (passepartout)
     const initialContent = ch.lastContent || ch.defaultContent || null;
-    ws.send(JSON.stringify({ type: 'state', payload: { content: initialContent } }));
+    ws.send(JSON.stringify({ type: 'state', payload: { content: initialContent, config: currentConfig } }));
 
     if (onClientConnect) onClientConnect(channelId);
 
@@ -204,15 +219,23 @@ async function start(opts = {}) {
 
 async function stop() {
   if (!isRunning()) return { error: 'Non in esecuzione' };
-  // Chiudi tutti i WS
+  // Chiudi tutti i WS (terminate forza la chiusura, non attende handshake)
   if (wss) {
     for (const ws of wss.clients) {
-      try { ws.close(1001, 'Server stopping'); } catch (_) {}
+      try { ws.terminate(); } catch (_) {}
     }
-    wss.close();
+    try { wss.close(); } catch (_) {}
     wss = null;
   }
-  await new Promise((resolve) => httpServer.close(() => resolve()));
+  // Forza chiusura di tutte le connessioni TCP keep-alive (necessario:
+  // senza questo, httpServer.close() resta appeso se ci sono browser connessi)
+  try { httpServer.closeAllConnections?.(); } catch (_) {}
+  try { httpServer.closeIdleConnections?.(); } catch (_) {}
+  // Attende chiusura server con timeout di sicurezza
+  await Promise.race([
+    new Promise((resolve) => httpServer.close(() => resolve())),
+    new Promise((resolve) => setTimeout(resolve, 1500))
+  ]);
   httpServer = null;
   app = null;
   currentPort = null;
@@ -228,6 +251,7 @@ module.exports = {
   send,
   clear,
   setDefaultContent,
+  broadcastConfig,
   ensureChannel,
   setEventHooks,
   getLanAddresses
