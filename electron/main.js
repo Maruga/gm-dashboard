@@ -767,6 +767,27 @@ ipcMain.handle('assets-open-sounds', async (event, projectPath) => {
   }
 });
 
+// === Guide Dashboard (bundled .md files) ===
+ipcMain.handle('guides-list', async () => {
+  try {
+    const dir = path.join(__dirname, 'assets', 'guides');
+    if (!fs.existsSync(dir)) return [];
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort();
+    return files.map(f => {
+      const content = fs.readFileSync(path.join(dir, f), 'utf-8');
+      const titleMatch = content.match(/^#\s+(.+)/m);
+      return {
+        id: f,
+        title: titleMatch ? titleMatch[1].trim() : f.replace(/\.md$/, ''),
+        content
+      };
+    });
+  } catch (err) {
+    logDiag('error', `guides-list fallito: ${err.message}`);
+    return [];
+  }
+});
+
 ipcMain.handle('get-file-url', async (event, filePath) => {
   const normalizedPath = filePath.replace(/\\/g, '/');
   return `app://local/-/${normalizedPath}`;

@@ -4,7 +4,7 @@ import {
   Timer, Play, Pause, RotateCcw,
   Users, StickyNote, CheckSquare, Highlighter, Network, MessageCircle, MessageCircleWarning, FileText,
   BookOpen, Swords, Library, Monitor, Eye, Search, UserCircle, Cast,
-  Info, Settings, Globe, FolderOpen, FolderRoot,
+  Info, Settings, Globe, FolderOpen, FolderRoot, HelpCircle,
   Minus, Square, X, LayoutGrid
 } from 'lucide-react';
 
@@ -722,7 +722,7 @@ function AuthDropdown({ firebaseUser, onFirebaseUserChange, onClose }) {
 // ─── Main component ───
 
 function TopMenu({
-  onChangeProject, onOpenInfo, onOpenSettings, onOpenCalendar, onOpenNotes, onOpenChecklist, onOpenCast,
+  onChangeProject, onOpenInfo, onOpenSettings, onOpenCalendar, onOpenNotes, onOpenChecklist, onOpenCast, onOpenGuides,
   onOpenAdventures, onOpenProjectFolder, onOpenRelationsOverlay, onOpenAiDocs,
   relationsHasFile, relationsBase,
   onOpenRelationsViewer, onOpenRelationsStage,
@@ -1099,6 +1099,7 @@ function TopMenu({
               />
             )}
           </div>
+          <IconBtn Icon={HelpCircle} tooltip="Guide Dashboard" onClick={onOpenGuides} />
           <IconBtn Icon={Info} tooltip="Informazioni" onClick={onOpenInfo} />
           <IconBtn Icon={Settings} tooltip="Impostazioni" onClick={onOpenSettings} />
           <IconBtn Icon={Globe} tooltip="Avventure online" onClick={onOpenAdventures} />

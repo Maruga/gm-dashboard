@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   assetsListPassepartouts: (projectPath) => ipcRenderer.invoke('assets-list-passepartouts', projectPath),
   assetsOpenSounds: (projectPath) => ipcRenderer.invoke('assets-open-sounds', projectPath),
   castQr: (url) => ipcRenderer.invoke('cast-qr', url),
+  guidesList: () => ipcRenderer.invoke('guides-list'),
   onCastClientConnected: (cb) => { const h = (_, d) => cb(d); ipcRenderer.on('cast-client-connected', h); return () => ipcRenderer.removeListener('cast-client-connected', h); },
   onCastClientDisconnected: (cb) => { const h = (_, d) => cb(d); ipcRenderer.on('cast-client-disconnected', h); return () => ipcRenderer.removeListener('cast-client-disconnected', h); },
   getFileUrl: (filePath) => ipcRenderer.invoke('get-file-url', filePath),

@@ -18,6 +18,7 @@ import QuickReference from './components/QuickReference';
 import NotesPanel from './components/NotesPanel';
 import ChecklistPanel from './components/ChecklistPanel';
 import InfoPanel from './components/InfoPanel';
+import GuidesPanel from './components/GuidesPanel';
 import AdventuresPanel from './components/AdventuresPanel';
 import RelationsPanel from './components/RelationsPanel';
 import CombatTrackerPanel from './components/CombatTrackerPanel';
@@ -211,6 +212,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [checklist, setChecklist] = useState([]);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [guidesOpen, setGuidesOpen] = useState(false);
   const [adventuresOpen, setAdventuresOpen] = useState(false);
   const [exportStatus, setExportStatus] = useState(null);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
@@ -1878,6 +1880,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
 
   // TopMenu callbacks
   const handleOpenInfo = useCallback(() => setInfoOpen(true), []);
+  const handleOpenGuides = useCallback(() => setGuidesOpen(true), []);
   const handleOpenSettings = useCallback(() => setSettingsOpen('aspetto'), []);
   const handleOpenAiDocs = useCallback(() => setSettingsOpen('aidocs'), []);
   const handleOpenCalendar = useCallback(() => setCalendarOpen(true), []);
@@ -1944,6 +1947,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
       <TopMenu
         onChangeProject={onChangeProject}
         onOpenInfo={handleOpenInfo}
+        onOpenGuides={handleOpenGuides}
         onOpenSettings={handleOpenSettings}
         onOpenAiDocs={handleOpenAiDocs}
         onOpenCalendar={handleOpenCalendar}
@@ -2356,6 +2360,10 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
       )}
 
       {/* === INFO PANEL === */}
+      {guidesOpen && (
+        <GuidesPanel onClose={() => setGuidesOpen(false)} />
+      )}
+
       {infoOpen && (
         <InfoPanel
           onClose={() => setInfoOpen(false)}
