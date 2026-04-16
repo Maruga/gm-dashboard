@@ -76,6 +76,457 @@ function formatDateISO(day, month, year) {
   return `${year}-${m}-${d}`;
 }
 
+// Sezione asset casting: passepartout + import predefiniti + accesso cartella suoni
+function CastAssetsSection({ projectPath, castConfig, onCastConfigChange }) {
+  const [passepartouts, setPassepartouts] = useState([]);
+  const [importing, setImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState(null);
+
+  const refreshPassepartouts = useCallback(async () => {
+    const r = await window.electronAPI.assetsListPassepartouts(projectPath);
+    setPassepartouts(r?.images || []);
+  }, [projectPath]);
+
+  useEffect(() => { refreshPassepartouts(); }, [refreshPassepartouts]);
+
+  const handleImportDefaults = async () => {
+    setImporting(true);
+    setImportStatus(null);
+    const r = await window.electronAPI.assetsImportDefaults(projectPath);
+    setImporting(false);
+    if (r?.error) {
+      setImportStatus({ type: 'err', text: r.error });
+    } else {
+      setImportStatus({ type: 'ok', text: `${r.copied} file copiati, ${r.skipped} già presenti` });
+      await refreshPassepartouts();
+    }
+    setTimeout(() => setImportStatus(null), 4000);
+  };
+
+  const handleChoosePasseExternal = async () => {
+    const external = await window.electronAPI.selectProjectFile(projectPath, [
+      { name: 'Immagini', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }
+    ]);
+    if (!external) return;
+    // Se il file è GIA' dentro _assets/media/passepartout/, usalo direttamente.
+    if (external.startsWith('_assets/media/passepartout/')) {
+      onCastConfigChange(prev => ({ ...prev, passepartoutFile: external }));
+      return;
+    }
+    // Altrimenti copia in _assets/media/passepartout/
+    // selectProjectFile torna path relativo al projectPath
+    const sourceAbs = projectPath + '/' + external.replace(/^\/+/, '');
+    const r = await window.electronAPI.assetsCopy(projectPath, sourceAbs, 'media/passepartout');
+    if (r?.success && r.relativePath) {
+      onCastConfigChange(prev => ({ ...prev, passepartoutFile: r.relativePath }));
+      await refreshPassepartouts();
+    }
+  };
+
+  return (
+    <>
+      {/* Import asset predefiniti */}
+      <div style={{
+        marginBottom: '16px', padding: '10px 12px',
+        border: '1px solid var(--border-subtle)', borderRadius: '6px',
+        background: 'var(--bg-main)'
+      }}>
+        <div style={{ fontSize: '12px', color: 'var(--text-primary)', marginBottom: '6px' }}>
+          📦 Asset predefiniti
+        </div>
+        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px', lineHeight: 1.5 }}>
+          Copia in <code>_assets/</code> del progetto i suoni dei dadi e le immagini di sfondo incluse con l'app.
+          I file già presenti non vengono sovrascritti.
+        </div>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            onClick={handleImportDefaults}
+            disabled={importing}
+            style={{
+              background: 'none', border: '1px solid var(--accent)',
+              borderRadius: '4px', padding: '5px 14px',
+              color: 'var(--accent)',
+              fontSize: '11px', cursor: importing ? 'wait' : 'pointer', fontFamily: 'inherit'
+            }}
+          >
+            {importing ? 'Importazione...' : '📦 Importa asset predefiniti'}
+          </button>
+          {importStatus && (
+            <span style={{
+              fontSize: '11px',
+              color: importStatus.type === 'ok' ? 'var(--color-success)' : 'var(--color-danger)'
+            }}>
+              {importStatus.type === 'ok' ? '✓ ' : '✗ '}{importStatus.text}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Passepartout */}
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ fontSize: '12px', color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
+          Sfondo passepartout (immagine/GIF mostrata quando il display è vuoto)
+        </label>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <select
+            value={castConfig.passepartoutFile || ''}
+            onChange={e => onCastConfigChange(prev => ({ ...prev, passepartoutFile: e.target.value }))}
+            style={{
+              flex: 1, minWidth: '200px', background: 'var(--bg-input)',
+              border: '1px solid var(--border-default)', borderRadius: '4px',
+              padding: '6px 10px', color: 'var(--text-primary)',
+              fontSize: '12px', outline: 'none', cursor: 'pointer', fontFamily: 'inherit'
+            }}
+          >
+            <option value="">— Nessuno sfondo (nero) —</option>
+            {passepartouts.map(p => (
+              <option key={p} value={p}>{p.replace('_assets/media/passepartout/', '')}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleChoosePasseExternal}
+            style={{
+              background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+              padding: '6px 12px', color: 'var(--accent)', fontSize: '11px', cursor: 'pointer'
+            }}
+            title="Scegli un'immagine dal progetto — se fuori da _assets/ verrà copiata lì"
+          >📁 Aggiungi...</button>
+          {castConfig.passepartoutFile && (
+            <button
+              onClick={() => onCastConfigChange(prev => ({ ...prev, passepartoutFile: '' }))}
+              style={{
+                background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
+                padding: '6px 12px', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer'
+              }}
+            >✕ Rimuovi</button>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// Editor regole critico/fallimento per ogni tipo di dado.
+// Il GM può attivare/disattivare crit (max=critico) e fail (1=fallimento) per ogni dado
+// e personalizzare le etichette mostrate sul display.
+function DiceRulesEditor({ castConfig, onCastConfigChange }) {
+  const DICE = [4, 6, 8, 10, 12, 20, 100];
+  const rules = castConfig?.diceRules || {};
+
+  const updateRule = (sides, patch) => {
+    onCastConfigChange(prev => {
+      const current = (prev.diceRules || {})[sides] || {};
+      const next = {
+        critOn: 'none', failOn: 'none',
+        critLabel: 'Critico!', failLabel: 'Fallimento',
+        ...current,
+        ...patch
+      };
+      // Mutua esclusione: critico e fallimento non possono scattare sullo stesso valore.
+      // Se l'utente imposta critOn a un valore già usato da failOn (e non 'none'), azzera failOn.
+      // Stesso in senso opposto.
+      if (patch.critOn !== undefined && patch.critOn !== 'none' && next.failOn === patch.critOn) {
+        next.failOn = 'none';
+      }
+      if (patch.failOn !== undefined && patch.failOn !== 'none' && next.critOn === patch.failOn) {
+        next.critOn = 'none';
+      }
+      return { ...prev, diceRules: { ...(prev.diceRules || {}), [sides]: next } };
+    });
+  };
+
+  const cellTd = { padding: '6px 8px', borderBottom: '1px solid var(--border-subtle)', verticalAlign: 'middle' };
+  const inputBase = {
+    background: 'var(--bg-input)', border: '1px solid var(--border-default)',
+    borderRadius: '3px', padding: '4px 8px', color: 'var(--text-primary)',
+    fontSize: '11px', outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box'
+  };
+  const selectBase = { ...inputBase, cursor: 'pointer' };
+
+  // Converte eventuale vecchio formato (critEnabled/failEnabled) a 'max'/'none' e 'min'/'none' per la UI.
+  // NB: uso ?? (nullish) invece di || per preservare stringhe vuote — l'utente deve poter svuotare
+  // il campo label senza che si ripopoli automaticamente con "Critico!".
+  const normalize = (r) => {
+    if (!r) return { critOn: 'none', failOn: 'none', critLabel: '', failLabel: '' };
+    return {
+      critOn: r.critOn !== undefined ? r.critOn : (r.critEnabled ? 'max' : 'none'),
+      failOn: r.failOn !== undefined ? r.failOn : (r.failEnabled ? 'min' : 'none'),
+      critLabel: r.critLabel ?? '',
+      failLabel: r.failLabel ?? ''
+    };
+  };
+
+  return (
+    <div style={{ marginBottom: '16px' }}>
+      <div style={{ fontSize: '12px', color: 'var(--text-primary)', marginBottom: '4px' }}>
+        🎲 Regole critico / fallimento per tipo di dado
+      </div>
+      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px', lineHeight: 1.5 }}>
+        Per ogni dado scegli quale valore attiva il critico e quale il fallimento (es. D&D d20: Critico=Massimo, Fallimento=1; Genkai d6: Critico=1, Fallimento=Massimo). Personalizza le etichette mostrate sul display.
+      </div>
+      <div style={{ overflowX: 'auto', border: '1px solid var(--border-subtle)', borderRadius: '6px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+          <thead>
+            <tr style={{ background: 'var(--bg-elevated)' }}>
+              <th style={{ ...cellTd, textAlign: 'left', fontWeight: '600', color: 'var(--text-tertiary)' }}>Dado</th>
+              <th style={{ ...cellTd, textAlign: 'left', fontWeight: '600', color: 'var(--color-success)' }}>Critico quando esce</th>
+              <th style={{ ...cellTd, textAlign: 'left', fontWeight: '600', color: 'var(--text-tertiary)' }}>Etichetta critico</th>
+              <th style={{ ...cellTd, textAlign: 'left', fontWeight: '600', color: 'var(--color-danger)' }}>Fallimento quando esce</th>
+              <th style={{ ...cellTd, textAlign: 'left', fontWeight: '600', color: 'var(--text-tertiary)' }}>Etichetta fallimento</th>
+            </tr>
+          </thead>
+          <tbody>
+            {DICE.map(sides => {
+              const r = normalize(rules[sides]);
+              const critEnabled = r.critOn !== 'none';
+              const failEnabled = r.failOn !== 'none';
+              return (
+                <tr key={sides}>
+                  <td style={{ ...cellTd, fontWeight: '600', color: 'var(--accent)' }}>d{sides}</td>
+                  <td style={cellTd}>
+                    <select
+                      value={r.critOn}
+                      onChange={e => updateRule(sides, { critOn: e.target.value })}
+                      style={selectBase}
+                    >
+                      <option value="none">Nessuno</option>
+                      <option value="max">Massimo ({sides})</option>
+                      <option value="min">1</option>
+                    </select>
+                  </td>
+                  <td style={cellTd}>
+                    <input
+                      type="text"
+                      value={r.critLabel}
+                      onChange={e => updateRule(sides, { critLabel: e.target.value })}
+                      disabled={!critEnabled}
+                      placeholder="Critico!"
+                      style={{ ...inputBase, opacity: critEnabled ? 1 : 0.4 }}
+                    />
+                  </td>
+                  <td style={cellTd}>
+                    <select
+                      value={r.failOn}
+                      onChange={e => updateRule(sides, { failOn: e.target.value })}
+                      style={selectBase}
+                    >
+                      <option value="none">Nessuno</option>
+                      <option value="max">Massimo ({sides})</option>
+                      <option value="min">1</option>
+                    </select>
+                  </td>
+                  <td style={cellTd}>
+                    <input
+                      type="text"
+                      value={r.failLabel}
+                      onChange={e => updateRule(sides, { failLabel: e.target.value })}
+                      disabled={!failEnabled}
+                      placeholder="Fallimento"
+                      style={{ ...inputBase, opacity: failEnabled ? 1 : 0.4 }}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Editor suoni dadi. Scansiona _assets/sounds/ e mostra quanti sample ci sono per categoria
+// (single/few/many). Permette anteprima, apertura cartella, volume, sorgente (PC o display).
+function DiceSoundsEditor({ castConfig, onCastConfigChange, projectPath }) {
+  const [catalog, setCatalog] = useState({ single: [], few: [], many: [] });
+  const [previewingKey, setPreviewingKey] = useState(null);
+  const audioRef = useRef(null);
+
+  const sounds = castConfig?.sounds || { enabled: true, volume: 0.7, source: 'pc' };
+
+  const refresh = useCallback(async () => {
+    const r = await window.electronAPI.assetsListSounds?.(projectPath);
+    if (r?.sounds) setCatalog(r.sounds);
+  }, [projectPath]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => () => { try { audioRef.current?.pause(); } catch (_) {} }, []);
+
+  const updateSounds = (patch) => {
+    onCastConfigChange(prev => ({
+      ...prev,
+      sounds: { ...(prev.sounds || { enabled: true, volume: 0.7, source: 'pc' }), ...patch }
+    }));
+  };
+
+  const playSample = async (fileName) => {
+    try {
+      const url = await window.electronAPI.getFileUrl(projectPath + '/_assets/sounds/' + fileName);
+      if (audioRef.current) { try { audioRef.current.pause(); } catch (_) {} }
+      const audio = new Audio(url);
+      audio.volume = Math.min(1, Math.max(0, sounds.volume ?? 0.7));
+      audioRef.current = audio;
+      setPreviewingKey(fileName);
+      audio.onended = () => {
+        // Spegni l'evidenziazione SOLO se questo audio è ancora quello corrente
+        if (audioRef.current === audio) setPreviewingKey(null);
+      };
+      audio.play().catch(() => setPreviewingKey(null));
+    } catch (_) {
+      setPreviewingKey(null);
+    }
+  };
+
+  const totalSounds = catalog.single.length + catalog.few.length + catalog.many.length;
+
+  return (
+    <div style={{ marginBottom: '16px' }}>
+      <div style={{ fontSize: '12px', color: 'var(--text-primary)', marginBottom: '4px' }}>
+        🔊 Suoni dadi
+      </div>
+      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '10px', lineHeight: 1.5 }}>
+        I suoni vengono selezionati casualmente in base al numero di dadi lanciati (1 = single, 2-3 = few, 4+ = many). File da inserire in <code>_assets/sounds/</code> con nome <code>single.mp3</code>, <code>single_1.mp3</code>, <code>few.mp3</code>, <code>many.mp3</code>, ecc.
+      </div>
+
+      {/* Toggle attivi */}
+      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', cursor: 'pointer', fontSize: '12px', color: 'var(--text-primary)' }}>
+        <input
+          type="checkbox"
+          checked={sounds.enabled !== false}
+          onChange={e => updateSounds({ enabled: e.target.checked })}
+          style={{ accentColor: 'var(--accent)', cursor: 'pointer', width: '16px', height: '16px' }}
+        />
+        Attiva suoni dadi
+      </label>
+
+      {/* Sorgente audio */}
+      <div style={{ marginBottom: '10px', opacity: sounds.enabled === false ? 0.5 : 1 }}>
+        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+          Sorgente audio
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {[
+            { value: 'pc', label: '💻 PC (qui)', desc: 'Suoni dalle casse della macchina GM' },
+            { value: 'display', label: '📺 Display', desc: 'Suoni dal dispositivo collegato' }
+          ].map(opt => (
+            <label
+              key={opt.value}
+              title={opt.desc}
+              style={{
+                flex: 1, padding: '6px 10px', borderRadius: '4px',
+                border: `1px solid ${sounds.source === opt.value ? 'var(--accent)' : 'var(--border-default)'}`,
+                background: sounds.source === opt.value ? 'var(--accent-a08)' : 'transparent',
+                cursor: sounds.enabled === false ? 'not-allowed' : 'pointer',
+                fontSize: '11px', color: 'var(--text-primary)',
+                display: 'flex', alignItems: 'center', gap: '6px'
+              }}
+            >
+              <input
+                type="radio"
+                name="sound-source"
+                value={opt.value}
+                checked={sounds.source === opt.value}
+                onChange={() => updateSounds({ source: opt.value })}
+                disabled={sounds.enabled === false}
+                style={{ accentColor: 'var(--accent)' }}
+              />
+              <span>{opt.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Volume */}
+      <div style={{ marginBottom: '12px', opacity: sounds.enabled === false ? 0.5 : 1 }}>
+        <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+          Volume: <span style={{ color: 'var(--accent)' }}>{Math.round((sounds.volume ?? 0.7) * 100)}%</span>
+        </label>
+        <input
+          type="range" min="0" max="100" step="5"
+          value={Math.round((sounds.volume ?? 0.7) * 100)}
+          onChange={e => updateSounds({ volume: parseInt(e.target.value, 10) / 100 })}
+          disabled={sounds.enabled === false}
+          style={{ width: '100%', accentColor: 'var(--accent)' }}
+        />
+      </div>
+
+      {/* Catalog */}
+      <div style={{
+        padding: '10px 12px', border: '1px solid var(--border-subtle)', borderRadius: '6px',
+        background: 'var(--bg-main)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: '600' }}>
+            Suoni disponibili: {totalSounds}
+          </span>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button
+              onClick={refresh}
+              style={{
+                background: 'none', border: '1px solid var(--border-default)', borderRadius: '3px',
+                padding: '3px 10px', color: 'var(--text-secondary)', fontSize: '10px', cursor: 'pointer'
+              }}
+            >↻ Aggiorna</button>
+            <button
+              onClick={() => window.electronAPI.assetsOpenSounds?.(projectPath)}
+              style={{
+                background: 'none', border: '1px solid var(--border-default)', borderRadius: '3px',
+                padding: '3px 10px', color: 'var(--accent)', fontSize: '10px', cursor: 'pointer'
+              }}
+              title="Apri _assets/sounds/ in Esplora Risorse"
+            >📂 Apri cartella</button>
+          </div>
+        </div>
+
+        {totalSounds === 0 ? (
+          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', padding: '8px 0' }}>
+            Nessun suono trovato. Importa gli asset predefiniti dal bottone in cima, oppure copia i tuoi file .mp3/.wav/.ogg in <code>_assets/sounds/</code> con nome che inizia per <code>single</code>, <code>few</code> o <code>many</code>.
+          </div>
+        ) : (
+          ['single', 'few', 'many'].map(cat => {
+            const files = catalog[cat] || [];
+            const catLabel = cat === 'single' ? '1 dado' : cat === 'few' ? '2-3 dadi' : '4+ dadi';
+            return (
+              <div key={cat} style={{ marginBottom: '8px' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: '600', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                  {cat} ({catLabel}) — {files.length} sample
+                </div>
+                {files.length === 0 ? (
+                  <div style={{ fontSize: '10px', color: 'var(--text-disabled)', fontStyle: 'italic', padding: '2px 0' }}>
+                    Nessun file in questa categoria
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                    {files.map(f => {
+                      const active = previewingKey === f;
+                      return (
+                        <button
+                          key={f}
+                          onClick={() => playSample(f)}
+                          style={{
+                            background: active ? 'var(--accent-a08)' : 'none',
+                            border: `1px solid ${active ? 'var(--accent)' : 'var(--border-default)'}`,
+                            borderRadius: '3px', padding: '3px 8px',
+                            color: active ? 'var(--accent)' : 'var(--text-secondary)',
+                            fontSize: '10px', cursor: 'pointer', fontFamily: 'inherit'
+                          }}
+                          title={'Anteprima ' + f}
+                        >
+                          {active ? '▶' : '▷'} {f}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RagSettings({ aiConfig, onAiConfigChange }) {
   const rag = aiConfig?.rag || { chunkSize: 500, overlapPercent: 10, topK: 7, contextExpand: 1 };
   const [localRag, setLocalRag] = useState(rag);
@@ -1878,45 +2329,11 @@ export default function SettingsPanel({
             Il server si avvia manualmente dal pulsante 📡 nella barra in alto.
           </div>
 
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ fontSize: '12px', color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
-              Sfondo passepartout (immagine/GIF mostrata quando il display è vuoto)
-            </label>
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-              <input
-                type="text"
-                value={castConfig.passepartoutFile || ''}
-                readOnly
-                placeholder="Nessuno sfondo impostato"
-                style={{
-                  flex: 1, background: 'var(--bg-input)', border: '1px solid var(--border-default)',
-                  borderRadius: '4px', padding: '6px 10px', color: 'var(--text-primary)',
-                  fontSize: '12px', outline: 'none'
-                }}
-              />
-              <button
-                onClick={async () => {
-                  const result = await window.electronAPI.selectProjectFile(projectPath, [
-                    { name: 'Immagini', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }
-                  ]);
-                  if (result) onCastConfigChange(prev => ({ ...prev, passepartoutFile: result }));
-                }}
-                style={{
-                  background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
-                  padding: '6px 12px', color: 'var(--accent)', fontSize: '11px', cursor: 'pointer'
-                }}
-              >📁 Scegli</button>
-              {castConfig.passepartoutFile && (
-                <button
-                  onClick={() => onCastConfigChange(prev => ({ ...prev, passepartoutFile: '' }))}
-                  style={{
-                    background: 'none', border: '1px solid var(--border-default)', borderRadius: '4px',
-                    padding: '6px 12px', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer'
-                  }}
-                >✕ Rimuovi</button>
-              )}
-            </div>
-          </div>
+          <CastAssetsSection
+            projectPath={projectPath}
+            castConfig={castConfig}
+            onCastConfigChange={onCastConfigChange}
+          />
 
           <div style={{ marginBottom: '16px' }}>
             <label style={{ fontSize: '12px', color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
@@ -1967,6 +2384,10 @@ export default function SettingsPanel({
               />
             </div>
           )}
+
+          <DiceRulesEditor castConfig={castConfig} onCastConfigChange={onCastConfigChange} />
+
+          <DiceSoundsEditor castConfig={castConfig} onCastConfigChange={onCastConfigChange} projectPath={projectPath} />
           </>)}
 
           {section === 'manuali' && (<>

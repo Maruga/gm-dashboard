@@ -82,19 +82,44 @@ function send(channelId, content) {
 function clear(channelId) {
   const ch = channels.get(channelId);
   if (!ch) return 0;
-  ch.lastContent = null;
-  // Se c'è un passepartout, mostralo; altrimenti clear vero e proprio
-  if (ch.defaultContent) {
-    return broadcastToChannel(channelId, { type: 'show', payload: ch.defaultContent });
-  }
-  return broadcastToChannel(channelId, { type: 'clear' });
+  // Clear = schermo nero voluto. Salva lastContent come 'blank' così anche un nuovo client
+  // che si connette dopo il clear vede nero e non il passepartout.
+  ch.lastContent = { type: 'blank' };
+  return broadcastToChannel(channelId, { type: 'show', payload: { type: 'blank' } });
 }
 
-let currentConfig = { transition: 'crossfade', fadeMs: 250 };
+// Default iniziale: include diceRules con d20 classico D&D (crit=max, fail=1).
+// Il renderer invia la config reale subito dopo il castStart.
+let currentConfig = {
+  transition: 'crossfade',
+  fadeMs: 250,
+  diceRules: {
+    20: { critOn: 'max', failOn: 'min', critLabel: 'Critico!', failLabel: 'Fallimento' }
+  }
+};
 
 function broadcastConfig(config) {
-  // Salva config globale per nuovi client (merge)
-  currentConfig = { ...currentConfig, ...config };
+  // Merge top-level
+  const merged = { ...currentConfig, ...config };
+  // Merge profondo per diceRules (se config passa diceRules parziale, fondiamo per sides)
+  if (config && config.diceRules && typeof config.diceRules === 'object') {
+    merged.diceRules = { ...(currentConfig.diceRules || {}) };
+    for (const sides of Object.keys(config.diceRules)) {
+      merged.diceRules[sides] = {
+        ...(currentConfig.diceRules?.[sides] || {}),
+        ...config.diceRules[sides]
+      };
+    }
+  }
+  // Merge profondo per sounds (preserva catalog e altri campi quando si aggiorna solo volume/source)
+  if (config && config.sounds && typeof config.sounds === 'object') {
+    merged.sounds = { ...(currentConfig.sounds || {}), ...config.sounds };
+    // catalog: se non è nel patch, preserva quello esistente
+    if (config.sounds.catalog === undefined && currentConfig.sounds?.catalog) {
+      merged.sounds.catalog = currentConfig.sounds.catalog;
+    }
+  }
+  currentConfig = merged;
   const msg = JSON.stringify({ type: 'config', payload: currentConfig });
   let sent = 0;
   for (const ch of channels.values()) {

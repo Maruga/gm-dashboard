@@ -13,6 +13,7 @@ function shouldHide(entry, hiddenSet) {
   const name = entry.name;
   // Always hide dot-directories
   if (entry.isDirectory && name.startsWith('.')) return true;
+  // NOTA: _assets/ è visibile — l'utente può trascinarci dentro file o controllare il contenuto
   // Hide files starting with _ (file di sistema), eccetto i file funzionali dell'AI
   // (_msg_* = messaggi speciali inviabili via Telegram, _prompt* = system prompt personalizzato)
   if (!entry.isDirectory && name.startsWith('_')) {

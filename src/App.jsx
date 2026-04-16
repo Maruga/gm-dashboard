@@ -45,6 +45,43 @@ const DEFAULT_PROJECT_STATE = {
   layoutPresets: []
 };
 
+// Regole critico/fallimento per ogni tipo di dado.
+// critOn / failOn: 'none' = disattivato, 'max' = il valore massimo scatena, 'min' = l'1 scatena.
+// Esempio: D&D d20 usa critOn='max' + failOn='min'; Genkai d6 usa critOn='min' + failOn='max'.
+function defaultDiceRules() {
+  const off = { critOn: 'none', failOn: 'none', critLabel: 'Critico!', failLabel: 'Fallimento' };
+  return {
+    4:   { ...off },
+    6:   { ...off },
+    8:   { ...off },
+    10:  { ...off },
+    12:  { ...off },
+    20:  { critOn: 'max', failOn: 'min', critLabel: 'Critico!', failLabel: 'Fallimento' },
+    100: { ...off }
+  };
+}
+
+// Migra una vecchia regola (formato critEnabled/failEnabled) al nuovo formato critOn/failOn
+function migrateRule(r) {
+  if (!r) return null;
+  // Se è già nel nuovo formato, lascialo
+  if (r.critOn !== undefined || r.failOn !== undefined) {
+    return {
+      critOn: r.critOn || 'none',
+      failOn: r.failOn || 'none',
+      critLabel: r.critLabel || 'Critico!',
+      failLabel: r.failLabel || 'Fallimento'
+    };
+  }
+  // Vecchio formato: critEnabled=true significava max, failEnabled=true significava min
+  return {
+    critOn: r.critEnabled ? 'max' : 'none',
+    failOn: r.failEnabled ? 'min' : 'none',
+    critLabel: r.critLabel || 'Critico!',
+    failLabel: r.failLabel || 'Fallimento'
+  };
+}
+
 export default function App() {
   const [activeProject, setActiveProject] = useState(null); // { path, name }
   const [ready, setReady] = useState(false);
@@ -143,9 +180,25 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   const [settingsOpen, setSettingsOpen] = useState(null); // null=chiuso, stringa=sezione iniziale
   const [castPanelOpen, setCastPanelOpen] = useState(false);
   const [castDiceScene, setCastDiceScene] = useState([]); // [{ rollId, sides, value, label }]
+  // Debounce per click rapidi su più dadi: accumula i pending (in state per UI feedback) e invia in batch
+  const [castDicePending, setCastDicePending] = useState([]); // dadi cliccati in attesa di flush
+  const castDicePendingRef = useRef([]); // mirror del state, leggibile dal timer senza closure
+  const castDiceDebounceRef = useRef(null);
+  // Finestra di accumulo: ogni nuovo click entro questo tempo dall'ULTIMO click estende l'attesa.
+  // 800ms = copre comodamente il tempo umano per leggere un risultato e muovere il mouse al prossimo.
+  const CAST_DICE_DEBOUNCE_MS = 800;
+  useEffect(() => { castDicePendingRef.current = castDicePending; }, [castDicePending]);
   const [castDiceTotal, setCastDiceTotal] = useState(null);
-  const [castConfig, setCastConfig] = useState({ passepartoutFile: '', fit: 'contain', transition: 'crossfade', fadeMs: 250 });
-  const castConfigRef = useRef({ passepartoutFile: '', fit: 'contain', transition: 'crossfade', fadeMs: 250 });
+  const [castConfig, setCastConfig] = useState({
+    passepartoutFile: '', fit: 'contain', transition: 'crossfade', fadeMs: 250,
+    diceRules: defaultDiceRules(),
+    sounds: { enabled: true, volume: 0.7, source: 'pc' }  // source: 'pc' | 'display'
+  });
+  const castConfigRef = useRef({
+    passepartoutFile: '', fit: 'contain', transition: 'crossfade', fadeMs: 250,
+    diceRules: defaultDiceRules(),
+    sounds: { enabled: true, volume: 0.7, source: 'pc' }
+  });
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calFile, setCalFile] = useState(null);
   const [viewerTabs, setViewerTabs] = useState([{ type: 'document' }]);
@@ -268,7 +321,25 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         setChatMessages(savedTg.chat ?? {});
         setAiConversations(saved.aiConversations ?? {});
         setAiTestConversations(saved.aiTestConversations ?? {});
-        setCastConfig(saved.castConfig ?? { passepartoutFile: '', fit: 'contain', transition: 'crossfade', fadeMs: 250 });
+        setCastConfig(prev => {
+          const base = {
+            passepartoutFile: '', fit: 'contain', transition: 'crossfade', fadeMs: 250,
+            diceRules: defaultDiceRules(),
+            sounds: { enabled: true, volume: 0.7, source: 'pc' }
+          };
+          const merged = { ...base, ...(saved.castConfig || {}) };
+          // Merge profondo per diceRules + migrazione legacy
+          const defaults = defaultDiceRules();
+          const incoming = merged.diceRules || {};
+          const migrated = {};
+          for (const sides of Object.keys(defaults)) {
+            migrated[sides] = migrateRule(incoming[sides]) || defaults[sides];
+          }
+          merged.diceRules = migrated;
+          // Merge sounds config con default
+          merged.sounds = { ...base.sounds, ...(merged.sounds || {}) };
+          return merged;
+        });
         const savedCal = saved.calendar ?? {};
         const startDate = saved.settings?.startDate || '2000-01-01';
         setCalendarData({
@@ -1315,10 +1386,16 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   // Casting: sync ref + invia passepartout al server quando cambia config o parte il server
   useEffect(() => { castConfigRef.current = castConfig; }, [castConfig]);
 
-  // Costruisce path relativo di un file dentro il projectPath
-  const toRelativeProjectPath = useCallback((absPath) => {
-    if (!absPath || !projectPath) return null;
-    const norm = absPath.replace(/\\/g, '/');
+  // Costruisce path relativo di un file dentro il projectPath.
+  // Accetta anche URL Electron custom protocol (app://local/-/...).
+  const toRelativeProjectPath = useCallback((input) => {
+    if (!input || !projectPath) return null;
+    let abs = String(input);
+    // Decodifica URL app://local/-/ → path reale (usato da overlay image e simili)
+    if (abs.startsWith('app://local/-/')) {
+      abs = decodeURIComponent(abs.slice('app://local/-/'.length));
+    }
+    const norm = abs.replace(/\\/g, '/');
     const base = projectPath.replace(/\\/g, '/').replace(/\/$/, '');
     if (!norm.startsWith(base + '/') && norm !== base) return null;
     return norm.slice(base.length + 1);
@@ -1344,13 +1421,20 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   }, [castLogError]);
 
   // Aggiunge un dado alla scena e invia la scena al display
-  const handleCastDie = useCallback(async (roll) => {
+  // Invia il batch di dadi accumulati durante il debounce.
+  // Viene chiamato dal timer dopo l'ultimo click (se passano 400ms senza nuovi tiri).
+  const flushCastDicePending = useCallback(async () => {
+    const batch = castDicePendingRef.current;
+    castDiceDebounceRef.current = null;
+    setCastDicePending([]); // svuota UI feedback
+    if (batch.length === 0) return;
     if (!(await castAssertRunning())) return;
-    const existing = castDiceScene.some(d => d.rollId === roll.id);
-    const next = existing
-      ? castDiceScene
-      : [...castDiceScene, { rollId: roll.id, sides: roll.sides, value: roll.value, label: 'd' + roll.sides }];
+    const existingIds = new Set(castDiceScene.map(d => d.rollId));
+    const newDice = batch.filter(d => !existingIds.has(d.rollId));
+    if (newDice.length === 0) return;
+    const next = [...castDiceScene, ...newDice];
     setCastDiceScene(next);
+    // Il hook useDiceSoundPlayer rileva l'aumento di N e sceglie la categoria corretta
     const r = await window.electronAPI.castSend('default', {
       type: 'dice-scene',
       dice: next.map(d => ({ sides: d.sides, value: d.value, label: d.label })),
@@ -1358,6 +1442,23 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     });
     if (r?.sent === 0) castLogError('nessun display connesso — apri URL sul tablet');
   }, [castDiceScene, castDiceTotal, castAssertRunning, castLogError]);
+
+  const handleCastDie = useCallback(async (roll) => {
+    if (!(await castAssertRunning())) return;
+    // Aggiungi al batch pending se non già presente né in scena né in pending
+    setCastDicePending(prev => {
+      if (prev.some(d => d.rollId === roll.id)) return prev;
+      if (castDiceScene.some(d => d.rollId === roll.id)) return prev;
+      return [...prev, {
+        rollId: roll.id, sides: roll.sides, value: roll.value, label: 'd' + roll.sides
+      }];
+    });
+    // Resetta il timer di debounce — ogni nuovo click allunga l'attesa
+    if (castDiceDebounceRef.current) clearTimeout(castDiceDebounceRef.current);
+    castDiceDebounceRef.current = setTimeout(() => {
+      flushCastDicePending();
+    }, CAST_DICE_DEBOUNCE_MS);
+  }, [castDiceScene, castAssertRunning, flushCastDicePending]);
 
   const handleCastDiceTotal = useCallback(async (total) => {
     if (!(await castAssertRunning())) return;
@@ -1373,6 +1474,12 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   }, [castDiceScene, castAssertRunning, castLogError]);
 
   const handleCastClearScene = useCallback(async () => {
+    // Cancella anche il batch pending + timer
+    if (castDiceDebounceRef.current) {
+      clearTimeout(castDiceDebounceRef.current);
+      castDiceDebounceRef.current = null;
+    }
+    setCastDicePending([]);
     setCastDiceScene([]);
     setCastDiceTotal(null);
     await window.electronAPI.castClear('default');
@@ -1406,11 +1513,11 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   }, [toRelativeProjectPath, projectPath, handleCastText]);
 
   // Invia un'immagine a un canale (default se non specificato)
-  const handleCastImage = useCallback(async (absOrRelPath, options = {}) => {
-    if (!absOrRelPath) { castLogError('nessun file'); return { error: 'Nessun file' }; }
-    const rel = absOrRelPath.includes(':') || absOrRelPath.startsWith('/')
-      ? toRelativeProjectPath(absOrRelPath)
-      : absOrRelPath;
+  const handleCastImage = useCallback(async (input, options = {}) => {
+    if (!input) { castLogError('nessun file'); return { error: 'Nessun file' }; }
+    // Riconosce: URL app://, path assoluto Windows (C:/...), path Unix (/...), path relativo
+    const isAbs = input.startsWith('app://') || input.includes(':') || input.startsWith('/');
+    const rel = isAbs ? toRelativeProjectPath(input) : input;
     if (!rel) { castLogError('file fuori dal progetto'); return { error: 'File fuori dal progetto' }; }
     if (!(await castAssertRunning())) return { error: 'Server casting non attivo' };
     const fit = options.fit || castConfigRef.current?.fit || 'contain';
@@ -1423,16 +1530,35 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     return r;
   }, [toRelativeProjectPath, castAssertRunning, castLogError]);
 
-  // Aggiorna config transizioni sul server quando cambia
+  // Aggiorna config transizioni + regole dadi + suoni sul server quando cambiano.
+  // Per i suoni, serve includere il catalog: il display non può leggere il filesystem,
+  // deve ricevere la lista dei sample disponibili via config.
   useEffect(() => {
     (async () => {
       const status = await window.electronAPI.castStatus();
       if (!status?.running) return;
       const transition = castConfig?.transition || 'crossfade';
       const fadeMs = transition === 'cut' ? 0 : (castConfig?.fadeMs ?? 250);
-      await window.electronAPI.castSetConfig({ transition, fadeMs });
+      let soundsCfg = null;
+      if (castConfig?.sounds) {
+        // Se source='display', scan della cartella suoni e invia catalogo al client
+        const catalog = castConfig.sounds.source === 'display'
+          ? (await window.electronAPI.assetsListSounds?.(projectPath))?.sounds || {}
+          : {};
+        soundsCfg = {
+          enabled: castConfig.sounds.enabled !== false,
+          volume: castConfig.sounds.volume ?? 0.7,
+          source: castConfig.sounds.source || 'pc',
+          catalog
+        };
+      }
+      await window.electronAPI.castSetConfig({
+        transition, fadeMs,
+        diceRules: castConfig?.diceRules || defaultDiceRules(),
+        sounds: soundsCfg
+      });
     })();
-  }, [castConfig?.transition, castConfig?.fadeMs]);
+  }, [castConfig?.transition, castConfig?.fadeMs, castConfig?.diceRules, castConfig?.sounds, projectPath]);
 
   // Aggiorna il passepartout del canale default sul server
   useEffect(() => {
@@ -1779,6 +1905,9 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   const handleSlotResize0 = useCallback((d) => handleSlotResize(0, d), [handleSlotResize]);
   const handleSlotResize1 = useCallback((d) => handleSlotResize(1, d), [handleSlotResize]);
 
+  // Riproduzione suoni dadi sul PC quando cambia la scena (solo se source === 'pc')
+  useDiceSoundPlayer({ scene: castDiceScene, sounds: castConfig?.sounds, projectPath });
+
   if (!stateLoaded) return null;
 
   return (
@@ -2046,7 +2175,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
         {/* CONSOLE — full width */}
         {panelVisibility.console && (
         <div style={{ height: `${consoleHeight}px`, overflow: 'hidden', flexShrink: 0 }}>
-          <Console projectFolder={projectPath} onOpenFile={handleFileOpen} onSearchNavigate={handleSearchNavigate} externalQuery={externalSearchQuery} telegramLog={telegramLog} onClearLog={handleClearTelegramLog} aiConfig={aiConfig} aiChatHistory={aiChatHistory} onAiChatHistoryChange={setAiChatHistory} firebaseUser={firebaseUser} onTelegramText={handleTelegramText} onTelegramFile={handleTelegramFile} onSaveImage={handleAiSaveImage} botRunning={botStatus.running} players={players} onAiConfigChange={setAiConfig} aiTestConversations={aiTestConversations} onAiTestConversationsChange={setAiTestConversations} onClearAiTelegramHistory={(playerId) => setAiConversations(prev => ({ ...prev, [playerId]: [] }))} onCastDie={handleCastDie} onCastDiceTotal={handleCastDiceTotal} onCastClearScene={handleCastClearScene} castDiceScene={castDiceScene} />
+          <Console projectFolder={projectPath} onOpenFile={handleFileOpen} onSearchNavigate={handleSearchNavigate} externalQuery={externalSearchQuery} telegramLog={telegramLog} onClearLog={handleClearTelegramLog} aiConfig={aiConfig} aiChatHistory={aiChatHistory} onAiChatHistoryChange={setAiChatHistory} firebaseUser={firebaseUser} onTelegramText={handleTelegramText} onTelegramFile={handleTelegramFile} onSaveImage={handleAiSaveImage} botRunning={botStatus.running} players={players} onAiConfigChange={setAiConfig} aiTestConversations={aiTestConversations} onAiTestConversationsChange={setAiTestConversations} onClearAiTelegramHistory={(playerId) => setAiConversations(prev => ({ ...prev, [playerId]: [] }))} onCastDie={handleCastDie} onCastDiceTotal={handleCastDiceTotal} onCastClearScene={handleCastClearScene} castDiceScene={castDiceScene} castDicePending={castDicePending} />
         </div>
         )}
       </div>
@@ -2236,28 +2365,11 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
 
       {/* === IMAGE OVERLAY === */}
       {overlayImage && (
-        <div
-          onClick={() => setOverlayImage(null)}
-          style={{
-            position: 'fixed', inset: 0, background: 'var(--overlay-dark)',
-            zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
-          }}
-        >
-          <img src={overlayImage} style={{ maxWidth: '95%', maxHeight: '95%', objectFit: 'contain' }} />
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleCastImage(overlayImage);
-            }}
-            title="Invia al display"
-            style={{
-              position: 'absolute', top: '16px', right: '60px',
-              background: 'var(--bg-panel)', border: '1px solid var(--border-default)',
-              borderRadius: '4px', padding: '6px 14px',
-              color: 'var(--accent)', fontSize: '12px', cursor: 'pointer'
-            }}
-          >📡 Invia al display</button>
-        </div>
+        <ImageOverlay
+          src={overlayImage}
+          onClose={() => setOverlayImage(null)}
+          onCast={() => handleCastImage(overlayImage)}
+        />
       )}
 
       {/* === VIDEO OVERLAY === */}
@@ -2689,6 +2801,108 @@ function UpdateToast() {
   }
 
   return null;
+}
+
+// Hook: riproduce suoni dadi locali (sul PC del GM) quando cambiano dadi nella scena casting.
+// Attivo solo se castConfig.sounds.enabled e source='pc'. Conta solo i DADI NUOVI rispetto allo
+// stato precedente e sceglie casualmente un sample della categoria (single/few/many).
+function useDiceSoundPlayer({ scene, sounds, projectPath }) {
+  const prevCountRef = useRef(0);
+  const catalogRef = useRef({ single: [], few: [], many: [] });
+  const audioRef = useRef(null);
+
+  // Carica/ricarica catalogo suoni. Rescan anche quando l'utente cambia config suoni
+  // (toggle/volume/source) così dopo un import dei default o aggiunta manuale di file,
+  // basta toccare una setting per aggiornare il catalogo.
+  useEffect(() => {
+    if (!projectPath) return;
+    let alive = true;
+    (async () => {
+      const r = await window.electronAPI.assetsListSounds?.(projectPath);
+      if (alive && r?.sounds) catalogRef.current = r.sounds;
+    })();
+    return () => { alive = false; };
+  }, [projectPath, sounds?.enabled, sounds?.source]);
+
+  // Quando la scena cambia, calcola dadi nuovi e riproduce
+  useEffect(() => {
+    const enabled = sounds?.enabled !== false;
+    const source = sounds?.source || 'pc';
+    if (!enabled || source !== 'pc') {
+      prevCountRef.current = scene?.length || 0;
+      return;
+    }
+    const curCount = scene?.length || 0;
+    const prevCount = prevCountRef.current;
+    const newDice = curCount - prevCount;
+    prevCountRef.current = curCount;
+    if (newDice <= 0) return;
+
+    const category = newDice === 1 ? 'single' : newDice <= 3 ? 'few' : 'many';
+    const list = catalogRef.current[category] || [];
+    if (list.length === 0) return;
+    const fileName = list[Math.floor(Math.random() * list.length)];
+
+    (async () => {
+      try {
+        const url = await window.electronAPI.getFileUrl(projectPath + '/_assets/sounds/' + fileName);
+        // Stop audio precedente se in riproduzione
+        if (audioRef.current) { try { audioRef.current.pause(); } catch (_) {} }
+        const audio = new Audio(url);
+        audio.volume = Math.min(1, Math.max(0, sounds?.volume ?? 0.7));
+        audioRef.current = audio;
+        audio.play().catch(() => {});
+      } catch (_) {}
+    })();
+  }, [scene, sounds?.enabled, sounds?.source, sounds?.volume, projectPath]);
+}
+
+// Overlay fullscreen per immagine: click sull'overlay chiude, icona 📡 in alto a destra solo se server casting attivo
+function ImageOverlay({ src, onClose, onCast }) {
+  const [castRunning, setCastRunning] = useState(false);
+
+  // Verifica stato server casting al mount + ogni 3s mentre l'overlay è aperto
+  useEffect(() => {
+    let alive = true;
+    const check = async () => {
+      const s = await window.electronAPI.castStatus();
+      if (alive) setCastRunning(!!s?.running);
+    };
+    check();
+    const id = setInterval(check, 3000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'var(--overlay-dark)',
+        zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+      }}
+    >
+      <img src={src} style={{ maxWidth: '95vw', maxHeight: '95vh', objectFit: 'contain' }} />
+      {castRunning && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onCast(); }}
+          title="Invia al display"
+          style={{
+            position: 'fixed', top: '14px', right: '14px',
+            width: '44px', height: '44px',
+            background: 'var(--bg-panel)', border: '1px solid var(--accent)',
+            borderRadius: '50%', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '20px', boxShadow: 'var(--shadow-panel)',
+            zIndex: 2100, transition: 'all 0.15s', fontFamily: 'inherit', padding: 0
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.transform = 'scale(1.08)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-panel)'; e.currentTarget.style.transform = 'scale(1)'; }}
+        >
+          📡
+        </button>
+      )}
+    </div>
+  );
 }
 
 function GlobalStyles() {

@@ -29,6 +29,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   castClear: (channelId) => ipcRenderer.invoke('cast-clear', channelId),
   castSetDefault: (channelId, content) => ipcRenderer.invoke('cast-set-default', channelId, content),
   castSetConfig: (config) => ipcRenderer.invoke('cast-set-config', config),
+
+  // _assets/ system folder
+  assetsCopy: (projectPath, sourcePath, subfolder) => ipcRenderer.invoke('assets-copy', projectPath, sourcePath, subfolder),
+  assetsImportDefaults: (projectPath) => ipcRenderer.invoke('assets-import-defaults', projectPath),
+  assetsListSounds: (projectPath) => ipcRenderer.invoke('assets-list-sounds', projectPath),
+  assetsListPassepartouts: (projectPath) => ipcRenderer.invoke('assets-list-passepartouts', projectPath),
+  assetsOpenSounds: (projectPath) => ipcRenderer.invoke('assets-open-sounds', projectPath),
   castQr: (url) => ipcRenderer.invoke('cast-qr', url),
   onCastClientConnected: (cb) => { const h = (_, d) => cb(d); ipcRenderer.on('cast-client-connected', h); return () => ipcRenderer.removeListener('cast-client-connected', h); },
   onCastClientDisconnected: (cb) => { const h = (_, d) => cb(d); ipcRenderer.on('cast-client-disconnected', h); return () => ipcRenderer.removeListener('cast-client-disconnected', h); },

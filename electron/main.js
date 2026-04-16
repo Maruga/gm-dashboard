@@ -641,6 +641,132 @@ ipcMain.handle('cast-qr', async (event, url) => {
   }
 });
 
+// === _assets/ system folder management ===
+// Struttura: <projectPath>/_assets/{sounds,media/passepartout}
+
+function ensureAssetsFolder(projectPath, subfolder = '') {
+  const abs = path.join(projectPath, '_assets', subfolder);
+  fs.mkdirSync(abs, { recursive: true });
+  return abs;
+}
+
+function isInsideProject(projectPath, absPath) {
+  const normProj = path.resolve(projectPath);
+  const norm = path.resolve(absPath);
+  return norm === normProj || norm.startsWith(normProj + path.sep);
+}
+
+// Copia un file in _assets/<subfolder>/, evita duplicati
+ipcMain.handle('assets-copy', async (event, projectPath, sourcePath, subfolder) => {
+  try {
+    if (!projectPath || !sourcePath) return { error: 'Parametri mancanti' };
+    const destFolder = ensureAssetsFolder(projectPath, subfolder || '');
+    const fileName = path.basename(sourcePath);
+    let destPath = path.join(destFolder, fileName);
+    // Se già esiste con stesso contenuto, non ricopia
+    if (fs.existsSync(destPath)) {
+      const srcStat = fs.statSync(sourcePath);
+      const dstStat = fs.statSync(destPath);
+      if (srcStat.size === dstStat.size) {
+        // Stesso file, skip
+        const rel = path.relative(projectPath, destPath).replace(/\\/g, '/');
+        return { success: true, skipped: true, relativePath: rel };
+      }
+      // Nome conflitto con file diverso: trova unico
+      destPath = findUniqueName(destFolder, fileName);
+    }
+    fs.copyFileSync(sourcePath, destPath);
+    const rel = path.relative(projectPath, destPath).replace(/\\/g, '/');
+    return { success: true, relativePath: rel };
+  } catch (err) {
+    logDiag('error', `assets-copy fallito: ${err.message}`);
+    return { error: err.message };
+  }
+});
+
+// Importa gli asset predefiniti bundlati con l'app in <projectPath>/_assets/
+ipcMain.handle('assets-import-defaults', async (event, projectPath) => {
+  try {
+    if (!projectPath) return { error: 'Nessun progetto' };
+    // In dev: electron/assets/default/; in prod (asar): packed in resources
+    const defaultRoot = path.join(__dirname, 'assets', 'default');
+    if (!fs.existsSync(defaultRoot)) {
+      return { error: 'Cartella asset predefiniti non trovata' };
+    }
+    let copied = 0;
+    let skipped = 0;
+    // Walk ricorsivo: copia mantenendo struttura
+    function walk(srcDir, relPath) {
+      const entries = fs.readdirSync(srcDir, { withFileTypes: true });
+      for (const e of entries) {
+        const src = path.join(srcDir, e.name);
+        const nextRel = relPath ? path.join(relPath, e.name) : e.name;
+        if (e.isDirectory()) {
+          walk(src, nextRel);
+        } else {
+          const destFolder = ensureAssetsFolder(projectPath, relPath);
+          const destPath = path.join(destFolder, e.name);
+          if (fs.existsSync(destPath)) { skipped++; continue; }
+          fs.copyFileSync(src, destPath);
+          copied++;
+        }
+      }
+    }
+    walk(defaultRoot, '');
+    return { success: true, copied, skipped };
+  } catch (err) {
+    logDiag('error', `assets-import-defaults fallito: ${err.message}`);
+    return { error: err.message };
+  }
+});
+
+// Elenca i suoni in _assets/sounds/ raggruppati per categoria
+ipcMain.handle('assets-list-sounds', async (event, projectPath) => {
+  try {
+    if (!projectPath) return { sounds: {} };
+    const soundsDir = path.join(projectPath, '_assets', 'sounds');
+    if (!fs.existsSync(soundsDir)) return { sounds: { single: [], few: [], many: [] } };
+    const files = fs.readdirSync(soundsDir);
+    const result = { single: [], few: [], many: [] };
+    const re = /^(single|few|many)(_\d+)?\.(mp3|wav|ogg|m4a)$/i;
+    for (const f of files) {
+      const m = f.match(re);
+      if (!m) continue;
+      const category = m[1].toLowerCase();
+      result[category].push(f);
+    }
+    for (const k of Object.keys(result)) result[k].sort();
+    return { sounds: result };
+  } catch (err) {
+    return { error: err.message, sounds: {} };
+  }
+});
+
+// Elenca i passepartout in _assets/media/passepartout/
+ipcMain.handle('assets-list-passepartouts', async (event, projectPath) => {
+  try {
+    if (!projectPath) return { images: [] };
+    const dir = path.join(projectPath, '_assets', 'media', 'passepartout');
+    if (!fs.existsSync(dir)) return { images: [] };
+    const files = fs.readdirSync(dir).filter(f => /\.(png|jpe?g|webp|gif|bmp)$/i.test(f));
+    files.sort();
+    return { images: files.map(f => '_assets/media/passepartout/' + f) };
+  } catch (err) {
+    return { error: err.message, images: [] };
+  }
+});
+
+// Apre la cartella _assets/sounds nel file manager di sistema
+ipcMain.handle('assets-open-sounds', async (event, projectPath) => {
+  try {
+    const dir = ensureAssetsFolder(projectPath, 'sounds');
+    shell.openPath(dir);
+    return { success: true };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 ipcMain.handle('get-file-url', async (event, filePath) => {
   const normalizedPath = filePath.replace(/\\/g, '/');
   return `app://local/-/${normalizedPath}`;

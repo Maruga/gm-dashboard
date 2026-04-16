@@ -50,8 +50,21 @@
     wrap.className = 'content-image-wrap';
     const img = document.createElement('img');
     img.className = 'content-image' + (c.fit === 'cover' ? ' fit-cover' : '');
-    img.src = c.url;
+    // Cache-buster leggero per evitare che un 404 precedente resti cached nel browser
+    const sep = c.url.includes('?') ? '&' : '?';
+    img.src = c.url + sep + 't=' + Date.now();
     img.alt = '';
+    img.onerror = () => {
+      // Se la prima richiesta fallisce (es. race con salvataggio, cache stale), riprova una volta
+      if (!img.dataset.retried) {
+        img.dataset.retried = '1';
+        setTimeout(() => {
+          img.src = c.url + sep + 't=' + Date.now() + '&r=1';
+        }, 300);
+      } else {
+        showStatus('Immagine non trovata: ' + c.url, 5000);
+      }
+    };
     wrap.appendChild(img);
     if (c.caption) {
       const cap = document.createElement('div');
@@ -70,10 +83,27 @@
     root.appendChild(scene);
   }
 
-  // Classifica il risultato: critico/fallimento solo per d20
+  // Regole critico/fallimento configurabili dal GM (per ogni tipo di dado).
+  // critOn/failOn: 'none' = disattivato, 'max' = il massimo scatena, 'min' = l'1 scatena.
+  // Default: d20 con crit=max e fail=min (D&D classico). Il renderer invia la config reale subito.
+  let diceRules = {
+    20: { critOn: 'max', failOn: 'min', critLabel: 'Critico!', failLabel: 'Fallimento' }
+  };
+  function resolveValue(trigger, sides) {
+    if (trigger === 'max') return sides;
+    if (trigger === 'min') return 1;
+    return null;
+  }
   function classifyDie(d) {
-    if (d.sides === 20 && d.value === 20) return 'critical';
-    if (d.sides === 20 && d.value === 1) return 'failure';
+    const rule = diceRules?.[d.sides];
+    if (!rule) return null;
+    // Supporta vecchio formato (critEnabled/failEnabled) per retrocompatibilità
+    const critOn = rule.critOn !== undefined ? rule.critOn : (rule.critEnabled ? 'max' : 'none');
+    const failOn = rule.failOn !== undefined ? rule.failOn : (rule.failEnabled ? 'min' : 'none');
+    const critValue = resolveValue(critOn, d.sides);
+    const failValue = resolveValue(failOn, d.sides);
+    if (critValue !== null && d.value === critValue) return { kind: 'critical', label: rule.critLabel || 'Critico!' };
+    if (failValue !== null && d.value === failValue) return { kind: 'failure', label: rule.failLabel || 'Fallimento' };
     return null;
   }
 
@@ -95,8 +125,8 @@
           // Fase 2 (dopo il bounce): togli is-rolling e applica lo stato critico/fallimento con banner
           setTimeout(() => {
             cellEl.classList.remove('is-rolling');
-            if (classification === 'critical') cellEl.classList.add('is-critical');
-            if (classification === 'failure') cellEl.classList.add('is-failure');
+            if (classification?.kind === 'critical') cellEl.classList.add('is-critical');
+            if (classification?.kind === 'failure') cellEl.classList.add('is-failure');
             const banner = cellEl.querySelector('.banner');
             if (banner) banner.style.display = '';
           }, 500);
@@ -118,8 +148,8 @@
     // Se il dado NON deve rollare (è un dado già esistente ridisegnato), applica subito lo stato finale.
     // Se invece deve rollare, applica la classe speciale SOLO alla fine del rolling per non spoilerare.
     if (!animate) {
-      if (classification === 'critical') cell.classList.add('is-critical');
-      if (classification === 'failure') cell.classList.add('is-failure');
+      if (classification?.kind === 'critical') cell.classList.add('is-critical');
+      if (classification?.kind === 'failure') cell.classList.add('is-failure');
     }
 
     const val = document.createElement('div');
@@ -135,7 +165,7 @@
     if (classification) {
       const banner = document.createElement('div');
       banner.className = 'banner';
-      banner.textContent = classification === 'critical' ? 'Critico!' : 'Fallimento';
+      banner.textContent = classification.label;
       // Nascondi banner durante il rolling per non spoilerare
       if (animate) banner.style.display = 'none';
       cell.appendChild(banner);
@@ -148,8 +178,28 @@
     return cell;
   }
 
-  // Stato corrente scena dadi per diffing incrementale
+  // Stato corrente scena dadi per diffing incrementale + count per trigger audio
   let currentDiceKeys = new Set();
+  let currentDiceCount = 0;
+
+  // Riproduce un suono di dado scelto random dal catalog della categoria giusta.
+  // Attivo SOLO se soundsConfig.enabled e source === 'display'.
+  function playDiceSound(newDiceCount) {
+    if (!soundsConfig?.enabled) return;
+    if (soundsConfig.source !== 'display') return;
+    if (!audioUnlocked) return; // iOS/mobile: serve interazione utente prima
+    const cat = soundsConfig.catalog || {};
+    const key = newDiceCount === 1 ? 'single' : newDiceCount <= 3 ? 'few' : 'many';
+    const list = cat[key] || [];
+    if (list.length === 0) return;
+    const file = list[Math.floor(Math.random() * list.length)];
+    try {
+      const url = '/files/_assets/sounds/' + encodeURIComponent(file);
+      const audio = new Audio(url);
+      audio.volume = Math.min(1, Math.max(0, soundsConfig.volume ?? 0.7));
+      audio.play().catch(() => {});
+    } catch (_) {}
+  }
 
   function renderDiceScene(c) {
     const scene = document.createElement('div');
@@ -167,8 +217,12 @@
       totalEl.textContent = 'Totale: ' + c.total;
       scene.appendChild(totalEl);
     }
+    const newCount = (c.dice || []).length;
+    const addedDice = newCount - currentDiceCount;
     currentDiceKeys = newKeys;
+    currentDiceCount = newCount;
     root.appendChild(scene);
+    if (addedDice > 0) playDiceSound(addedDice);
   }
 
   function applyContent(content) {
@@ -191,6 +245,7 @@
     // Reset stato diffing se il contenuto non è più una scena dadi
     if (!content || content.type !== 'dice-scene') {
       currentDiceKeys = new Set();
+      currentDiceCount = 0;
     }
     if (!content || content.type === 'blank') return;
     let el = null;
@@ -211,13 +266,59 @@
     }
   }
 
+  // Suoni dadi: config ricevuta dal server. source='pc' → il display NON suona (suona il GM).
+  // source='display' + enabled → il display suona, scegliendo random dal catalog ricevuto.
+  let soundsConfig = { enabled: false, volume: 0.7, source: 'pc', catalog: {} };
+  // Mobile (iOS/Safari/Chrome) richiede interazione utente prima di permettere audio.play().
+  // Al primo tap sul documento sblocchiamo un AudioContext dummy — da lì in poi il play funziona.
+  let audioUnlocked = false;
+  function unlockAudio() {
+    if (audioUnlocked) return;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) {
+        const ctx = new Ctx();
+        const buf = ctx.createBuffer(1, 1, 22050);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(ctx.destination);
+        src.start(0);
+      }
+      audioUnlocked = true;
+    } catch (_) { audioUnlocked = true; }
+  }
+  // Sblocca al primo tap o click
+  document.addEventListener('pointerdown', unlockAudio, { once: true });
+  document.addEventListener('keydown', unlockAudio, { once: true });
+
+  function applyConfigPayload(cfg) {
+    if (!cfg) return;
+    if (cfg.transition === 'cut') setFadeMs(0);
+    else if (typeof cfg.fadeMs === 'number') setFadeMs(cfg.fadeMs);
+    if (cfg.diceRules && typeof cfg.diceRules === 'object') {
+      const next = { ...diceRules };
+      for (const sides of Object.keys(cfg.diceRules)) {
+        const incoming = cfg.diceRules[sides] || {};
+        const merged = { ...(diceRules[sides] || {}), ...incoming };
+        if (merged.critOn === undefined && merged.critEnabled !== undefined) {
+          merged.critOn = merged.critEnabled ? 'max' : 'none';
+        }
+        if (merged.failOn === undefined && merged.failEnabled !== undefined) {
+          merged.failOn = merged.failEnabled ? 'min' : 'none';
+        }
+        next[sides] = merged;
+      }
+      diceRules = next;
+    }
+    if (cfg.sounds && typeof cfg.sounds === 'object') {
+      soundsConfig = { ...soundsConfig, ...cfg.sounds };
+    }
+  }
+
   function handleMessage(msg) {
     if (msg.type === 'state') {
       // Stato iniziale — non fade
-      if (msg.payload?.config) {
-        if (typeof msg.payload.config.fadeMs === 'number') setFadeMs(msg.payload.config.fadeMs);
-        // (transition: 'crossfade'|'cut' — cut = fadeMs 0 effettivo)
-      }
+      applyConfigPayload(msg.payload?.config);
       const saveFade = fadeMs; setFadeMs(0);
       doRender(msg.payload?.content || null);
       setFadeMs(saveFade);
@@ -227,8 +328,7 @@
     } else if (msg.type === 'clear') {
       applyContent(null);
     } else if (msg.type === 'config') {
-      if (msg.payload?.transition === 'cut') setFadeMs(0);
-      else if (typeof msg.payload?.fadeMs === 'number') setFadeMs(msg.payload.fadeMs);
+      applyConfigPayload(msg.payload);
     }
   }
 

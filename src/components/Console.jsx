@@ -20,7 +20,7 @@ function dieValueColor(value, sides) {
   return 'var(--text-bright)';
 }
 
-function DicePanel({ onCastDie, onCastDiceTotal, onCastClearScene, castScene = [] }) {
+function DicePanel({ onCastDie, onCastDiceTotal, onCastClearScene, castScene = [], castPending = [] }) {
   const [rolls, setRolls] = useState([]);
   const lastRollTime = useRef(0);
   const groupId = useRef(0);
@@ -37,8 +37,10 @@ function DicePanel({ onCastDie, onCastDiceTotal, onCastClearScene, castScene = [
 
   const clearRolls = useCallback(() => setRolls([]), []);
 
-  // Il rollId è già nella scena di cast? (serve per mostrare un ✓)
+  // Il rollId è già nella scena di cast (inviato al display)?
   const isInScene = (roll) => castScene.some(d => d.rollId === roll.id);
+  // Il rollId è in pending (cliccato ma non ancora inviato — debounce in corso)?
+  const isPending = (roll) => castPending.some(d => d.rollId === roll.id);
 
   // Totale del gruppo corrente dello storico locale
   const groupTotals = {};
@@ -62,15 +64,15 @@ function DicePanel({ onCastDie, onCastDiceTotal, onCastClearScene, castScene = [
       }}>
         <span>Dadi</span>
         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-          {castScene.length > 0 && onCastClearScene && (
+          {(castScene.length > 0 || castPending.length > 0) && onCastClearScene && (
             <span
               onClick={onCastClearScene}
-              title={`Pulisci scena dadi sul display (${castScene.length})`}
+              title={`Pulisci scena dadi sul display (${castScene.length + castPending.length})`}
               style={{
                 fontSize: '10px', color: 'var(--color-warning)', cursor: 'pointer',
                 padding: '0 4px', border: '1px solid var(--color-warning)', borderRadius: '3px'
               }}
-            >📡✕{castScene.length}</span>
+            >📡✕{castScene.length + castPending.length}</span>
           )}
           {rolls.length > 0 && (
             <span className="close-btn" onClick={clearRolls} style={{ fontSize: '12px' }} title="Svuota storico">✕</span>
@@ -108,10 +110,13 @@ function DicePanel({ onCastDie, onCastDiceTotal, onCastClearScene, castScene = [
             const prevGroup = i > 0 ? rolls[i - 1].group : roll.group;
             const showSep = i > 0 && roll.group !== prevGroup;
             const inScene = isInScene(roll);
-            // Mostra bottone "totale" solo sulla prima riga di un gruppo con >= 2 dadi
+            const pending = isPending(roll);
+            const marked = inScene || pending; // entrambi → feedback visivo
             const isGroupStart = i === 0 || rolls[i - 1].group !== roll.group;
             const rollsInGroup = rolls.filter(r => r.group === roll.group);
             const showTotal = isGroupStart && onCastDiceTotal && rollsInGroup.length >= 2;
+            const markedBg = inScene ? 'var(--accent-a08)' : (pending ? 'var(--accent-a04)' : 'var(--bg-glow-subtle)');
+            const markedBorder = marked ? '1px solid var(--accent)' : '1px solid transparent';
             return (
               <div key={roll.id}>
                 {showSep && (
@@ -119,20 +124,21 @@ function DicePanel({ onCastDie, onCastDiceTotal, onCastClearScene, castScene = [
                 )}
                 <div
                   onClick={onCastDie ? () => onCastDie({ id: roll.id, sides: roll.sides, value: roll.value }) : undefined}
-                  title={onCastDie ? (inScene ? 'Già sul display — clicca per rimandarlo' : 'Invia al display') : undefined}
+                  title={onCastDie ? (inScene ? 'Già sul display — clicca per rimandarlo' : pending ? 'In attesa di invio…' : 'Invia al display') : undefined}
                   style={{
                     padding: '2px 6px', marginBottom: '1px', borderRadius: '3px',
-                    background: inScene ? 'var(--accent-a08)' : 'var(--bg-glow-subtle)',
-                    border: inScene ? '1px solid var(--accent)' : '1px solid transparent',
+                    background: markedBg,
+                    border: markedBorder,
                     display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '4px',
                     cursor: onCastDie ? 'pointer' : 'default',
-                    transition: 'background 0.15s'
+                    transition: 'background 0.15s',
+                    opacity: pending && !inScene ? 0.85 : 1
                   }}
-                  onMouseEnter={onCastDie ? e => { if (!inScene) e.currentTarget.style.background = 'var(--bg-hover-subtle)'; } : undefined}
-                  onMouseLeave={onCastDie ? e => { e.currentTarget.style.background = inScene ? 'var(--accent-a08)' : 'var(--bg-glow-subtle)'; } : undefined}
+                  onMouseEnter={onCastDie ? e => { if (!marked) e.currentTarget.style.background = 'var(--bg-hover-subtle)'; } : undefined}
+                  onMouseLeave={onCastDie ? e => { e.currentTarget.style.background = markedBg; } : undefined}
                 >
                   <span style={{ fontSize: '10px', color: DIE_COLORS[roll.sides], fontWeight: '600' }}>
-                    {inScene ? '📡 ' : ''}d{roll.sides}
+                    {inScene ? '📡 ' : pending ? '⏳ ' : ''}d{roll.sides}
                   </span>
                   <span style={{
                     fontSize: '16px', fontWeight: '800',
@@ -143,19 +149,23 @@ function DicePanel({ onCastDie, onCastDiceTotal, onCastClearScene, castScene = [
                   </span>
                 </div>
                 {showTotal && (
-                  <div
+                  <button
                     onClick={() => onCastDiceTotal(groupTotals[roll.group])}
                     title="Mostra totale del gruppo sul display"
                     style={{
-                      padding: '1px 6px', marginBottom: '2px', borderRadius: '3px',
-                      fontSize: '9px', color: 'var(--text-tertiary)', cursor: 'pointer',
-                      textAlign: 'right'
+                      display: 'block', width: '100%',
+                      padding: '3px 6px', marginBottom: '3px',
+                      background: 'var(--accent-a08)',
+                      border: '1px solid var(--accent)', borderRadius: '3px',
+                      color: 'var(--accent)', fontSize: '10px', fontWeight: '600',
+                      cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit',
+                      textAlign: 'center', letterSpacing: '0.3px'
                     }}
-                    onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
-                    onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = 'var(--bg-main)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'var(--accent-a08)'; e.currentTarget.style.color = 'var(--accent)'; }}
                   >
                     📡 Totale: {groupTotals[roll.group]}
-                  </div>
+                  </button>
                 )}
               </div>
             );
@@ -167,7 +177,7 @@ function DicePanel({ onCastDie, onCastDiceTotal, onCastClearScene, castScene = [
 }
 
 // ─── Search Panel (main Console content) ───
-function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, telegramLog = [], onClearLog, aiConfig, aiChatHistory = [], onAiChatHistoryChange, firebaseUser, onTelegramText, onTelegramFile, onSaveImage, botRunning, players = [], onAiConfigChange, aiTestConversations = {}, onAiTestConversationsChange, onClearAiTelegramHistory, onCastDie, onCastDiceTotal, onCastClearScene, castDiceScene = [] }) {
+function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, telegramLog = [], onClearLog, aiConfig, aiChatHistory = [], onAiChatHistoryChange, firebaseUser, onTelegramText, onTelegramFile, onSaveImage, botRunning, players = [], onAiConfigChange, aiTestConversations = {}, onAiTestConversationsChange, onClearAiTelegramHistory, onCastDie, onCastDiceTotal, onCastClearScene, castDiceScene = [], castDicePending = [] }) {
   const [activeTab, setActiveTab] = useState('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
@@ -930,6 +940,7 @@ function Console({ projectFolder, onOpenFile, onSearchNavigate, externalQuery, t
         onCastDiceTotal={onCastDiceTotal}
         onCastClearScene={onCastClearScene}
         castScene={castDiceScene}
+        castPending={castDicePending}
       />
     </div>
   );

@@ -2,13 +2,20 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 // Ordina gli IP LAN mettendo in cima quelli più probabilmente usati dal Wi-Fi casa,
 // in fondo quelli di interfacce virtuali (VirtualBox, Docker, VPN aziendali).
+// Gli IP che finiscono in .1 sono quasi sempre gateway di interfacce virtuali
+// (la scheda Wi-Fi di un client non ha mai IP .1), quindi vengono penalizzati.
 function ipPriority(ip) {
-  if (/^192\.168\.56\./.test(ip)) return 30; // VirtualBox host-only
-  if (/^192\.168\.(2[0-9]{2})\./.test(ip)) return 25; // Hyper-V/Docker 192.168.2xx
-  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip)) return 20; // Docker/VPN range privato
-  if (/^10\./.test(ip)) return 15; // VPN aziendali tipiche
-  if (/^192\.168\./.test(ip)) return 0; // Probabile Wi-Fi casa
-  return 10; // IP LAN meno comune
+  const isGatewayLike = /\.1$/.test(ip);
+  if (/^192\.168\.56\./.test(ip)) return 40;                        // VirtualBox host-only
+  if (/^192\.168\.(2[0-9]{2})\./.test(ip)) return 35;               // Hyper-V/Docker 192.168.2xx
+  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip)) return 30;         // Docker/VPN range privato
+  if (/^10\./.test(ip)) return 25;                                  // VPN aziendali tipiche
+  if (/^192\.168\./.test(ip)) {
+    if (isGatewayLike) return 20;                                   // 192.168.x.1 = quasi sempre gateway virtuale
+    if (/^192\.168\.(0|1|2|10)\./.test(ip)) return -5;              // Subnet casalinghe comuni
+    return 0;                                                       // Altra subnet 192.168 (ma non gateway)
+  }
+  return 15; // IP LAN meno comune
 }
 
 export default function CastPanel({ projectPath, castConfig, onClose }) {
@@ -91,7 +98,28 @@ export default function CastPanel({ projectPath, castConfig, onClose }) {
       const r = await window.electronAPI.castStart({ port, projectPath });
       if (r?.error) setError(r.error);
       else {
-        // Al primo avvio, sync passepartout sul canale default
+        // Sync config corrente sul server (transizione, regole dadi, suoni)
+        const transition = castConfig?.transition || 'crossfade';
+        const fadeMs = transition === 'cut' ? 0 : (castConfig?.fadeMs ?? 250);
+        // Prepara config suoni: se source='display', servono il catalog al client
+        let soundsCfg = null;
+        if (castConfig?.sounds) {
+          const catalog = castConfig.sounds.source === 'display'
+            ? (await window.electronAPI.assetsListSounds?.(projectPath))?.sounds || {}
+            : {};
+          soundsCfg = {
+            enabled: castConfig.sounds.enabled !== false,
+            volume: castConfig.sounds.volume ?? 0.7,
+            source: castConfig.sounds.source || 'pc',
+            catalog
+          };
+        }
+        await window.electronAPI.castSetConfig({
+          transition, fadeMs,
+          diceRules: castConfig?.diceRules || {},
+          sounds: soundsCfg
+        });
+        // Sync passepartout sul canale default
         const pass = castConfig?.passepartoutFile;
         if (pass) {
           const url = `/files/${encodeURI(pass).replace(/#/g, '%23').replace(/\?/g, '%3F')}`;
