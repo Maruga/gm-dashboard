@@ -53,7 +53,8 @@ function highlightHtml(html, query, targetOffset) {
 
 const Viewer = forwardRef(function Viewer({
   currentFile, scrollKeyPrefix, searchHighlight, highlightKeywords, onImageClick, onImageOverlay, onVideoClick,
-  scrollMapRef, onScrollChanged, fontSize, searchOpen, onSearchClose, onPdfOutlineReady, onTlgClick
+  scrollMapRef, onScrollChanged, fontSize, searchOpen, onSearchClose, onPdfOutlineReady, onTlgClick,
+  onCastClick, onCastPreview
 }, ref) {
   const [renderedHtml, setRenderedHtml] = useState('');
   const [isHtmlFile, setIsHtmlFile] = useState(false);
@@ -96,6 +97,26 @@ const Viewer = forwardRef(function Viewer({
         if (onTlgClick) onTlgClick(btn.dataset.tlgTarget, btn.dataset.tlgContent);
         return;
       }
+      // Cast display send button
+      const castSend = e.target.closest('.cast-send-btn');
+      if (castSend) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onCastClick) onCastClick({
+          content: castSend.dataset.castContent,
+          mode: castSend.dataset.castMode || 'text',
+          caption: castSend.dataset.castCaption || null
+        });
+        return;
+      }
+      // Cast display preview button (anteprima immagine)
+      const castPreview = e.target.closest('.cast-preview-btn');
+      if (castPreview) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onCastPreview) onCastPreview(castPreview.dataset.castContent);
+        return;
+      }
       // Images — left click → fullscreen overlay
       if (e.target.tagName === 'IMG' && e.target.src) {
         e.preventDefault();
@@ -118,7 +139,7 @@ const Viewer = forwardRef(function Viewer({
     };
     container.addEventListener('click', handler);
     return () => container.removeEventListener('click', handler);
-  }, [onTlgClick, onImageOverlay]);
+  }, [onTlgClick, onImageOverlay, onCastClick, onCastPreview]);
 
   const makeKey = useCallback((filePath) => {
     return scrollKeyPrefix ? `${scrollKeyPrefix}:${filePath}` : filePath;

@@ -604,6 +604,27 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     setTlgSendData({ target, content });
   }, []);
 
+  // Click su bottone [cast] nel documento: smista tra testo/immagine/blank
+  const handleCastClick = useCallback(async ({ content, mode, caption }) => {
+    if (!content) return;
+    if (mode === 'blank') {
+      await window.electronAPI.castClear('default');
+      return;
+    }
+    if (mode === 'image') {
+      await handleCastImage(content, { caption: caption || null });
+      return;
+    }
+    await handleCastText(content);
+  }, [handleCastImage, handleCastText]);
+
+  // Click su bottone anteprima [cast] nel documento: apre overlay immagine
+  const handleCastPreview = useCallback(async (relativePath) => {
+    if (!relativePath) return;
+    const url = await window.electronAPI.getFileUrl(projectPath + '/' + relativePath);
+    setOverlayImage(url);
+  }, [projectPath]);
+
   // Viewer tab logic
   const viewerActiveFile = useMemo(() => {
     const tab = viewerTabs[activeViewerTab];
@@ -2114,6 +2135,8 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
                   onImageOverlay={handleOverlayImage}
                   onVideoClick={handleVideoClick}
                   onTlgClick={handleTlgClick}
+                  onCastClick={handleCastClick}
+                  onCastPreview={handleCastPreview}
                   scrollMapRef={scrollMapRef}
                   onScrollChanged={onScrollChanged}
                   fontSize={viewerFontSize}
@@ -2151,6 +2174,8 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
               onImageOverlay={handleOverlayImage}
               onVideoClick={handleVideoClick}
               onTlgClick={handleTlgClick}
+              onCastClick={handleCastClick}
+              onCastPreview={handleCastPreview}
               calFile={calFile}
               vistaContent={vistaContent}
               relationsBase={relationsBase}
@@ -2961,6 +2986,33 @@ function GlobalStyles() {
       .tlg-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; text-align: left; }
       .tlg-type { font-size: 10px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
       .tlg-preview { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      /* Cast display buttons in markdown */
+      .cast-widget {
+        display: flex; align-items: center; gap: 8px;
+        background: var(--bg-elevated); border: 1px solid var(--color-info);
+        border-radius: 6px; padding: 6px 12px; margin: 4px 0;
+        max-width: 100%; color: var(--text-primary);
+        transition: all 0.2s;
+      }
+      .cast-widget:hover {
+        border-color: var(--color-info);
+        box-shadow: 0 0 6px color-mix(in srgb, var(--color-info) 15%, transparent);
+      }
+      .cast-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+      .cast-icon { font-size: 18px; flex-shrink: 0; }
+      .cast-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+      .cast-type { font-size: 10px; font-weight: 600; color: var(--color-info); text-transform: uppercase; letter-spacing: 0.5px; }
+      .cast-name { font-size: 11px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .cast-caption { font-size: 11px; color: var(--text-secondary); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .cast-preview { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .cast-actions { display: flex; gap: 4px; flex-shrink: 0; }
+      .cast-send-btn, .cast-preview-btn {
+        background: none; border: 1px solid var(--border-default); border-radius: 4px;
+        padding: 4px 10px; color: var(--text-secondary); font-size: 11px;
+        cursor: pointer; transition: all 0.15s; font-family: inherit;
+      }
+      .cast-send-btn:hover { border-color: var(--color-info); color: var(--color-info); }
+      .cast-preview-btn:hover { border-color: var(--accent); color: var(--accent); }
       .ai-response-md p { margin: 0.3em 0; }
       .ai-response-md strong { color: var(--accent); }
       .ai-response-md em { color: var(--accent-dim); }

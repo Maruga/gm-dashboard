@@ -21,7 +21,7 @@ const ALL_TABS = [
 
 function Stage({
   slotFiles, activeTab, selectedIndices, onTabChange,
-  onImageClick, onImageOverlay, onVideoClick, onTlgClick,
+  onImageClick, onImageOverlay, onVideoClick, onTlgClick, onCastClick, onCastPreview,
   calFile,
   vistaContent, relationsBase, relationsSession,
   scrollMapRef, onScrollChanged,
@@ -160,6 +160,8 @@ function Stage({
             onOpenSource={onOpenSnippetSource}
             fontSize={fontSize}
             onTlgClick={onTlgClick}
+            onCastClick={onCastClick}
+            onCastPreview={onCastPreview}
             onImageOverlay={onImageOverlay}
           />
         ) : activeItem ? (
@@ -172,6 +174,8 @@ function Stage({
             onImageOverlay={onImageOverlay}
             onVideoClick={onVideoClick}
             onTlgClick={onTlgClick}
+            onCastClick={onCastClick}
+            onCastPreview={onCastPreview}
             scrollMapRef={scrollMapRef}
             onScrollChanged={onScrollChanged}
             fontSize={fontSize}
@@ -194,7 +198,7 @@ function Stage({
 
 export default React.memo(Stage);
 
-const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpenSource, fontSize, onTlgClick, onImageOverlay }, ref) {
+const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpenSource, fontSize, onTlgClick, onCastClick, onCastPreview, onImageOverlay }, ref) {
   const sourceName = snippet.source || (snippet.sourcePath ? snippet.sourcePath.split('/').pop().split('\\').pop() : null);
   const contentRef = useRef(null);
 
@@ -210,6 +214,24 @@ const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpe
         e.preventDefault();
         e.stopPropagation();
         if (onTlgClick) onTlgClick(btn.dataset.tlgTarget, btn.dataset.tlgContent);
+        return;
+      }
+      const castSend = e.target.closest('.cast-send-btn');
+      if (castSend) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onCastClick) onCastClick({
+          content: castSend.dataset.castContent,
+          mode: castSend.dataset.castMode || 'text',
+          caption: castSend.dataset.castCaption || null
+        });
+        return;
+      }
+      const castPreview = e.target.closest('.cast-preview-btn');
+      if (castPreview) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onCastPreview) onCastPreview(castPreview.dataset.castContent);
         return;
       }
       if (e.target.tagName === 'IMG' && e.target.src) {
@@ -231,7 +253,7 @@ const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpe
     };
     container.addEventListener('click', handler);
     return () => container.removeEventListener('click', handler);
-  }, [onTlgClick, onImageOverlay]);
+  }, [onTlgClick, onCastClick, onCastPreview, onImageOverlay]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
