@@ -606,27 +606,6 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     setTlgSendData({ target, content });
   }, []);
 
-  // Click su bottone [cast] nel documento: smista tra testo/immagine/blank
-  const handleCastClick = useCallback(async ({ content, mode, caption }) => {
-    if (!content) return;
-    if (mode === 'blank') {
-      await window.electronAPI.castClear('default');
-      return;
-    }
-    if (mode === 'image') {
-      await handleCastImage(content, { caption: caption || null });
-      return;
-    }
-    await handleCastText(content);
-  }, [handleCastImage, handleCastText]);
-
-  // Click su bottone anteprima [cast] nel documento: apre overlay immagine
-  const handleCastPreview = useCallback(async (relativePath) => {
-    if (!relativePath) return;
-    const url = await window.electronAPI.getFileUrl(projectPath + '/' + relativePath);
-    setOverlayImage(url);
-  }, [projectPath]);
-
   // Viewer tab logic
   const viewerActiveFile = useMemo(() => {
     const tab = viewerTabs[activeViewerTab];
@@ -1552,6 +1531,27 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     if (r?.sent === 0) castLogError('nessun display connesso — apri URL sul tablet');
     return r;
   }, [toRelativeProjectPath, castAssertRunning, castLogError]);
+
+  // Click su bottone [cast] nel documento: smista tra testo/immagine/blank
+  const handleCastClick = useCallback(async ({ content, mode, caption }) => {
+    if (!content) return;
+    if (mode === 'blank') {
+      await window.electronAPI.castClear('default');
+      return;
+    }
+    if (mode === 'image') {
+      await handleCastImage(content, { caption: caption || null });
+      return;
+    }
+    await handleCastText(content);
+  }, [handleCastImage, handleCastText]);
+
+  // Click su bottone anteprima [cast] nel documento: apre overlay immagine
+  const handleCastPreview = useCallback(async (relativePath) => {
+    if (!relativePath) return;
+    const url = await window.electronAPI.getFileUrl(projectPath + '/' + relativePath);
+    setOverlayImage(url);
+  }, [projectPath]);
 
   // Aggiorna config transizioni + regole dadi + suoni sul server quando cambiano.
   // Per i suoni, serve includere il catalog: il display non può leggere il filesystem,
