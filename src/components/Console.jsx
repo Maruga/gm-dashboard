@@ -27,7 +27,7 @@ function DicePanel({ onCastDie, onCastDiceTotal, onCastClearScene, castScene = [
 
   const handleRoll = useCallback((sides) => {
     const now = Date.now();
-    if (now - lastRollTime.current > 3000) {
+    if (now - lastRollTime.current > 800) {
       groupId.current++;
     }
     lastRollTime.current = now;
@@ -114,7 +114,8 @@ function DicePanel({ onCastDie, onCastDiceTotal, onCastClearScene, castScene = [
             const marked = inScene || pending; // entrambi → feedback visivo
             const isGroupStart = i === 0 || rolls[i - 1].group !== roll.group;
             const rollsInGroup = rolls.filter(r => r.group === roll.group);
-            const showTotal = isGroupStart && onCastDiceTotal && rollsInGroup.length >= 2;
+            // NASCOSTO: bottone totale da ridisegnare — logica mantenuta per quando lo riattiveremo
+            const showTotal = false; // isGroupStart && onCastDiceTotal && rollsInGroup.length >= 2;
             const markedBg = inScene ? 'var(--accent-a08)' : (pending ? 'var(--accent-a04)' : 'var(--bg-glow-subtle)');
             const markedBorder = marked ? '1px solid var(--accent)' : '1px solid transparent';
             return (
