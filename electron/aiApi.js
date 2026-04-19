@@ -100,10 +100,16 @@ async function chatAnthropic(apiKey, model, messages, maxTokens, effort) {
     body.temperature = 0.7;
   }
 
-  const res = await httpsPost('api.anthropic.com', '/v1/messages', {
+  const headers = {
     'x-api-key': apiKey,
     'anthropic-version': '2023-06-01'
-  }, body);
+  };
+  // Opus 4.7: abilita contesto 1M via beta header
+  if (model === 'claude-opus-4-7') {
+    headers['anthropic-beta'] = 'context-1m-2025-08-07';
+  }
+
+  const res = await httpsPost('api.anthropic.com', '/v1/messages', headers, body);
 
   if (res.status !== 200) {
     const msg = res.data?.error?.message || `Errore Anthropic: HTTP ${res.status}`;
