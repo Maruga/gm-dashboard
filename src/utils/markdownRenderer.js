@@ -1,6 +1,16 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
+// Escape HTML per inserimento sicuro in testo / attributi
+function escHtml(s) {
+  return (s == null ? '' : String(s))
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 // Telegram send command extension: [tlg|destinatari|contenuto] or [tlg::destinatari::contenuto]
 const tlgExtension = {
   name: 'tlg',
@@ -138,7 +148,21 @@ const aiExtension = {
   name: 'ai',
   level: 'inline',
   start(src) {
-    return src.indexOf('[ai');
+    // Cerca "[ai" ma escludi "[aipause" e "[airesume" che hanno extension dedicate
+    let idx = -1;
+    let from = 0;
+    while (true) {
+      const i = src.indexOf('[ai', from);
+      if (i === -1) break;
+      const rest = src.substring(i);
+      if (rest.startsWith('[aipause') || rest.startsWith('[airesume')) {
+        from = i + 3;
+        continue;
+      }
+      idx = i;
+      break;
+    }
+    return idx;
   },
   tokenizer(src) {
     const pipeMatch = src.match(/^\[ai\|([^|\]]+)\|([^\]]+)\]/);
@@ -163,14 +187,15 @@ const aiExtension = {
       targetLabel = `Casuale (${param === 'meta' || param === 'metà' || param === 'half' ? 'metà' : param === 'tutti-1' || param === 'all-1' ? 'tutti-1' : param})`;
     }
 
-    const escapedCtx = context.replace(/"/g, '&quot;').replace(/</g, '&lt;');
-    const targetEscaped = target.replace(/"/g, '&quot;');
+    const ctxHtml = escHtml(context);
+    const targetAttr = escHtml(target);
+    const targetLabelHtml = escHtml(targetLabel);
 
-    return `<button class="ai-send-btn" data-ai-target="${targetEscaped}" data-ai-context="${escapedCtx}" title="Guida AI a scrivere al giocatore">`
+    return `<button class="ai-send-btn" data-ai-target="${targetAttr}" data-ai-context="${ctxHtml}" title="Guida AI a scrivere al giocatore">`
       + `<span class="ai-icon">\u{1F916}</span>`
       + `<span class="ai-body">`
-      + `<span class="ai-type">AI &rarr; ${targetLabel}</span>`
-      + `<span class="ai-preview">${escapedCtx}</span>`
+      + `<span class="ai-type">AI &rarr; ${targetLabelHtml}</span>`
+      + `<span class="ai-preview">${ctxHtml}</span>`
       + `</span>`
       + `</button>`;
   }
@@ -203,15 +228,16 @@ const aiPauseExtension = {
     const tl = target.toLowerCase();
     if (tl === 'all' || tl === '*' || tl === 'tutti') targetLabel = 'Tutti';
 
-    const escapedMsg = message.replace(/"/g, '&quot;').replace(/</g, '&lt;');
-    const targetEscaped = target.replace(/"/g, '&quot;');
-    const preview = message || '(messaggio di cortesia vuoto)';
+    const msgAttr = escHtml(message);
+    const targetAttr = escHtml(target);
+    const targetLabelHtml = escHtml(targetLabel);
+    const previewHtml = message ? escHtml(message) : '(messaggio di cortesia vuoto)';
 
-    return `<button class="aipause-btn" data-aipause-target="${targetEscaped}" data-aipause-message="${escapedMsg}" title="Pausa AI per ${targetLabel}">`
+    return `<button class="aipause-btn" data-aipause-target="${targetAttr}" data-aipause-message="${msgAttr}" title="Pausa AI per ${targetLabelHtml}">`
       + `<span class="aipause-icon">\u{1F507}</span>`
       + `<span class="aipause-body">`
-      + `<span class="aipause-type">Pausa AI &rarr; ${targetLabel}</span>`
-      + `<span class="aipause-preview">${preview}</span>`
+      + `<span class="aipause-type">Pausa AI &rarr; ${targetLabelHtml}</span>`
+      + `<span class="aipause-preview">${previewHtml}</span>`
       + `</span>`
       + `</button>`;
   }
@@ -239,12 +265,13 @@ const aiResumeExtension = {
     let targetLabel = target;
     const tl = target.toLowerCase();
     if (tl === 'all' || tl === '*' || tl === 'tutti') targetLabel = 'Tutti';
-    const targetEscaped = target.replace(/"/g, '&quot;');
+    const targetAttr = escHtml(target);
+    const targetLabelHtml = escHtml(targetLabel);
 
-    return `<button class="airesume-btn" data-airesume-target="${targetEscaped}" title="Riattiva AI per ${targetLabel}">`
+    return `<button class="airesume-btn" data-airesume-target="${targetAttr}" title="Riattiva AI per ${targetLabelHtml}">`
       + `<span class="airesume-icon">\u{1F514}</span>`
       + `<span class="airesume-body">`
-      + `<span class="airesume-type">Riattiva AI &rarr; ${targetLabel}</span>`
+      + `<span class="airesume-type">Riattiva AI &rarr; ${targetLabelHtml}</span>`
       + `</span>`
       + `</button>`;
   }
