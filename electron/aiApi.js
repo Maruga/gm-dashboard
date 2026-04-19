@@ -80,21 +80,30 @@ async function chatAnthropic(apiKey, model, messages, maxTokens, effort) {
     }
   }
 
-  // Extended Thinking: attivo solo con effort esplicito su modelli compatibili
-  const useThinking = effort && THINKING_BUDGET[effort] &&
+  // Opus 4.7: nuova API — adaptive thinking + effort, niente temperature/top_p/top_k, niente budget_tokens
+  const isOpus47 = model === 'claude-opus-4-7';
+
+  // Extended Thinking legacy (pre-4.7): attivo solo con effort esplicito su modelli compatibili
+  const useLegacyThinking = !isOpus47 && effort && THINKING_BUDGET[effort] &&
     (model.includes('opus') || model.includes('sonnet'));
-  const budgetTokens = useThinking ? THINKING_BUDGET[effort] : 0;
+  const budgetTokens = useLegacyThinking ? THINKING_BUDGET[effort] : 0;
 
   const body = {
     model,
     messages: filtered,
-    // Con thinking attivo, max_tokens deve essere > budget_tokens
-    max_tokens: useThinking ? budgetTokens + (maxTokens || 1024) : (maxTokens || 1024)
+    // Con thinking legacy attivo, max_tokens deve essere > budget_tokens
+    max_tokens: useLegacyThinking ? budgetTokens + (maxTokens || 1024) : (maxTokens || 1024)
   };
   if (system) body.system = system;
 
-  if (useThinking) {
-    // Extended Thinking richiede temperature 1.0 (o omessa)
+  if (isOpus47) {
+    // Opus 4.7: adaptive thinking on richiesta dell'utente via effort; niente temperature
+    if (effort) {
+      body.thinking = { type: 'adaptive' };
+      body.output_config = { effort };
+    }
+  } else if (useLegacyThinking) {
+    // Legacy Extended Thinking richiede temperature 1.0 (o omessa)
     body.thinking = { type: 'enabled', budget_tokens: budgetTokens };
   } else {
     body.temperature = 0.7;
@@ -104,10 +113,6 @@ async function chatAnthropic(apiKey, model, messages, maxTokens, effort) {
     'x-api-key': apiKey,
     'anthropic-version': '2023-06-01'
   };
-  // Opus 4.7: abilita contesto 1M via beta header
-  if (model === 'claude-opus-4-7') {
-    headers['anthropic-beta'] = 'context-1m-2025-08-07';
-  }
 
   const res = await httpsPost('api.anthropic.com', '/v1/messages', headers, body);
 

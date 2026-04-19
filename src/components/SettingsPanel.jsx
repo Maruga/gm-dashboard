@@ -2020,7 +2020,7 @@ export default function SettingsPanel({
                     <option value="claude-haiku-4-5-20251001">Haiku 4.5 — $1 / $5 per 1M token</option>
                     <option value="claude-sonnet-4-6">Sonnet 4.6 — $3 / $15 per 1M token</option>
                     <option value="claude-opus-4-6">Opus 4.6 — $5 / $25 per 1M token</option>
-                    <option value="claude-opus-4-7">Opus 4.7 — contesto 1M token</option>
+                    <option value="claude-opus-4-7">Opus 4.7 — $5 / $25 per 1M token (contesto 1M)</option>
                   </>
                 )}
               </select>
