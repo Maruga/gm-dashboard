@@ -612,6 +612,54 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
     setAiSendData({ target, context });
   }, []);
 
+  // Risolve il target (nome PG, "Tutti", lista virgole) nella lista di playerId corrispondenti
+  const resolvePlayerIds = useCallback((target) => {
+    const targetLower = (target || '').toLowerCase();
+    const isAll = targetLower === 'all' || targetLower === '*' || targetLower === 'tutti';
+    const connected = players.filter(p => p.telegramChatId);
+    if (isAll) return connected.map(p => p.id);
+    const names = (target || '').split(',').map(n => n.trim().toLowerCase());
+    return connected
+      .filter(p => {
+        const cn = (p.characterName || '').toLowerCase();
+        const pn = (p.playerName || '').toLowerCase();
+        return names.some(t => cn.includes(t) || pn.includes(t));
+      })
+      .map(p => p.id);
+  }, [players]);
+
+  const handleAiPause = useCallback((target, message) => {
+    const ids = resolvePlayerIds(target);
+    if (ids.length === 0) return;
+    setPlayers(prev => prev.map(p => ids.includes(p.id)
+      ? { ...p, aiPaused: true, aiPauseMessage: message || '' }
+      : p
+    ));
+    const now = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    const names = players.filter(p => ids.includes(p.id)).map(p => p.characterName || p.playerName).join(', ');
+    setTelegramLog(prev => [...prev, {
+      date: now, success: true,
+      description: `AI in pausa per ${names}${message ? ': "' + (message.length > 40 ? message.substring(0, 40) + '...' : message) + '"' : ''}`,
+      icon: '\u{1F507}'
+    }]);
+  }, [players, resolvePlayerIds]);
+
+  const handleAiResume = useCallback((target) => {
+    const ids = resolvePlayerIds(target);
+    if (ids.length === 0) return;
+    setPlayers(prev => prev.map(p => ids.includes(p.id)
+      ? { ...p, aiPaused: false, aiPauseMessage: '' }
+      : p
+    ));
+    const now = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    const names = players.filter(p => ids.includes(p.id)).map(p => p.characterName || p.playerName).join(', ');
+    setTelegramLog(prev => [...prev, {
+      date: now, success: true,
+      description: `AI riattivata per ${names}`,
+      icon: '\u{1F514}'
+    }]);
+  }, [players, resolvePlayerIds]);
+
   // Viewer tab logic
   const viewerActiveFile = useMemo(() => {
     const tab = viewerTabs[activeViewerTab];
@@ -981,6 +1029,29 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           const question = isAiCommand ? data.text.replace(/^[./](ai|ia)\s+/, '') : data.text;
           // Raccogliere documenti autorizzati per questo player
           const player = playersRef.current.find(p => p.id === data.playerId);
+          // AI in pausa per questo PG → invia messaggio di cortesia e non chiama l'AI
+          if (player?.aiPaused) {
+            if (player.aiPauseMessage) {
+              window.electronAPI.telegramSendReply(data.chatId, player.aiPauseMessage);
+              setChatMessages(prev => ({
+                ...prev,
+                [data.chatId]: [...(prev[data.chatId] || []), {
+                  id: crypto.randomUUID(),
+                  from: 'ai',
+                  text: '\u{1F507} ' + player.aiPauseMessage,
+                  timestamp: new Date().toISOString(),
+                  read: true
+                }]
+              }));
+            }
+            const tm = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+            setTelegramLog(prev => [...prev, {
+              date: tm, success: true,
+              description: `AI in pausa per ${player.characterName || player.playerName}: inviata cortesia`,
+              icon: '\u{1F507}'
+            }]);
+            return;
+          }
           const allActiveDocs = [...(ai.commonDocs || []), ...(player?.aiDocuments || [])].filter(d => d.active);
           // Escludi messaggi speciali (_msg_*) dal contesto AI
           const allowedFiles = allActiveDocs.filter(d => !d.name?.toLowerCase().startsWith('_msg_')).map(d => d.file);
@@ -1322,6 +1393,20 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
 
     const player = players.find(p => p.telegramChatId === chatId);
     if (!player) return false;
+
+    // AI in pausa per questo PG → non chiama l'AI; invia messaggio di cortesia se impostato
+    if (player.aiPaused) {
+      if (player.aiPauseMessage) {
+        try { await window.electronAPI.telegramSendReply(chatId, player.aiPauseMessage); } catch (_) {}
+      }
+      const tm = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+      setTelegramLog(prev => [...prev, {
+        date: tm, success: true,
+        description: `AI in pausa per ${player.characterName || player.playerName}: poke bloccato`,
+        icon: '\u{1F507}'
+      }]);
+      return false;
+    }
 
     const allActiveDocs = [...(ai.commonDocs || []), ...(player.aiDocuments || [])].filter(d => d.active);
     // Escludi messaggi speciali (_msg_*) dal contesto AI
@@ -2151,6 +2236,8 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
                   onCastClick={handleCastClick}
                   onCastPreview={handleCastPreview}
                   onAiClick={handleAiClick}
+                  onAiPause={handleAiPause}
+                  onAiResume={handleAiResume}
                   scrollMapRef={scrollMapRef}
                   onScrollChanged={onScrollChanged}
                   fontSize={viewerFontSize}
@@ -2191,6 +2278,8 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
               onCastClick={handleCastClick}
               onCastPreview={handleCastPreview}
               onAiClick={handleAiClick}
+              onAiPause={handleAiPause}
+              onAiResume={handleAiResume}
               calFile={calFile}
               vistaContent={vistaContent}
               relationsBase={relationsBase}
@@ -2617,6 +2706,29 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           onAiPoke={handleAiPoke}
           onAiReply={async (msg, chatId) => {
             const player = players.find(p => p.telegramChatId === chatId);
+            // AI in pausa per questo PG → invia messaggio di cortesia, non chiama l'AI
+            if (player?.aiPaused) {
+              if (player.aiPauseMessage) {
+                await window.electronAPI.telegramSendReply(chatId, player.aiPauseMessage);
+                setChatMessages(prev => ({
+                  ...prev,
+                  [chatId]: [...(prev[chatId] || []), {
+                    id: crypto.randomUUID(),
+                    from: 'ai',
+                    text: '\u{1F507} ' + player.aiPauseMessage,
+                    timestamp: new Date().toISOString(),
+                    read: true
+                  }]
+                }));
+              }
+              const tm = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+              setTelegramLog(prev => [...prev, {
+                date: tm, success: true,
+                description: `AI in pausa per ${player.characterName || player.playerName}: inviata cortesia`,
+                icon: '\u{1F507}'
+              }]);
+              return;
+            }
             const allActiveDocs = [...(aiConfig.commonDocs || []), ...(player?.aiDocuments || [])].filter(d => d.active);
             // Escludi messaggi speciali (_msg_*) dal contesto AI
             const allowedFiles = allActiveDocs.filter(d => !d.name?.toLowerCase().startsWith('_msg_')).map(d => d.file);
@@ -3033,6 +3145,29 @@ function GlobalStyles() {
       .ai-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; text-align: left; }
       .ai-type { font-size: 10px; font-weight: 600; color: var(--color-ai); text-transform: uppercase; letter-spacing: 0.5px; }
       .ai-preview { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      /* AI pause/resume buttons in markdown */
+      .aipause-btn, .airesume-btn {
+        display: inline-flex; align-items: center; gap: 8px;
+        background: var(--bg-elevated);
+        border-radius: 6px; padding: 6px 12px; margin: 4px 0;
+        cursor: pointer; transition: all 0.2s; font-family: inherit;
+        max-width: 100%; color: var(--text-primary);
+      }
+      .aipause-btn { border: 1px solid var(--color-warning); }
+      .aipause-btn:hover {
+        background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+        box-shadow: 0 0 8px color-mix(in srgb, var(--color-warning) 25%, transparent);
+      }
+      .airesume-btn { border: 1px solid var(--color-success); }
+      .airesume-btn:hover {
+        background: color-mix(in srgb, var(--color-success) 10%, transparent);
+        box-shadow: 0 0 8px color-mix(in srgb, var(--color-success) 25%, transparent);
+      }
+      .aipause-icon, .airesume-icon { font-size: 18px; flex-shrink: 0; }
+      .aipause-body, .airesume-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; text-align: left; }
+      .aipause-type { font-size: 10px; font-weight: 600; color: var(--color-warning); text-transform: uppercase; letter-spacing: 0.5px; }
+      .airesume-type { font-size: 10px; font-weight: 600; color: var(--color-success); text-transform: uppercase; letter-spacing: 0.5px; }
+      .aipause-preview { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       /* Cast display buttons in markdown */
       .cast-widget {
         display: flex; align-items: center; gap: 8px;

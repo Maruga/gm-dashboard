@@ -21,7 +21,7 @@ const ALL_TABS = [
 
 function Stage({
   slotFiles, activeTab, selectedIndices, onTabChange,
-  onImageClick, onImageOverlay, onVideoClick, onTlgClick, onCastClick, onCastPreview, onAiClick,
+  onImageClick, onImageOverlay, onVideoClick, onTlgClick, onCastClick, onCastPreview, onAiClick, onAiPause, onAiResume,
   calFile,
   vistaContent, relationsBase, relationsSession,
   scrollMapRef, onScrollChanged,
@@ -163,6 +163,8 @@ function Stage({
             onCastClick={onCastClick}
             onCastPreview={onCastPreview}
             onAiClick={onAiClick}
+            onAiPause={onAiPause}
+            onAiResume={onAiResume}
             onImageOverlay={onImageOverlay}
           />
         ) : activeItem ? (
@@ -178,6 +180,8 @@ function Stage({
             onCastClick={onCastClick}
             onCastPreview={onCastPreview}
             onAiClick={onAiClick}
+            onAiPause={onAiPause}
+            onAiResume={onAiResume}
             scrollMapRef={scrollMapRef}
             onScrollChanged={onScrollChanged}
             fontSize={fontSize}
@@ -200,7 +204,7 @@ function Stage({
 
 export default React.memo(Stage);
 
-const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpenSource, fontSize, onTlgClick, onCastClick, onCastPreview, onAiClick, onImageOverlay }, ref) {
+const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpenSource, fontSize, onTlgClick, onCastClick, onCastPreview, onAiClick, onAiPause, onAiResume, onImageOverlay }, ref) {
   const sourceName = snippet.source || (snippet.sourcePath ? snippet.sourcePath.split('/').pop().split('\\').pop() : null);
   const contentRef = useRef(null);
 
@@ -243,6 +247,20 @@ const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpe
         if (onAiClick) onAiClick(aiBtn.dataset.aiTarget, aiBtn.dataset.aiContext);
         return;
       }
+      const aiPauseBtn = e.target.closest('.aipause-btn');
+      if (aiPauseBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onAiPause) onAiPause(aiPauseBtn.dataset.aipauseTarget, aiPauseBtn.dataset.aipauseMessage);
+        return;
+      }
+      const aiResumeBtn = e.target.closest('.airesume-btn');
+      if (aiResumeBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onAiResume) onAiResume(aiResumeBtn.dataset.airesumeTarget);
+        return;
+      }
       if (e.target.tagName === 'IMG' && e.target.src) {
         e.preventDefault();
         e.stopPropagation();
@@ -262,7 +280,7 @@ const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpe
     };
     container.addEventListener('click', handler);
     return () => container.removeEventListener('click', handler);
-  }, [onTlgClick, onCastClick, onCastPreview, onAiClick, onImageOverlay]);
+  }, [onTlgClick, onCastClick, onCastPreview, onAiClick, onAiPause, onAiResume, onImageOverlay]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

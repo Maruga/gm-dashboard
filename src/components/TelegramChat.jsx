@@ -187,6 +187,13 @@ export default function TelegramChat({ players, chatMessages, onSendReply, onMar
                   }}>
                     {pg.characterName || 'Senza nome'}
                   </span>
+                  {pg.aiPaused && (
+                    <span title={pg.aiPauseMessage || 'AI in pausa per questo PG'} style={{
+                      fontSize: '12px', color: 'var(--color-warning)', flexShrink: 0
+                    }}>
+                      🔇
+                    </span>
+                  )}
                   {unread > 0 && (
                     <span style={{
                       background: 'var(--color-danger)', color: '#fff', fontSize: '9px', fontWeight: '700',
@@ -215,6 +222,15 @@ export default function TelegramChat({ players, chatMessages, onSendReply, onMar
           <div>
             <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--accent)' }}>
               {selectedPlayer ? `CHAT — ${selectedPlayer.characterName || 'Senza nome'}` : 'CHAT'}
+              {selectedPlayer?.aiPaused && (
+                <span title={selectedPlayer.aiPauseMessage || 'AI in pausa'} style={{
+                  marginLeft: '8px', fontSize: '10px', color: 'var(--color-warning)',
+                  padding: '1px 6px', borderRadius: '3px',
+                  border: '1px solid var(--color-warning)', fontWeight: '600'
+                }}>
+                  🔇 AI IN PAUSA
+                </span>
+              )}
             </div>
             {selectedPlayer?.playerName && (
               <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>

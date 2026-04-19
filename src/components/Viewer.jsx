@@ -54,7 +54,7 @@ function highlightHtml(html, query, targetOffset) {
 const Viewer = forwardRef(function Viewer({
   currentFile, scrollKeyPrefix, searchHighlight, highlightKeywords, onImageClick, onImageOverlay, onVideoClick,
   scrollMapRef, onScrollChanged, fontSize, searchOpen, onSearchClose, onPdfOutlineReady, onTlgClick,
-  onCastClick, onCastPreview, onAiClick
+  onCastClick, onCastPreview, onAiClick, onAiPause, onAiResume
 }, ref) {
   const [renderedHtml, setRenderedHtml] = useState('');
   const [isHtmlFile, setIsHtmlFile] = useState(false);
@@ -125,6 +125,22 @@ const Viewer = forwardRef(function Viewer({
         if (onAiClick) onAiClick(aiBtn.dataset.aiTarget, aiBtn.dataset.aiContext);
         return;
       }
+      // AI pause button
+      const aiPauseBtn = e.target.closest('.aipause-btn');
+      if (aiPauseBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onAiPause) onAiPause(aiPauseBtn.dataset.aipauseTarget, aiPauseBtn.dataset.aipauseMessage);
+        return;
+      }
+      // AI resume button
+      const aiResumeBtn = e.target.closest('.airesume-btn');
+      if (aiResumeBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onAiResume) onAiResume(aiResumeBtn.dataset.airesumeTarget);
+        return;
+      }
       // Images — left click → fullscreen overlay
       if (e.target.tagName === 'IMG' && e.target.src) {
         e.preventDefault();
@@ -147,7 +163,7 @@ const Viewer = forwardRef(function Viewer({
     };
     container.addEventListener('click', handler);
     return () => container.removeEventListener('click', handler);
-  }, [onTlgClick, onImageOverlay, onCastClick, onCastPreview, onAiClick]);
+  }, [onTlgClick, onImageOverlay, onCastClick, onCastPreview, onAiClick, onAiPause, onAiResume]);
 
   const makeKey = useCallback((filePath) => {
     return scrollKeyPrefix ? `${scrollKeyPrefix}:${filePath}` : filePath;

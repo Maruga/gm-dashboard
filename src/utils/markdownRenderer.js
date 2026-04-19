@@ -176,22 +176,98 @@ const aiExtension = {
   }
 };
 
-marked.use({ extensions: [tlgExtension, castExtension, aiExtension] });
+// AI pause extension: [aipause|destinatario|messaggio di cortesia]
+// Blocca temporaneamente le risposte dell'AI per il destinatario; al posto della risposta
+// AI viene inviato il messaggio di cortesia configurato (es. "il telefono suona ma nessuno risponde")
+const aiPauseExtension = {
+  name: 'aipause',
+  level: 'inline',
+  start(src) {
+    return src.indexOf('[aipause');
+  },
+  tokenizer(src) {
+    const pipeMatch = src.match(/^\[aipause\|([^|\]]+)(?:\|([^\]]+))?\]/);
+    if (pipeMatch) {
+      return { type: 'aipause', raw: pipeMatch[0], target: pipeMatch[1].trim(), message: pipeMatch[2]?.trim() || '' };
+    }
+    const colonMatch = src.match(/^\[aipause::([^\]]+?)(?:::([^\]]+))?\]/);
+    if (colonMatch) {
+      return { type: 'aipause', raw: colonMatch[0], target: colonMatch[1].trim(), message: colonMatch[2]?.trim() || '' };
+    }
+  },
+  renderer(token) {
+    const target = token.target;
+    const message = token.message;
+
+    let targetLabel = target;
+    const tl = target.toLowerCase();
+    if (tl === 'all' || tl === '*' || tl === 'tutti') targetLabel = 'Tutti';
+
+    const escapedMsg = message.replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const targetEscaped = target.replace(/"/g, '&quot;');
+    const preview = message || '(messaggio di cortesia vuoto)';
+
+    return `<button class="aipause-btn" data-aipause-target="${targetEscaped}" data-aipause-message="${escapedMsg}" title="Pausa AI per ${targetLabel}">`
+      + `<span class="aipause-icon">\u{1F507}</span>`
+      + `<span class="aipause-body">`
+      + `<span class="aipause-type">Pausa AI &rarr; ${targetLabel}</span>`
+      + `<span class="aipause-preview">${preview}</span>`
+      + `</span>`
+      + `</button>`;
+  }
+};
+
+// AI resume extension: [airesume|destinatario]
+const aiResumeExtension = {
+  name: 'airesume',
+  level: 'inline',
+  start(src) {
+    return src.indexOf('[airesume');
+  },
+  tokenizer(src) {
+    const pipeMatch = src.match(/^\[airesume\|([^\]]+)\]/);
+    if (pipeMatch) {
+      return { type: 'airesume', raw: pipeMatch[0], target: pipeMatch[1].trim() };
+    }
+    const colonMatch = src.match(/^\[airesume::([^\]]+)\]/);
+    if (colonMatch) {
+      return { type: 'airesume', raw: colonMatch[0], target: colonMatch[1].trim() };
+    }
+  },
+  renderer(token) {
+    const target = token.target;
+    let targetLabel = target;
+    const tl = target.toLowerCase();
+    if (tl === 'all' || tl === '*' || tl === 'tutti') targetLabel = 'Tutti';
+    const targetEscaped = target.replace(/"/g, '&quot;');
+
+    return `<button class="airesume-btn" data-airesume-target="${targetEscaped}" title="Riattiva AI per ${targetLabel}">`
+      + `<span class="airesume-icon">\u{1F514}</span>`
+      + `<span class="airesume-body">`
+      + `<span class="airesume-type">Riattiva AI &rarr; ${targetLabel}</span>`
+      + `</span>`
+      + `</button>`;
+  }
+};
+
+marked.use({ extensions: [tlgExtension, castExtension, aiExtension, aiPauseExtension, aiResumeExtension] });
 
 marked.setOptions({
   breaks: true,
   gfm: true
 });
 
-// Allow tlg + cast + ai elements through DOMPurify
+// Allow tlg + cast + ai + aipause + airesume elements through DOMPurify
 DOMPurify.addHook('uponSanitizeElement', (node) => {
   if (node.tagName === 'BUTTON' && (
     node.classList?.contains('tlg-send-btn') ||
     node.classList?.contains('cast-send-btn') ||
     node.classList?.contains('cast-preview-btn') ||
-    node.classList?.contains('ai-send-btn')
+    node.classList?.contains('ai-send-btn') ||
+    node.classList?.contains('aipause-btn') ||
+    node.classList?.contains('airesume-btn')
   )) return node;
-  if (node.tagName === 'SPAN' && node.className && /^(cast|ai)-/.test(node.className)) return node;
+  if (node.tagName === 'SPAN' && node.className && /^(cast|ai|aipause|airesume)-/.test(node.className)) return node;
 });
 
 const purifyConfig = {
@@ -200,6 +276,8 @@ const purifyConfig = {
     'data-tlg-target', 'data-tlg-content',
     'data-cast-content', 'data-cast-mode', 'data-cast-caption',
     'data-ai-target', 'data-ai-context',
+    'data-aipause-target', 'data-aipause-message',
+    'data-airesume-target',
     'class', 'title'
   ]
 };

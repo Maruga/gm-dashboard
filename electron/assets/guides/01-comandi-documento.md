@@ -58,6 +58,41 @@ Il bottone appare **viola/magenta** nel documento (icona 🤖).
 
 **Nota**: funziona solo se il bot Telegram è attivo e la **AI Telegram è abilitata** in Settings → AI.
 
+## Pausa AI `[aipause]` / `[airesume]`
+
+Permette di **bloccare temporaneamente** le risposte dell'AI a un PG. Utile quando in-game il personaggio che impersona l'AI non è raggiungibile (telefono spento, PNG addormentato, informatore che non risponde, ecc.).
+
+```
+[aipause|destinatario|messaggio di cortesia]
+[airesume|destinatario]
+```
+
+**Destinatari**: nome PG, lista virgola-separata, `Tutti`.
+
+**Come funziona**:
+
+1. Click su `[aipause|...]` → l'AI smette di rispondere ai messaggi di quel PG
+2. Quando il PG scrive, al posto di chiamare l'AI viene inviato il **messaggio di cortesia** configurato
+3. Vale per tutti i modi di attivazione AI: auto-reply, comando `/ai`, click manuale 🤖, comando `[ai]` dai documenti
+4. Click su `[airesume|...]` → l'AI torna a rispondere normalmente
+
+**Esempi narrativi**:
+
+```
+[aipause|Mario|Il telefono squilla a vuoto. Nessuno risponde.]
+[aipause|Tutti|La radio è silenziosa. Solo fruscio.]
+[aipause|Luca|"Non ora. Sto dormendo." — click. La chiamata si chiude.]
+[airesume|Mario]
+[airesume|Tutti]
+```
+
+**Visualizzazione**:
+- `[aipause]` appare con **bordo arancione** e icona 🔇
+- `[airesume]` appare con **bordo verde** e icona 🔔
+- Nella finestra Chat Telegram, i PG in pausa mostrano l'icona 🔇 accanto al nome e un badge "AI IN PAUSA" nell'header
+
+**Nota**: se il messaggio di cortesia è vuoto, la richiesta del giocatore viene **ignorata in silenzio** (nessuna risposta). Utile se vuoi che il PG "senta" il silenzio totale.
+
 ## Display secondario `[cast]`
 
 Invia contenuti al display dei giocatori (tablet/TV). Formati:
@@ -110,11 +145,13 @@ I bottoni si creano semplicemente scrivendo il comando **in qualsiasi punto del 
 
 **Riepilogo colori**:
 
-| Comando | Colore | Azione |
-|---------|--------|--------|
-| `[tlg]` | Dorato | Invii tu il testo via Telegram |
-| `[ai]`  | Viola  | L'AI genera e invia via Telegram |
-| `[cast]`| Azzurro| Invia al display secondario LAN |
+| Comando       | Colore    | Azione |
+|---------------|-----------|--------|
+| `[tlg]`       | Dorato    | Invii tu il testo via Telegram |
+| `[ai]`        | Viola     | L'AI genera e invia via Telegram |
+| `[aipause]`   | Arancione | Pausa risposte AI per un PG |
+| `[airesume]`  | Verde     | Riattiva risposte AI per un PG |
+| `[cast]`      | Azzurro   | Invia al display secondario LAN |
 
 ## Prompt AI per generare i comandi
 
@@ -134,18 +171,27 @@ Comandi disponibili:
    coerente con i documenti del PG. L'indicazione è un'istruzione all'AI,
    non il testo finale. Destinatari come sopra.
 
-3. [cast|testo] — Mostra testo grande sul display secondario al tavolo.
+3. [aipause|destinatario|messaggio di cortesia] — blocca temporaneamente le risposte
+   dell'AI per un PG. Quando il PG scriverà all'AI riceverà il messaggio di cortesia.
+   Usalo per scene in cui l'AI-PNG non è raggiungibile.
 
-4. [cast|percorso/immagine.jpg] — Mostra immagine sul display.
+4. [airesume|destinatario] — riattiva l'AI per un PG precedentemente messo in pausa.
+
+5. [cast|testo] — Mostra testo grande sul display secondario al tavolo.
+
+6. [cast|percorso/immagine.jpg] — Mostra immagine sul display.
    Aggiungi didascalia: [cast|immagine.jpg|Descrizione].
 
-5. [cast|blank] — Schermo nero sul display.
+7. [cast|blank] — Schermo nero sul display.
 ```
 
 Regole:
 - Usa `[tlg]` per messaggi espliciti e fissi (sensazioni descritte, messaggi segreti del GM).
 - Usa `[ai]` quando vuoi che l'AI interpreti un personaggio/voce coerente con la lore
   (es. parlano i PNG, un fantasma, un oracolo). L'AI usa i documenti attivi del PG.
+- Usa `[aipause]` per scene in cui l'AI-PNG non deve essere raggiungibile
+  (PNG dormiente, telefono spento, situazione di tensione narrativa).
+  Metti un `[airesume]` quando la scena finisce.
 - Usa `[cast]` per contenuti visivi condivisi al tavolo (mappe, illustrazioni, enigmi,
   testi narrativi in evidenza).
 - Inserisci `[cast|blank]` alla fine di ogni scena per pulire il display.
