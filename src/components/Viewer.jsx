@@ -54,7 +54,7 @@ function highlightHtml(html, query, targetOffset) {
 const Viewer = forwardRef(function Viewer({
   currentFile, scrollKeyPrefix, searchHighlight, highlightKeywords, onImageClick, onImageOverlay, onVideoClick,
   scrollMapRef, onScrollChanged, fontSize, searchOpen, onSearchClose, onPdfOutlineReady, onTlgClick,
-  onCastClick, onCastPreview
+  onCastClick, onCastPreview, onAiClick
 }, ref) {
   const [renderedHtml, setRenderedHtml] = useState('');
   const [isHtmlFile, setIsHtmlFile] = useState(false);
@@ -117,6 +117,14 @@ const Viewer = forwardRef(function Viewer({
         if (onCastPreview) onCastPreview(castPreview.dataset.castContent);
         return;
       }
+      // AI poke button (GM -> AI -> player via Telegram)
+      const aiBtn = e.target.closest('.ai-send-btn');
+      if (aiBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onAiClick) onAiClick(aiBtn.dataset.aiTarget, aiBtn.dataset.aiContext);
+        return;
+      }
       // Images — left click → fullscreen overlay
       if (e.target.tagName === 'IMG' && e.target.src) {
         e.preventDefault();
@@ -139,7 +147,7 @@ const Viewer = forwardRef(function Viewer({
     };
     container.addEventListener('click', handler);
     return () => container.removeEventListener('click', handler);
-  }, [onTlgClick, onImageOverlay, onCastClick, onCastPreview]);
+  }, [onTlgClick, onImageOverlay, onCastClick, onCastPreview, onAiClick]);
 
   const makeKey = useCallback((filePath) => {
     return scrollKeyPrefix ? `${scrollKeyPrefix}:${filePath}` : filePath;

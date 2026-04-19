@@ -49,6 +49,7 @@ const DARK_GOLD = {
   '--color-success-alt': '#6baa5d',
   '--color-success-bright': '#6bff6b',
   '--color-info': '#6e9ec9',
+  '--color-ai': '#b47ed0',
   '--color-warning': '#e0a040',
 
   // Dice
@@ -124,6 +125,7 @@ const DARK_BLUE = {
   '--color-success-alt': '#6baa5d',
   '--color-success-bright': '#6bff6b',
   '--color-info': '#5b8dd9',
+  '--color-ai': '#a876d9',
   '--color-warning': '#e0a040',
 
   '--dice-d4': '#5a6a8a',
@@ -194,6 +196,7 @@ const DARK_GREEN = {
   '--color-success-alt': '#7abb7a',
   '--color-success-bright': '#6bff6b',
   '--color-info': '#6e9ec9',
+  '--color-ai': '#b47ed0',
   '--color-warning': '#d4a840',
 
   '--dice-d4': '#5a7a5a',
@@ -264,6 +267,7 @@ const DARK_RED = {
   '--color-success-alt': '#6baa5d',
   '--color-success-bright': '#6bff6b',
   '--color-info': '#6e9ec9',
+  '--color-ai': '#b47ed0',
   '--color-warning': '#e0a040',
 
   '--dice-d4': '#8a5a5a',
@@ -334,6 +338,7 @@ const DARK_PURPLE = {
   '--color-success-alt': '#6baa5d',
   '--color-success-bright': '#6bff6b',
   '--color-info': '#6e9ec9',
+  '--color-ai': '#b47ed0',
   '--color-warning': '#e0a040',
 
   '--dice-d4': '#6a5a8a',
@@ -404,6 +409,7 @@ const LIGHT_CLASSIC = {
   '--color-success-alt': '#4a9a4a',
   '--color-success-bright': '#2a7a2a',
   '--color-info': '#2a6aaa',
+  '--color-ai': '#7a3fa0',
   '--color-warning': '#c08030',
 
   '--dice-d4': '#a09070',
@@ -474,6 +480,7 @@ const LIGHT_BLUE = {
   '--color-success-alt': '#4a9a4a',
   '--color-success-bright': '#2a7a2a',
   '--color-info': '#2563a8',
+  '--color-ai': '#6e3a9d',
   '--color-warning': '#c08030',
 
   '--dice-d4': '#708aa0',
@@ -544,6 +551,7 @@ const HIGH_CONTRAST = {
   '--color-success-alt': '#55dd55',
   '--color-success-bright': '#44ff44',
   '--color-info': '#4488ff',
+  '--color-ai': '#c879ff',
   '--color-warning': '#ffaa00',
 
   '--dice-d4': '#aa9944',

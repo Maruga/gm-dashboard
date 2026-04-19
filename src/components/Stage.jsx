@@ -21,7 +21,7 @@ const ALL_TABS = [
 
 function Stage({
   slotFiles, activeTab, selectedIndices, onTabChange,
-  onImageClick, onImageOverlay, onVideoClick, onTlgClick, onCastClick, onCastPreview,
+  onImageClick, onImageOverlay, onVideoClick, onTlgClick, onCastClick, onCastPreview, onAiClick,
   calFile,
   vistaContent, relationsBase, relationsSession,
   scrollMapRef, onScrollChanged,
@@ -162,6 +162,7 @@ function Stage({
             onTlgClick={onTlgClick}
             onCastClick={onCastClick}
             onCastPreview={onCastPreview}
+            onAiClick={onAiClick}
             onImageOverlay={onImageOverlay}
           />
         ) : activeItem ? (
@@ -176,6 +177,7 @@ function Stage({
             onTlgClick={onTlgClick}
             onCastClick={onCastClick}
             onCastPreview={onCastPreview}
+            onAiClick={onAiClick}
             scrollMapRef={scrollMapRef}
             onScrollChanged={onScrollChanged}
             fontSize={fontSize}
@@ -198,7 +200,7 @@ function Stage({
 
 export default React.memo(Stage);
 
-const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpenSource, fontSize, onTlgClick, onCastClick, onCastPreview, onImageOverlay }, ref) {
+const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpenSource, fontSize, onTlgClick, onCastClick, onCastPreview, onAiClick, onImageOverlay }, ref) {
   const sourceName = snippet.source || (snippet.sourcePath ? snippet.sourcePath.split('/').pop().split('\\').pop() : null);
   const contentRef = useRef(null);
 
@@ -234,6 +236,13 @@ const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpe
         if (onCastPreview) onCastPreview(castPreview.dataset.castContent);
         return;
       }
+      const aiBtn = e.target.closest('.ai-send-btn');
+      if (aiBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onAiClick) onAiClick(aiBtn.dataset.aiTarget, aiBtn.dataset.aiContext);
+        return;
+      }
       if (e.target.tagName === 'IMG' && e.target.src) {
         e.preventDefault();
         e.stopPropagation();
@@ -253,7 +262,7 @@ const SnippetView = React.forwardRef(function SnippetView({ snippet, html, onOpe
     };
     container.addEventListener('click', handler);
     return () => container.removeEventListener('click', handler);
-  }, [onTlgClick, onCastClick, onCastPreview, onImageOverlay]);
+  }, [onTlgClick, onCastClick, onCastPreview, onAiClick, onImageOverlay]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

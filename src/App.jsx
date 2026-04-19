@@ -13,6 +13,7 @@ import SettingsPanel from './components/SettingsPanel';
 import CalendarPanel from './components/CalendarPanel';
 import { TelegramFileModal, TelegramTextModal, wrapGmText } from './components/TelegramModal';
 import TelegramSendModal from './components/TelegramSendModal';
+import AiSendModal from './components/AiSendModal';
 import TelegramChat from './components/TelegramChat';
 import QuickReference from './components/QuickReference';
 import NotesPanel from './components/NotesPanel';
@@ -244,6 +245,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
   const [overlayImage, setOverlayImage] = useState(null);
   const [overlayVideo, setOverlayVideo] = useState(null);
   const [tlgSendData, setTlgSendData] = useState(null); // { target, content } for Telegram send modal
+  const [aiSendData, setAiSendData] = useState(null); // { target, context } for AI-Telegram send modal
   const [searchHighlight, setSearchHighlight] = useState(null);
   const [externalSearchQuery, setExternalSearchQuery] = useState(null);
   const externalSearchCounter = useRef(0);
@@ -604,6 +606,10 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
 
   const handleTlgClick = useCallback((target, content) => {
     setTlgSendData({ target, content });
+  }, []);
+
+  const handleAiClick = useCallback((target, context) => {
+    setAiSendData({ target, context });
   }, []);
 
   // Viewer tab logic
@@ -1312,16 +1318,16 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
 
   const handleAiPoke = useCallback(async (chatId, context) => {
     const ai = aiConfigRef.current;
-    if (!ai.telegramAiEnabled) return;
+    if (!ai.telegramAiEnabled) return false;
 
     const player = players.find(p => p.telegramChatId === chatId);
-    if (!player) return;
+    if (!player) return false;
 
     const allActiveDocs = [...(ai.commonDocs || []), ...(player.aiDocuments || [])].filter(d => d.active);
     // Escludi messaggi speciali (_msg_*) dal contesto AI
     const allowedFiles = allActiveDocs.filter(d => !d.name?.toLowerCase().startsWith('_msg_')).map(d => d.file);
 
-    if (allowedFiles.length === 0) return;
+    if (allowedFiles.length === 0) return false;
 
     const promptDoc = allActiveDocs.find(d => d.name?.toLowerCase().startsWith('_prompt'));
     const chatOpts = { allowedFiles };
@@ -1378,9 +1384,12 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           description: `AI poke a ${player.characterName}: "${result.response.length > 40 ? result.response.substring(0, 40) + '...' : result.response}"`,
           icon: '\u{1F916}'
         }]);
+        return true;
       }
+      return false;
     } catch (err) {
       console.error('AI poke error:', err);
+      return false;
     }
   }, [players, projectPath]);
 
@@ -2141,6 +2150,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
                   onTlgClick={handleTlgClick}
                   onCastClick={handleCastClick}
                   onCastPreview={handleCastPreview}
+                  onAiClick={handleAiClick}
                   scrollMapRef={scrollMapRef}
                   onScrollChanged={onScrollChanged}
                   fontSize={viewerFontSize}
@@ -2180,6 +2190,7 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
               onTlgClick={handleTlgClick}
               onCastClick={handleCastClick}
               onCastPreview={handleCastPreview}
+              onAiClick={handleAiClick}
               calFile={calFile}
               vistaContent={vistaContent}
               relationsBase={relationsBase}
@@ -2553,6 +2564,17 @@ function Dashboard({ projectPath, projectName, onChangeProject, firebaseUser, on
           botRunning={botStatus.running}
           onLog={handleTelegramLog}
           onClose={() => setTlgSendData(null)}
+        />
+      )}
+      {aiSendData && (
+        <AiSendModal
+          target={aiSendData.target}
+          context={aiSendData.context}
+          players={players}
+          aiEnabled={aiConfig.telegramAiEnabled && (!!aiConfig.apiKey || !!aiConfig.provider)}
+          botRunning={botStatus.running}
+          onAiPoke={handleAiPoke}
+          onClose={() => setAiSendData(null)}
         />
       )}
       {referenceOpen && (
@@ -2994,6 +3016,23 @@ function GlobalStyles() {
       .tlg-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; text-align: left; }
       .tlg-type { font-size: 10px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
       .tlg-preview { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      /* AI poke buttons in markdown */
+      .ai-send-btn {
+        display: inline-flex; align-items: center; gap: 8px;
+        background: var(--bg-elevated); border: 1px solid var(--color-ai);
+        border-radius: 6px; padding: 6px 12px; margin: 4px 0;
+        cursor: pointer; transition: all 0.2s; font-family: inherit;
+        max-width: 100%; color: var(--text-primary);
+      }
+      .ai-send-btn:hover {
+        background: color-mix(in srgb, var(--color-ai) 10%, transparent);
+        border-color: var(--color-ai);
+        box-shadow: 0 0 8px color-mix(in srgb, var(--color-ai) 25%, transparent);
+      }
+      .ai-icon { font-size: 18px; flex-shrink: 0; }
+      .ai-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; text-align: left; }
+      .ai-type { font-size: 10px; font-weight: 600; color: var(--color-ai); text-transform: uppercase; letter-spacing: 0.5px; }
+      .ai-preview { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       /* Cast display buttons in markdown */
       .cast-widget {
         display: flex; align-items: center; gap: 8px;
