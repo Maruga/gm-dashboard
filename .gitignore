@@ -7,3 +7,10 @@ release/
 CLAUDE.md
 RELEASE-GUIDE.md
 website/
+
+# Playwright / screenshot automation
+docs-gen/
+test-results/
+playwright-report/
+tests/.fixture-path
+tests/.fixture-path.txt
