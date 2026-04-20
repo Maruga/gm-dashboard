@@ -211,12 +211,16 @@ const aiPauseExtension = {
     return src.indexOf('[aipause');
   },
   tokenizer(src) {
+    // "Casuale" non ha senso per pausa AI — rifiuta il token così il GM vede il testo grezzo
+    const isCasuale = (t) => /^(casuale|random)(:.+)?$/i.test(t.trim());
     const pipeMatch = src.match(/^\[aipause\|([^|\]]+)(?:\|([^\]]+))?\]/);
     if (pipeMatch) {
+      if (isCasuale(pipeMatch[1])) return;
       return { type: 'aipause', raw: pipeMatch[0], target: pipeMatch[1].trim(), message: pipeMatch[2]?.trim() || '' };
     }
     const colonMatch = src.match(/^\[aipause::([^\]]+?)(?:::([^\]]+))?\]/);
     if (colonMatch) {
+      if (isCasuale(colonMatch[1])) return;
       return { type: 'aipause', raw: colonMatch[0], target: colonMatch[1].trim(), message: colonMatch[2]?.trim() || '' };
     }
   },
@@ -251,12 +255,15 @@ const aiResumeExtension = {
     return src.indexOf('[airesume');
   },
   tokenizer(src) {
+    const isCasuale = (t) => /^(casuale|random)(:.+)?$/i.test(t.trim());
     const pipeMatch = src.match(/^\[airesume\|([^\]]+)\]/);
     if (pipeMatch) {
+      if (isCasuale(pipeMatch[1])) return;
       return { type: 'airesume', raw: pipeMatch[0], target: pipeMatch[1].trim() };
     }
     const colonMatch = src.match(/^\[airesume::([^\]]+)\]/);
     if (colonMatch) {
+      if (isCasuale(colonMatch[1])) return;
       return { type: 'airesume', raw: colonMatch[0], target: colonMatch[1].trim() };
     }
   },

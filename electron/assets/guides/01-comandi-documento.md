@@ -67,7 +67,9 @@ Permette di **bloccare temporaneamente** le risposte dell'AI a un PG. Utile quan
 [airesume|destinatario]
 ```
 
-**Destinatari**: nome PG, lista virgola-separata, `Tutti`.
+**Destinatari validi**: nome singolo PG, lista di nomi separati da virgola, `Tutti`.
+
+> **Nota**: `Casuale` non è supportato per pausa/riattivazione AI — non avrebbe senso bloccare a caso un giocatore. Se scrivi `[aipause|Casuale|...]` il testo rimane grezzo (nessun bottone generato).
 
 **Come funziona**:
 
